@@ -33,7 +33,7 @@
    </parent>
 
    <properties>
-      <qqq.frontend.next.version>1.0.0-RC.11</qqq.frontend.next.version>
+      <qqq.frontend.next.version>1.0.0-RC.14</qqq.frontend.next.version>
       <qqq.frontend.material-dashboard.version>0.42.0-RC.2</qqq.frontend.material-dashboard.version>
       <!-- Skip deployment to Maven Central - this is a sample project, not a library -->
       <maven.deploy.skip>true</maven.deploy.skip>
@@ -146,6 +146,14 @@
          <groupId>com.kingsrook.qqq</groupId>
          <artifactId>qqq-language-support-javascript</artifactId>
          <version>${revision}</version>
+         <scope>test</scope>
+      </dependency>
+      <dependency>
+         <!-- SampleS3AcceptanceIT's independent "oracle" client.  It stays on AWS SDK v1 on purpose,  -->
+         <!-- so it shares no code with the (v2) S3 backend under test.  Test scope only.              -->
+         <groupId>com.amazonaws</groupId>
+         <artifactId>aws-java-sdk-s3</artifactId>
+         <version>1.12.797</version>
          <scope>test</scope>
       </dependency>
       <dependency>

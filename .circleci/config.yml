@@ -17,7 +17,7 @@ parameters:
     default: ""
 
 orbs:
-  qqq-orb: kingsrook/qqq-orb@0.6.8
+  qqq-orb: kingsrook/qqq-orb@0.6.9
 
 commands:
   start-mongo-bind-trace:
@@ -72,6 +72,54 @@ commands:
             sudo sed -i 's|http://security.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list
             sudo install -d /etc/needrestart/conf.d
             printf '%s\n' '$nrconf{restart} = "l";' | sudo tee /etc/needrestart/conf.d/99-qqq-ci.conf >/dev/null
+
+  store-sample-results:
+    steps:
+      - run:
+          name: Collect JUnit test reports
+          when: always
+          command: |
+            mkdir -p qqq-sample-project/target/junit-results
+            for report in qqq-sample-project/target/surefire-reports/TEST-*.xml qqq-sample-project/target/failsafe-reports/TEST-*.xml; do
+              if [ -f "$report" ]; then
+                cp "$report" qqq-sample-project/target/junit-results/
+              fi
+            done
+      - store_test_results:
+          path: qqq-sample-project/target/junit-results
+      - store_test_results:
+          path: qqq-sample-project/target/starter-application-junit
+      - store_artifacts:
+          path: qqq-sample-project/target/browser-acceptance
+      - store_artifacts:
+          path: qqq-sample-project/target/display-widgets
+      - store_artifacts:
+          path: qqq-sample-project/target/widget-controls
+      - store_artifacts:
+          path: qqq-sample-project/target/feature-coverage-result.json
+      - store_artifacts:
+          path: qqq-sample-project/target/next-acceptance-stage.json
+
+  persist-sample-evidence:
+    parameters:
+      shard:
+        type: string
+    steps:
+      - run:
+          name: Collect sample evidence for the coverage gate
+          when: always
+          command: |
+            mkdir -p /tmp/sample-evidence/<< parameters.shard >>
+            for directory in surefire-reports failsafe-reports starter-application-junit browser-acceptance display-widgets widget-controls; do
+              if [ -d "qqq-sample-project/target/$directory" ]; then
+                cp -R "qqq-sample-project/target/$directory" /tmp/sample-evidence/<< parameters.shard >>/
+              fi
+            done
+      # Concurrent producers must not persist overlapping workspace paths.
+      - persist_to_workspace:
+          root: /tmp/sample-evidence
+          paths:
+            - << parameters.shard >>
 
 jobs:
   esb_broker_conformance:
@@ -150,18 +198,6 @@ jobs:
 
   sample_acceptance:
     executor: qqq-orb/java
-    environment:
-      QQQ_ACCEPTED_NEXT_CANDIDATE: << parameters.accepted_next_candidate >>
-      QQQ_NEXT_CI_BUNDLE_URL: << pipeline.parameters.next_acceptance_bundle_url >>
-      QQQ_NEXT_BUNDLE_SHA256: << pipeline.parameters.next_acceptance_bundle_sha256 >>
-      QQQ_NEXT_RECEIPT_SHA256: << pipeline.parameters.next_acceptance_receipt_sha256 >>
-    parameters:
-      accepted_next_candidate:
-        type: string
-        default: ""
-      require_complete_coverage:
-        type: boolean
-        default: false
     steps:
       - configure-package-install
       - qqq-orb/install_java:
@@ -172,11 +208,18 @@ jobs:
           name: Build framework dependencies for the sample
           command: mvn -B -s /tmp/circleci/mvn-settings.xml -Drevision=0.0.0-sample-acceptance -DskipTests clean install
       - run:
-          name: Build the pinned Material dashboard against this framework
+          name: Check out the pinned Material dashboard
           command: |
             git clone https://github.com/QRun-IO/qqq-frontend-material-dashboard.git /tmp/sample-material-dashboard
+            git -C /tmp/sample-material-dashboard checkout --detach 1784e4e8d29c5c9ef8c40ec4f26ca5cdf58b1972
+      # Cache npm downloads, not node_modules; npm ci still validates the locked install.
+      - restore_cache:
+          keys:
+            - material-npm-v1-1784e4e8d29c5c9ef8c40ec4f26ca5cdf58b1972-{{ checksum "/tmp/sample-material-dashboard/package-lock.json" }}
+      - run:
+          name: Build the pinned Material dashboard against this framework
+          command: |
             cd /tmp/sample-material-dashboard
-            git checkout --detach 1784e4e8d29c5c9ef8c40ec4f26ca5cdf58b1972
             # Consumers read this installed POM without the build's command-line properties.
             python3 -c '
             from pathlib import Path
@@ -186,7 +229,7 @@ jobs:
             assert text.count(old) == 1, "Pinned dashboard QQQ version changed"
             pom.write_text(text.replace(old, "<qqq.version>0.0.0-sample-acceptance</qqq.version>"))
             '
-            npm ci --legacy-peer-deps
+            npm ci --legacy-peer-deps --prefer-offline --cache ~/.npm
             CI=true npm test -- --watchAll=false --runInBand
             # Match the accepted production build; existing source-map warnings remain warnings.
             CI=false npm run build
@@ -194,6 +237,10 @@ jobs:
             cp -R build/. src/main/resources/material-dashboard/
             # This internal test dependency is installed only on this build machine.
             mvn -B -s /tmp/circleci/mvn-settings.xml -Dqqq.version=0.0.0-sample-acceptance -Drevision=0.0.0-sample-acceptance -Dgpg.skip=true '-Dtest=*Test' clean install
+      - save_cache:
+          key: material-npm-v1-1784e4e8d29c5c9ef8c40ec4f26ca5cdf58b1972-{{ checksum "/tmp/sample-material-dashboard/package-lock.json" }}
+          paths:
+            - ~/.npm
       - run:
           name: Run sample data, HTTP and browser acceptance
           command: |
@@ -209,11 +256,26 @@ jobs:
             mkdir -p qqq-sample-project/target/surefire-reports
             cp qqq-middleware-lambda/target/surefire-reports/TEST-com.kingsrook.sampleapp.SampleLambdaDispatchAcceptanceTest.xml qqq-sample-project/target/surefire-reports/
             cp qqq-utility-lambdas/target/surefire-reports/TEST-com.kingsrook.sampleapp.SampleSqsUtilityAcceptanceTest.xml qqq-sample-project/target/surefire-reports/
-      - when:
-          condition: << parameters.require_complete_coverage >>
-          steps:
-            - attach_workspace:
-                at: qqq-sample-project/target
+      - store-sample-results
+      - store_test_results:
+          path: qqq-middleware-lambda/target/surefire-reports
+      - store_test_results:
+          path: qqq-utility-lambdas/target/surefire-reports
+      - persist-sample-evidence:
+          shard: sample-core
+
+  sample_consumer_acceptance:
+    executor: qqq-orb/java
+    steps:
+      - configure-package-install
+      - qqq-orb/install_java
+      - checkout
+      - qqq-orb/mvn_build
+      # Install independently so consumers run alongside core acceptance.
+      # The starter runner's isolated $consumer_root/m2 remains empty and uncached.
+      - run:
+          name: Build framework dependencies for the consumers
+          command: mvn -B -s /tmp/circleci/mvn-settings.xml -Drevision=0.0.0-sample-acceptance -DskipTests clean install
       - run:
           name: Require source-generated starter and application acceptance with live MySQL
           no_output_timeout: 30m
@@ -251,6 +313,29 @@ jobs:
               --candidate-version 0.0.0-sample-acceptance \
               --maven-settings /tmp/circleci/mvn-settings.xml \
               --report-dir qqq-sample-project/target/surefire-reports
+      - store-sample-results
+      - persist-sample-evidence:
+          shard: sample-consumer
+
+  sample_coverage_gate:
+    executor: qqq-orb/java
+    environment:
+      QQQ_NEXT_CI_BUNDLE_URL: << pipeline.parameters.next_acceptance_bundle_url >>
+      QQQ_NEXT_BUNDLE_SHA256: << pipeline.parameters.next_acceptance_bundle_sha256 >>
+      QQQ_NEXT_RECEIPT_SHA256: << pipeline.parameters.next_acceptance_receipt_sha256 >>
+    parameters:
+      require_complete_coverage:
+        type: boolean
+        default: false
+    steps:
+      - checkout
+      - attach_workspace:
+          at: qqq-sample-project/target
+      - run:
+          name: Combine core and consumer evidence without running Maven clean
+          command: |
+            cp -R qqq-sample-project/target/sample-core/. qqq-sample-project/target/
+            cp -R qqq-sample-project/target/sample-consumer/. qqq-sample-project/target/
       - run:
           name: Stage independently reviewed Next evidence after clean builds
           when: always
@@ -264,31 +349,9 @@ jobs:
           steps:
             - run:
                 name: Require reviewed source-stage coverage before publication
+                when: always
                 command: python3 -B qqq-sample-project/next_acceptance_ci.py strict
-      - store_artifacts:
-          path: qqq-sample-project/target/next-acceptance-stage.json
-      - run:
-          name: Collect JUnit test reports
-          when: always
-          command: |
-            mkdir -p qqq-sample-project/target/junit-results
-            for report in qqq-sample-project/target/surefire-reports/TEST-*.xml qqq-sample-project/target/failsafe-reports/TEST-*.xml; do
-              if [ -f "$report" ]; then
-                cp "$report" qqq-sample-project/target/junit-results/
-              fi
-            done
-      - store_test_results:
-          path: qqq-sample-project/target/junit-results
-      - store_test_results:
-          path: qqq-sample-project/target/starter-application-junit
-      - store_artifacts:
-          path: qqq-sample-project/target/browser-acceptance
-      - store_artifacts:
-          path: qqq-sample-project/target/display-widgets
-      - store_artifacts:
-          path: qqq-sample-project/target/widget-controls
-      - store_artifacts:
-          path: qqq-sample-project/target/feature-coverage-result.json
+      - store-sample-results
 
 workflows:
 
@@ -309,7 +372,22 @@ workflows:
               only: []
       - sample_acceptance:
           name: sample_acceptance
+          filters:
+            branches:
+              ignore: /(develop|release/.*|hotfix/.*|integration.*)/
+            tags:
+              only: []
+      - sample_consumer_acceptance:
+          name: sample_consumer_acceptance
+          filters:
+            branches:
+              ignore: /(develop|release/.*|hotfix/.*|integration.*)/
+            tags:
+              only: []
+      - sample_coverage_gate:
+          name: sample_coverage_gate
           require_complete_coverage: false
+          requires: [sample_acceptance, sample_consumer_acceptance]
           filters:
             branches:
               ignore: /(develop|release/.*|hotfix/.*|integration.*)/
@@ -360,13 +438,29 @@ workflows:
                 - develop
       - sample_acceptance:
           name: snapshot_sample_acceptance
+          filters:
+            branches:
+              only:
+                - develop
+      - sample_consumer_acceptance:
+          name: snapshot_sample_consumer_acceptance
+          filters:
+            branches:
+              only:
+                - develop
+      - sample_coverage_gate:
+          name: snapshot_sample_coverage_gate
           require_complete_coverage: false
+          requires: [snapshot_sample_acceptance, snapshot_sample_consumer_acceptance]
           filters:
             branches:
               only:
                 - develop
       - qqq-orb/mvn_publish:
-          requires: [snapshot_sample_acceptance, sample_bootstrap_source, snapshot_esb_broker_conformance]
+          # develop already passed sample acceptance on its PR. Keep sample and static
+          # analysis status in this workflow, but publish SNAPSHOTs after bootstrap/ESB.
+          # Every RC/GA publication still reruns and requires the full coverage gate.
+          requires: [sample_bootstrap_source, snapshot_esb_broker_conformance]
           pre-steps:
             - configure-package-install
           context: [qqq-maven-registry-credentials, build-qqq-sample-app]
@@ -404,7 +498,24 @@ workflows:
               only: [/publish.*/]
       - sample_acceptance:
           name: feature_sample_acceptance
+          filters:
+            branches:
+              only:
+                - feature/.*
+            tags:
+              only: [/publish.*/]
+      - sample_consumer_acceptance:
+          name: feature_sample_consumer_acceptance
+          filters:
+            branches:
+              only:
+                - feature/.*
+            tags:
+              only: [/publish.*/]
+      - sample_coverage_gate:
+          name: feature_sample_coverage_gate
           require_complete_coverage: false
+          requires: [feature_sample_acceptance, feature_sample_consumer_acceptance]
           filters:
             branches:
               only:
@@ -412,7 +523,7 @@ workflows:
             tags:
               only: [/publish.*/]
       - qqq-orb/mvn_publish:
-          requires: [feature_sample_acceptance, sample_bootstrap_source, feature_esb_broker_conformance]
+          requires: [feature_sample_coverage_gate, sample_bootstrap_source, feature_esb_broker_conformance]
           pre-steps:
             - configure-package-install
           context: [qqq-maven-registry-credentials]
@@ -440,9 +551,20 @@ workflows:
                 - /release\/.*/
       - sample_acceptance:
           name: candidate_sample_acceptance
-          accepted_next_candidate: "4.1.0-RC.3"
+          filters:
+            branches:
+              only:
+                - /release\/.*/
+      - sample_consumer_acceptance:
+          name: candidate_sample_consumer_acceptance
+          filters:
+            branches:
+              only:
+                - /release\/.*/
+      - sample_coverage_gate:
+          name: candidate_sample_coverage_gate
           require_complete_coverage: true
-          requires: [sample_bootstrap_source]
+          requires: [candidate_sample_acceptance, candidate_sample_consumer_acceptance, sample_bootstrap_source]
           filters:
             branches:
               only:
@@ -461,7 +583,7 @@ workflows:
             - configure-package-install
           context: [qqq-maven-registry-credentials, build-qqq-sample-app]
           branch_type: release_candidate
-          requires: [candidate_static_analysis, candidate_sample_acceptance, sample_bootstrap_source, candidate_esb_broker_conformance]
+          requires: [candidate_static_analysis, candidate_sample_coverage_gate, sample_bootstrap_source, candidate_esb_broker_conformance]
           filters:
             branches:
               only:
@@ -485,8 +607,22 @@ workflows:
               only: /^v[0-9]+\.[0-9]+\.[0-9]+$/
       - sample_acceptance:
           name: release_sample_acceptance
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v[0-9]+\.[0-9]+\.[0-9]+$/
+      - sample_consumer_acceptance:
+          name: release_sample_consumer_acceptance
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v[0-9]+\.[0-9]+\.[0-9]+$/
+      - sample_coverage_gate:
+          name: release_sample_coverage_gate
           require_complete_coverage: true
-          requires: [sample_bootstrap_source]
+          requires: [release_sample_acceptance, release_sample_consumer_acceptance, sample_bootstrap_source]
           filters:
             branches:
               ignore: /.*/
@@ -507,7 +643,7 @@ workflows:
             - configure-package-install
           context: [qqq-maven-registry-credentials, build-qqq-sample-app]
           branch_type: release
-          requires: [release_static_analysis, release_sample_acceptance, sample_bootstrap_source, release_esb_broker_conformance]
+          requires: [release_static_analysis, release_sample_coverage_gate, sample_bootstrap_source, release_esb_broker_conformance]
           filters:
             branches:
               ignore: /.*/
@@ -530,14 +666,26 @@ workflows:
                 - /hotfix\/.*/
       - sample_acceptance:
           name: hotfix_sample_acceptance
+          filters:
+            branches:
+              only:
+                - /hotfix\/.*/
+      - sample_consumer_acceptance:
+          name: hotfix_sample_consumer_acceptance
+          filters:
+            branches:
+              only:
+                - /hotfix\/.*/
+      - sample_coverage_gate:
+          name: hotfix_sample_coverage_gate
           require_complete_coverage: true
-          requires: [sample_bootstrap_source]
+          requires: [hotfix_sample_acceptance, hotfix_sample_consumer_acceptance, sample_bootstrap_source]
           filters:
             branches:
               only:
                 - /hotfix\/.*/
       - qqq-orb/mvn_publish:
-          requires: [hotfix_sample_acceptance, sample_bootstrap_source, hotfix_esb_broker_conformance]
+          requires: [hotfix_sample_coverage_gate, sample_bootstrap_source, hotfix_esb_broker_conformance]
           pre-steps:
             - configure-package-install
           context: [qqq-maven-registry-credentials, build-qqq-sample-app]

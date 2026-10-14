@@ -28,6 +28,7 @@ import java.io.FileOutputStream;
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.Month;
 import java.util.ArrayList;
@@ -81,6 +82,7 @@ import org.json.JSONObject;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -91,6 +93,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  *******************************************************************************/
 public class GenerateReportActionTest extends BaseTest
 {
+   @TempDir
+   Path temporaryDirectory;
+
+
    public static final String REPORT_NAME = "personReport1";
 
 
@@ -354,7 +360,7 @@ public class GenerateReportActionTest extends BaseTest
     *******************************************************************************/
    private String runToString(ReportFormat reportFormat, String reportName, Map<String, Serializable> inputValues) throws Exception
    {
-      String name = "/tmp/report." + reportFormat.getExtension();
+      String name = temporaryDirectory.resolve("report." + reportFormat.getExtension()).toString();
       try(FileOutputStream fileOutputStream = new FileOutputStream(name))
       {
          ReportInput reportInput = new ReportInput();
@@ -376,7 +382,7 @@ public class GenerateReportActionTest extends BaseTest
    void runSummaryToXlsx() throws Exception
    {
       ReportFormat format = ReportFormat.XLSX;
-      String       name   = "/tmp/report-" + format + ".xlsx";
+      String       name   = temporaryDirectory.resolve("report-" + format + ".xlsx").toString();
       try(FileOutputStream fileOutputStream = new FileOutputStream(name))
       {
          QInstance qInstance = QContext.getQInstance();
@@ -403,7 +409,7 @@ public class GenerateReportActionTest extends BaseTest
    void runTableToXlsxFastexcel() throws Exception
    {
       ReportFormat format = ReportFormat.XLSX;
-      String       name   = "/tmp/report-fastexcel.xlsx";
+      String       name   = temporaryDirectory.resolve("report-fastexcel.xlsx").toString();
       try(FileOutputStream fileOutputStream = new FileOutputStream(name))
       {
          QInstance qInstance = QContext.getQInstance();
@@ -431,7 +437,7 @@ public class GenerateReportActionTest extends BaseTest
    void runTableToXlsxWithOverrideStyles() throws Exception
    {
       ReportFormat format = ReportFormat.XLSX;
-      String       name   = "/tmp/report-fastexcel.xlsx";
+      String       name   = temporaryDirectory.resolve("report-fastexcel.xlsx").toString();
       try(FileOutputStream fileOutputStream = new FileOutputStream(name))
       {
          QInstance       qInstance      = QContext.getQInstance();
@@ -471,7 +477,7 @@ public class GenerateReportActionTest extends BaseTest
    void runTableToXlsx() throws Exception
    {
       ReportFormat format = ReportFormat.XLSX;
-      String       name   = "/tmp/report-" + format + ".xlsx";
+      String       name   = temporaryDirectory.resolve("report-" + format + ".xlsx").toString();
       try(FileOutputStream fileOutputStream = new FileOutputStream(name))
       {
          QInstance qInstance = QContext.getQInstance();
@@ -498,7 +504,7 @@ public class GenerateReportActionTest extends BaseTest
    void runXlsxWithStyleCustomizer() throws Exception
    {
       ReportFormat format = ReportFormat.XLSX;
-      String       name   = "/tmp/report-customized.xlsx";
+      String       name   = temporaryDirectory.resolve("report-customized.xlsx").toString();
       try(FileOutputStream fileOutputStream = new FileOutputStream(name))
       {
          QInstance qInstance = QContext.getQInstance();
@@ -525,7 +531,7 @@ public class GenerateReportActionTest extends BaseTest
    @Test
    void runPivotToXlsx() throws Exception
    {
-      String name = "/tmp/pivot-test.xlsx";
+      String name = temporaryDirectory.resolve("pivot-test.xlsx").toString();
       try(FileOutputStream fileOutputStream = new FileOutputStream(name))
       {
          QInstance qInstance = QContext.getQInstance();

@@ -22,12 +22,20 @@ package com.kingsrook.qqq.backend.core.modules.authentication;
 
 
 import com.kingsrook.qqq.backend.core.BaseTest;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QModuleDispatchException;
+import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
+import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
+import com.kingsrook.qqq.backend.core.modules.authentication.implementations.MockAuthenticationModule;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 /*******************************************************************************
@@ -91,4 +99,41 @@ class QAuthenticationModuleDispatcherTest extends BaseTest
       });
    }
 
+
+
+
+   /*******************************************************************************
+    ** A provider naming its own module class gets that module (whatever the
+    ** type); CUSTOM providers must name one; a missing type is reported.
+    *******************************************************************************/
+   @Test
+   public void test_moduleCodeReference() throws QModuleDispatchException
+   {
+      QAuthenticationMetaData custom = new QAuthenticationMetaData().withName("custom").withType(QAuthenticationType.CUSTOM)
+         .withModuleCodeReference(new QCodeReference(MockAuthenticationModule.class));
+      assertInstanceOf(MockAuthenticationModule.class, new QAuthenticationModuleDispatcher().getQModule(custom));
+
+      QAuthenticationMetaData overridden = new QAuthenticationMetaData().withName("anon").withType(QAuthenticationType.FULLY_ANONYMOUS)
+         .withModuleCodeReference(new QCodeReference(MockAuthenticationModule.class));
+      assertInstanceOf(MockAuthenticationModule.class, new QAuthenticationModuleDispatcher().getQModule(overridden));
+
+      assertThrows(QModuleDispatchException.class, () -> new QAuthenticationModuleDispatcher().getQModule(new QAuthenticationMetaData().withName("none")));
+
+      QInstance qInstance = QContext.getQInstance();
+      QInstanceValidator validator = new QInstanceValidator();
+      new QAuthenticationMetaData().withName("bad").withType(QAuthenticationType.CUSTOM).validate(qInstance, validator);
+      assertTrue(validator.getErrors().stream().anyMatch(e -> e.contains("must set a moduleCodeReference")));
+   }
+
+
+
+   /*******************************************************************************
+    ** The metadata-aware createSession defaults to the plain one.
+    *******************************************************************************/
+   @Test
+   public void test_createSessionWithMetaData() throws Exception
+   {
+      QAuthenticationModuleInterface module = new MockAuthenticationModule();
+      assertNotNull(module.createSession(QContext.getQInstance(), TestUtils.defineAuthentication(), java.util.Map.of()));
+   }
 }

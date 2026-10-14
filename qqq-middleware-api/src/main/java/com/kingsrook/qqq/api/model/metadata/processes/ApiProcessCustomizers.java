@@ -27,7 +27,7 @@ package com.kingsrook.qqq.api.model.metadata.processes;
 public enum ApiProcessCustomizers
 {
    PRE_RUN("preRun", PreRunApiProcessCustomizer.class),
-   POST_RUN("postRun", PreRunApiProcessCustomizer.class);
+   POST_RUN("postRun", PostRunApiProcessCustomizer.class);
 
    private final String   role;
    private final Class<?> expectedType;

@@ -34,11 +34,15 @@ import java.util.Optional;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
 import com.kingsrook.qqq.backend.core.actions.audits.DMLAuditAction;
+import com.kingsrook.qqq.backend.core.actions.collaboration.RecordReferenceSecurityHelper;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.actions.interfaces.DeleteInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.ClassifiedValues;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordDiscovery;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociationJoin;
@@ -63,6 +67,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.collaboration.RecordReferenceTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.AdornmentType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Association;
@@ -115,10 +120,22 @@ public class DeleteAction
     *******************************************************************************/
    private DeleteOutput execute(DeleteInput deleteInput, Set<Target> ancestors) throws QException
    {
+      if(deleteInput.getTableName() != null && deleteInput.getTable() != null)
+      {
+         if(CorePermissionEnforcer.checkTablePermissions(deleteInput, TablePermissionSubType.DELETE))
+         {
+            CorePermissionEnforcer.checkAssociatedWrites(deleteInput);
+         }
+         if(CorePermissionEnforcer.shouldEnforceFieldAccess(deleteInput) && deleteInput.getQueryFilter() != null)
+         {
+            CorePermissionEnforcer.checkReadCriteria(deleteInput, null, deleteInput.getQueryFilter(), null);
+         }
+      }
+
       List<Serializable> primaryKeys = deleteInput.getPrimaryKeys() == null ? null : new ArrayList<>(deleteInput.getPrimaryKeys());
       QQueryFilter filter = deleteInput.getQueryFilter();
       QContext.pushAction(deleteInput);
-      try
+      try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope())
       {
          return executeInternal(deleteInput, ancestors);
       }
@@ -172,7 +189,7 @@ public class DeleteAction
          for(int i = 0; i < primaryKeys.size(); i++)
          {
             Serializable primaryKey       = primaryKeys.get(i);
-            Serializable valueAsFieldType = ValueUtils.getValueAsFieldType(primaryKeyField.getType(), primaryKey);
+            Serializable valueAsFieldType = ValueUtils.getValueAsFieldType(table, primaryKeyField, primaryKey);
             if(!Objects.equals(primaryKey, valueAsFieldType))
             {
                primaryKeys.set(i, valueAsFieldType);
@@ -190,7 +207,7 @@ public class DeleteAction
       //////////////////////////////////////////////////////////////////////
       // Validation and cascades must act on the exact selected key list. //
       //////////////////////////////////////////////////////////////////////
-      if(deleteInput.getQueryFilter() != null && (!deleteInterface.supportsQueryFilterInput() || deleteInterface.supportsPreFetchQuery() || CollectionUtils.nullSafeHasContents(QContext.getQInstance().getTable(table.getName()).getAssociations())))
+      if(deleteInput.getQueryFilter() != null && (RecordReferenceTableMetaData.of(table) != null || deleteInput.getDryRun() || !deleteInterface.supportsQueryFilterInput() || deleteInterface.supportsPreFetchQuery() || CollectionUtils.nullSafeHasContents(QContext.getQInstance().getTable(table.getName()).getAssociations())))
       {
          LOG.debug("Selecting primary keys before validated or cascading delete", new LogPair("tableName", table.getName()));
          List<Serializable> primaryKeyList = getPrimaryKeysFromQueryFilter(deleteInput);
@@ -204,6 +221,10 @@ public class DeleteAction
             DeleteOutput deleteOutput = new DeleteOutput();
             deleteOutput.setRecordsWithErrors(new ArrayList<>());
             deleteOutput.setDeletedRecordCount(0);
+            if(deleteInput.getDryRun())
+            {
+               deleteOutput.setDryRunPrimaryKeys(new ArrayList<>());
+            }
             return (deleteOutput);
          }
       }
@@ -230,7 +251,7 @@ public class DeleteAction
       Optional<List<QRecord>> oldRecordList      = fetchOldRecords(deleteInput, deleteInterface);
       List<QRecord>           listenerOldRecords = fetchOldRecordsForListeners(deleteInput, oldRecordList);
 
-      List<QRecord>              customizerResult              = performValidations(deleteInput, oldRecordList, false);
+      List<QRecord>              customizerResult              = performValidations(deleteInput, oldRecordList, deleteInput.getDryRun());
       List<QRecord>              recordsWithValidationErrors   = new ArrayList<>();
       Map<Object, QRecord>       recordsWithValidationWarnings = new LinkedHashMap<>();
 
@@ -270,6 +291,18 @@ public class DeleteAction
                }
             }
          }
+      }
+
+      ///////////////////////////////////////////////////////////////////////////
+      // a dry run stops here - before any association cascade or the delete. //
+      ///////////////////////////////////////////////////////////////////////////
+      if(deleteInput.getDryRun())
+      {
+         DeleteOutput dryRunOutput = new DeleteOutput();
+         dryRunOutput.setRecordsWithErrors(recordsWithValidationErrors);
+         dryRunOutput.setRecordsWithWarnings(new ArrayList<>(recordsWithValidationWarnings.values()));
+         dryRunOutput.setDryRunPrimaryKeys(primaryKeys == null ? new ArrayList<>() : new ArrayList<>(primaryKeys));
+         return (dryRunOutput);
       }
 
       List<QRecord> associationResults = deleteAssociations(deleteInput, ancestors);
@@ -509,6 +542,7 @@ public class DeleteAction
 
       QTableMetaData table               = deleteInput.getTable();
       List<QRecord>  primaryKeysNotFound = validateRecordsExistAndCanBeAccessed(deleteInput, oldRecordList.get());
+      RecordReferenceSecurityHelper.validateWrites(table, oldRecordList.get(), RecordChangeType.DELETE, deleteInput.getTransaction());
 
       Map<Object, QRecord> visibleRecords = new LinkedHashMap<>();
       for(QRecord record : oldRecordList.get())
@@ -731,7 +765,7 @@ public class DeleteAction
     *******************************************************************************/
    private static Optional<List<QRecord>> fetchOldRecords(DeleteInput deleteInput, DeleteInterface deleteInterface) throws QException
    {
-      if(deleteInterface.supportsPreFetchQuery())
+      if(deleteInterface.supportsPreFetchQuery() || RecordReferenceTableMetaData.of(deleteInput.getTable()) != null)
       {
          return (queryOldRecords(deleteInput));
       }
@@ -826,6 +860,10 @@ public class DeleteAction
       }
       catch(Exception e)
       {
+         if(e instanceof RecordChangeListenerHelper.RequiredListenerException required)
+         {
+            throw (required);
+         }
          LOG.warn("Error preparing record change event", e, new LogPair("tableName", deleteInput.getTableName()));
       }
    }
@@ -855,14 +893,14 @@ public class DeleteAction
       }
       for(Serializable primaryKeyValue : deleteInput.getPrimaryKeys())
       {
-         primaryKeyValue = ValueUtils.getValueAsFieldType(primaryKeyField.getType(), primaryKeyValue);
+         primaryKeyValue = ValueUtils.getValueAsFieldType(table, primaryKeyField, primaryKeyValue);
          QRecord record = new QRecord().withValue(primaryKeyField.getName(), primaryKeyValue);
          if(!oldRecordKeys.contains(AssociatedRecordUpdate.primaryKey(table, record)))
          {
             recordsWithErrors.add(record);
             record.addError(new NotFoundStatusMessage(primaryKeyField.getIsHidden() || primaryKeyField.getType().needsMasked()
                ? "No record was found to delete"
-               : "No record was found to delete for " + Objects.requireNonNullElse(primaryKeyField.getLabel(), primaryKeyField.getName()) + " = " + primaryKeyValue));
+               : "No record was found to delete for " + Objects.requireNonNullElse(primaryKeyField.getLabel(), primaryKeyField.getName()) + " = " + ClassifiedValues.diagnostic(table, primaryKeyField.getName(), primaryKeyValue)));
          }
       }
 

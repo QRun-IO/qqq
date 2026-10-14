@@ -56,6 +56,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLock
 import com.kingsrook.qqq.backend.core.model.metadata.sharing.ShareableTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.automation.QTableAutomationDetails;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.cache.CacheOf;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.picker.QRelatedRecordPicker;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
@@ -66,6 +67,8 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  *******************************************************************************/
 public class QTableMetaData implements QAppChildMetaData, Serializable, MetaDataWithPermissionRules, TopLevelMetaDataInterface, SourceQBitAware, Cloneable
 {
+   private String recordVersionField;
+
    private static final QLogger LOG = QLogger.getLogger(QTableMetaData.class);
 
    private String name;
@@ -117,6 +120,9 @@ public class QTableMetaData implements QAppChildMetaData, Serializable, MetaData
    protected Map<String, List<QHelpContent>> helpContent;
 
    private List<QMenu> menus;
+
+   private Map<String, QRelatedRecordPicker> relatedRecordPickers;
+   private String                            quickCreateSectionName;
 
 
 
@@ -1900,6 +1906,16 @@ public class QTableMetaData implements QAppChildMetaData, Serializable, MetaData
             clone.setMenus(clonedMenus);
          }
 
+         if(relatedRecordPickers != null)
+         {
+            Map<String, QRelatedRecordPicker> clonedPickers = new LinkedHashMap<>();
+            for(Map.Entry<String, QRelatedRecordPicker> entry : relatedRecordPickers.entrySet())
+            {
+               clonedPickers.put(entry.getKey(), entry.getValue().clone());
+            }
+            clone.setRelatedRecordPickers(clonedPickers);
+         }
+
          return clone;
       }
       catch(CloneNotSupportedException e)
@@ -2058,6 +2074,124 @@ public class QTableMetaData implements QAppChildMetaData, Serializable, MetaData
    {
       this.searchFields = new ArrayList<>(Arrays.asList(searchFields));
       return (this);
+   }
+
+
+
+
+   /*******************************************************************************
+    ** Getter for recordVersionField
+    *******************************************************************************/
+   public String getRecordVersionField()
+   {
+      return (recordVersionField);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for recordVersionField
+    *******************************************************************************/
+   public void setRecordVersionField(String recordVersionField)
+   {
+      this.recordVersionField = recordVersionField;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for recordVersionField
+    *******************************************************************************/
+   public QTableMetaData withRecordVersionField(String recordVersionField)
+   {
+      setRecordVersionField(recordVersionField);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for relatedRecordPickers
+    *******************************************************************************/
+   public Map<String, QRelatedRecordPicker> getRelatedRecordPickers()
+   {
+      return (this.relatedRecordPickers);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for relatedRecordPickers
+    *******************************************************************************/
+   public void setRelatedRecordPickers(Map<String, QRelatedRecordPicker> relatedRecordPickers)
+   {
+      this.relatedRecordPickers = relatedRecordPickers;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for relatedRecordPickers
+    *******************************************************************************/
+   public QTableMetaData withRelatedRecordPickers(Map<String, QRelatedRecordPicker> relatedRecordPickers)
+   {
+      this.relatedRecordPickers = relatedRecordPickers;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for quickCreateSectionName
+    *******************************************************************************/
+   public String getQuickCreateSectionName()
+   {
+      return (this.quickCreateSectionName);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for quickCreateSectionName
+    *******************************************************************************/
+   public void setQuickCreateSectionName(String quickCreateSectionName)
+   {
+      this.quickCreateSectionName = quickCreateSectionName;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for quickCreateSectionName
+    *******************************************************************************/
+   public QTableMetaData withQuickCreateSectionName(String quickCreateSectionName)
+   {
+      this.quickCreateSectionName = quickCreateSectionName;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Add a related-record picker (keyed by its name).
+    *******************************************************************************/
+   public QTableMetaData withRelatedRecordPicker(QRelatedRecordPicker relatedRecordPicker)
+   {
+      if(this.relatedRecordPickers == null)
+      {
+         this.relatedRecordPickers = new LinkedHashMap<>();
+      }
+      this.relatedRecordPickers.put(relatedRecordPicker.getName(), relatedRecordPicker);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Get a related-record picker by name (null if there is none).
+    *******************************************************************************/
+   public QRelatedRecordPicker getRelatedRecordPicker(String name)
+   {
+      return (this.relatedRecordPickers == null ? null : this.relatedRecordPickers.get(name));
    }
 
 }

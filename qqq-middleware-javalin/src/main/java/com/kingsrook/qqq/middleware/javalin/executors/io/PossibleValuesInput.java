@@ -32,6 +32,8 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
  *******************************************************************************/
 public class PossibleValuesInput extends AbstractMiddlewareInput
 {
+   private boolean missingDependency;
+
    private String                    possibleValueSourceName;
    private String                    tableName;
    private String                    processName;
@@ -43,6 +45,16 @@ public class PossibleValuesInput extends AbstractMiddlewareInput
    private QQueryFilter              defaultFilter;
    private Map<String, String>       pathParams;
    private Map<String, List<String>> queryParams;
+
+   //////////////////////////////////////////////////////////////////
+   // record picker request (body "picker" object): see the source //
+   // picker metadata, QPossibleValuePicker.                       //
+   //////////////////////////////////////////////////////////////////
+   private boolean      pickerRequest = false;
+   private QQueryFilter pickerFilter;
+   private Serializable afterId;
+   private Integer      skip;
+   private Integer      limit;
 
 
 
@@ -385,4 +397,189 @@ public class PossibleValuesInput extends AbstractMiddlewareInput
       return (this);
    }
 
+
+
+   /*******************************************************************************
+    ** Getter for pickerRequest
+    *******************************************************************************/
+   public boolean getPickerRequest()
+   {
+      return (pickerRequest);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for pickerRequest
+    *******************************************************************************/
+   public void setPickerRequest(boolean pickerRequest)
+   {
+      this.pickerRequest = pickerRequest;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for pickerRequest
+    *******************************************************************************/
+   public PossibleValuesInput withPickerRequest(boolean pickerRequest)
+   {
+      this.pickerRequest = pickerRequest;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for pickerFilter
+    *******************************************************************************/
+   public QQueryFilter getPickerFilter()
+   {
+      return (pickerFilter);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for pickerFilter
+    *******************************************************************************/
+   public void setPickerFilter(QQueryFilter pickerFilter)
+   {
+      this.pickerFilter = pickerFilter;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for pickerFilter
+    *******************************************************************************/
+   public PossibleValuesInput withPickerFilter(QQueryFilter pickerFilter)
+   {
+      this.pickerFilter = pickerFilter;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for afterId
+    *******************************************************************************/
+   public Serializable getAfterId()
+   {
+      return (afterId);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for afterId
+    *******************************************************************************/
+   public void setAfterId(Serializable afterId)
+   {
+      this.afterId = afterId;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for afterId
+    *******************************************************************************/
+   public PossibleValuesInput withAfterId(Serializable afterId)
+   {
+      this.afterId = afterId;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for skip
+    *******************************************************************************/
+   public Integer getSkip()
+   {
+      return (skip);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for skip
+    *******************************************************************************/
+   public void setSkip(Integer skip)
+   {
+      this.skip = skip;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for skip
+    *******************************************************************************/
+   public PossibleValuesInput withSkip(Integer skip)
+   {
+      this.skip = skip;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for limit
+    *******************************************************************************/
+   public Integer getLimit()
+   {
+      return (limit);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for limit
+    *******************************************************************************/
+   public void setLimit(Integer limit)
+   {
+      this.limit = limit;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for limit
+    *******************************************************************************/
+   public PossibleValuesInput withLimit(Integer limit)
+   {
+      this.limit = limit;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for missingDependency
+    *******************************************************************************/
+   public boolean getMissingDependency()
+   {
+      return (this.missingDependency);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for missingDependency
+    *******************************************************************************/
+   public void setMissingDependency(boolean missingDependency)
+   {
+      this.missingDependency = missingDependency;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for missingDependency
+    *******************************************************************************/
+   public PossibleValuesInput withMissingDependency(boolean missingDependency)
+   {
+      this.missingDependency = missingDependency;
+      return (this);
+   }
 }

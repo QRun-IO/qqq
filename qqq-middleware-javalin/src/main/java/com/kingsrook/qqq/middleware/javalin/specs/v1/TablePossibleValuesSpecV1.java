@@ -25,13 +25,13 @@ import java.io.Serializable;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.kingsrook.qqq.backend.core.actions.values.ContingentPossibleValueHelper;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.PossibleValueSearchFilterUseCase;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
-import com.kingsrook.qqq.backend.core.utils.ObjectUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.collections.MapBuilder;
 import com.kingsrook.qqq.middleware.javalin.executors.PossibleValuesExecutor;
@@ -156,6 +156,7 @@ public class TablePossibleValuesSpecV1 extends AbstractEndpointSpec<PossibleValu
       JSONObject requestBody = getRequestBodyAsJsonObject(context);
       Map<String, Serializable> otherValues = PossibleValuesSpecUtils.extractOtherValues(requestBody);
       input.setOtherValues(otherValues);
+      input.setMissingDependency(ContingentPossibleValueHelper.hasMissingExplicitDependency(field, otherValues, PossibleValuesSpecUtils.extractStringField(requestBody, "useCase")));
 
       QQueryFilter defaultFilter = null;
       if(field.getPossibleValueSourceFilter() != null)
@@ -163,9 +164,7 @@ public class TablePossibleValuesSpecV1 extends AbstractEndpointSpec<PossibleValu
          defaultFilter = field.getPossibleValueSourceFilter().clone();
 
          String useCase = PossibleValuesSpecUtils.extractStringField(requestBody, "useCase");
-         PossibleValueSearchFilterUseCase filterUseCase = (useCase != null)
-            ? ObjectUtils.tryElse(() -> PossibleValueSearchFilterUseCase.valueOf(useCase.toUpperCase()), PossibleValueSearchFilterUseCase.FORM)
-            : PossibleValueSearchFilterUseCase.FORM;
+         PossibleValueSearchFilterUseCase filterUseCase = ContingentPossibleValueHelper.getSearchUseCase(field, useCase);
 
          defaultFilter.interpretValues(MapBuilder.of("input", otherValues), filterUseCase);
       }
@@ -176,6 +175,7 @@ public class TablePossibleValuesSpecV1 extends AbstractEndpointSpec<PossibleValu
          input.setSearchTerm(PossibleValuesSpecUtils.extractStringField(requestBody, "searchTerm"));
          input.setIdList(PossibleValuesSpecUtils.extractIdList(requestBody));
          input.setLabelList(PossibleValuesSpecUtils.extractLabelList(requestBody));
+         PossibleValuesSpecUtils.applyPickerRequest(requestBody, input);
       }
 
       input.setPathParams(context.pathParamMap());

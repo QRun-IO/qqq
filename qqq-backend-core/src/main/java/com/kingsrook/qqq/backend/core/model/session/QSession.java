@@ -62,6 +62,19 @@ public class QSession implements Serializable, Cloneable
    /////////////////////////////////////////////
    private Map<String, Serializable> valuesForFrontend;
 
+   ////////////////////////////////////////////////////////////////////////////////
+   // which client made the request (e.g. next-ui, assistant/<turnId>) - set by  //
+   // the server (UI API header, UiApiInvoker, or server-side code); extra       //
+   // attribution for audit and client-channel deny rules - never grants access  //
+   ////////////////////////////////////////////////////////////////////////////////
+   private String clientChannel;
+
+   //////////////////////////////////////////////////////////////////////////////
+   // the scope of the credential (e.g. an access token) the session came from  //
+   // - null when unrestricted.  Only ever narrows the user's permissions.      //
+   //////////////////////////////////////////////////////////////////////////////
+   private QCredentialScope credentialScope;
+
    public static final String VALUE_KEY_USER_TIMEZONE                = "UserTimezone";
    public static final String VALUE_KEY_USER_TIMEZONE_OFFSET_MINUTES = "UserTimezoneOffsetMinutes";
 
@@ -112,6 +125,11 @@ public class QSession implements Serializable, Cloneable
       {
          clone.valuesForFrontend = new HashMap<>();
          clone.valuesForFrontend.putAll(valuesForFrontend);
+      }
+
+      if(credentialScope != null)
+      {
+         clone.credentialScope = credentialScope.clone();
       }
 
       return (clone);
@@ -246,6 +264,86 @@ public class QSession implements Serializable, Cloneable
    public void setValues(Map<String, String> values)
    {
       this.values = values;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for clientChannel - the full channel, e.g. assistant/turn-123 (null
+    ** when the request named no client).
+    *******************************************************************************/
+   public String getClientChannel()
+   {
+      return (this.clientChannel);
+   }
+
+
+
+   /*******************************************************************************
+    ** The channel name: the client channel up to its first '/', lower-cased
+    ** (e.g. assistant for assistant/turn-123); null when there is none.
+    *******************************************************************************/
+   public String getClientChannelName()
+   {
+      if(clientChannel == null || clientChannel.isBlank())
+      {
+         return (null);
+      }
+      return (clientChannel.strip().replaceFirst("[/:].*$", "").toLowerCase());
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for credentialScope - the scope of the credential (e.g. access token)
+    ** the session came from; null when unrestricted.
+    *******************************************************************************/
+   public QCredentialScope getCredentialScope()
+   {
+      return (this.credentialScope);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for credentialScope
+    *******************************************************************************/
+   public void setCredentialScope(QCredentialScope credentialScope)
+   {
+      this.credentialScope = credentialScope;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for credentialScope - set by the authentication module's
+    ** customizer for scoped credentials; it can only narrow access.
+    *******************************************************************************/
+   public QSession withCredentialScope(QCredentialScope credentialScope)
+   {
+      this.credentialScope = credentialScope;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for clientChannel
+    *******************************************************************************/
+   public void setClientChannel(String clientChannel)
+   {
+      this.clientChannel = clientChannel;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for clientChannel
+    *******************************************************************************/
+   public QSession withClientChannel(String clientChannel)
+   {
+      this.clientChannel = clientChannel;
+      return (this);
    }
 
 

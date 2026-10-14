@@ -29,6 +29,7 @@ import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.actions.async.AsyncJobCallback;
+import com.kingsrook.qqq.backend.core.actions.processes.BackendStepListener;
 import com.kingsrook.qqq.backend.core.actions.processes.QProcessCallback;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
@@ -46,6 +47,7 @@ import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 public class RunProcessInput extends AbstractActionInput
 {
    private InputSource inputSource = QInputSource.SYSTEM;
+   private boolean fieldAccessEnforced;
 
    private String               processName;
    private QProcessCallback     callback;
@@ -55,6 +57,8 @@ public class RunProcessInput extends AbstractActionInput
    private String               startAtStep;
    private String               processUUID;
    private AsyncJobCallback     asyncJobCallback;
+
+   private transient BackendStepListener backendStepListener;
 
 
 
@@ -573,5 +577,56 @@ public class RunProcessInput extends AbstractActionInput
    {
       setInputSource(inputSource);
       return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for backendStepListener (see BackendStepListener)
+    *******************************************************************************/
+   public BackendStepListener getBackendStepListener()
+   {
+      return (this.backendStepListener);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for backendStepListener
+    *******************************************************************************/
+   public void setBackendStepListener(BackendStepListener backendStepListener)
+   {
+      this.backendStepListener = backendStepListener;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for backendStepListener
+    *******************************************************************************/
+   public RunProcessInput withBackendStepListener(BackendStepListener backendStepListener)
+   {
+      this.backendStepListener = backendStepListener;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Boundary decision, independent of nested authorized scopes and caller values.
+    *******************************************************************************/
+   public boolean isFieldAccessEnforced()
+   {
+      return (fieldAccessEnforced);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set only from the process boundary; never from the process values map.
+    *******************************************************************************/
+   public void setFieldAccessEnforced(boolean fieldAccessEnforced)
+   {
+      this.fieldAccessEnforced = fieldAccessEnforced;
    }
 }

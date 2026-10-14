@@ -25,6 +25,7 @@ import com.kingsrook.qqq.backend.core.actions.ActionHelper;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
+import com.kingsrook.qqq.backend.core.instances.QInstanceHelpContentManager;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.ProcessMetaDataInput;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.ProcessMetaDataOutput;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendProcessMetaData;
@@ -43,6 +44,7 @@ public class ProcessMetaDataAction
    public ProcessMetaDataOutput execute(ProcessMetaDataInput processMetaDataInput) throws QException
    {
       ActionHelper.validateSession(processMetaDataInput);
+      QInstanceHelpContentManager.reloadIfChanged(QContext.getQInstance());
 
       // todo pre-customization - just get to modify the request?
       ProcessMetaDataOutput processMetaDataOutput = new ProcessMetaDataOutput();

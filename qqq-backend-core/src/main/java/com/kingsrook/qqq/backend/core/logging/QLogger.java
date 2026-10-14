@@ -28,6 +28,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
@@ -38,6 +39,7 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.message.ParameterizedMessage;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
@@ -47,6 +49,47 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  *******************************************************************************/
 public class QLogger
 {
+   private static final CopyOnWriteArrayList<LogRedactorInterface> redactors = new CopyOnWriteArrayList<>();
+
+   /*******************************************************************************
+    ** Register an application redactor once; readers never hold a registry lock.
+    *******************************************************************************/
+   public static void registerRedactor(LogRedactorInterface redactor)
+   {
+      redactors.addIfAbsent(java.util.Objects.requireNonNull(redactor));
+   }
+
+
+
+   /*******************************************************************************
+    ** Remove a redactor during application shutdown or test cleanup.
+    *******************************************************************************/
+   public static void unregisterRedactor(LogRedactorInterface redactor)
+   {
+      redactors.remove(redactor);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fail closed if an application redactor cannot process a message.
+    *******************************************************************************/
+   public static String redact(String message)
+   {
+      try
+      {
+         for(LogRedactorInterface redactor : redactors)
+         {
+            message = redactor.redact(message);
+         }
+         return message;
+      }
+      catch(Exception e)
+      {
+         return "[Log redaction failed]";
+      }
+   }
+
    private static Map<String, QLogger> loggerMap = Collections.synchronizedMap(new HashMap<>());
 
    private static boolean logSessionIdEnabled = true;
@@ -98,6 +141,8 @@ public class QLogger
          e.printStackTrace();
       }
    }
+
+
 
    /*******************************************************************************
     **
@@ -234,7 +279,7 @@ public class QLogger
     *******************************************************************************/
    public void trace(String message, Object... values)
    {
-      logger.trace(makeJsonString(message), values);
+      logger.trace(makeJsonString(new ParameterizedMessage(message, values).getFormattedMessage()));
    }
 
 
@@ -304,7 +349,7 @@ public class QLogger
     *******************************************************************************/
    public void debug(String message, Object... values)
    {
-      logger.debug(makeJsonString(message), values);
+      logger.debug(makeJsonString(new ParameterizedMessage(message, values).getFormattedMessage()));
    }
 
 
@@ -384,7 +429,7 @@ public class QLogger
     *******************************************************************************/
    public void info(String message, Object... values)
    {
-      logger.info(makeJsonString(message), values);
+      logger.info(makeJsonString(new ParameterizedMessage(message, values).getFormattedMessage()));
    }
 
 
@@ -454,7 +499,7 @@ public class QLogger
     *******************************************************************************/
    public void warn(String message, Object... values)
    {
-      logger.warn(makeJsonString(message), values);
+      logger.warn(makeJsonString(new ParameterizedMessage(message, values).getFormattedMessage()));
    }
 
 
@@ -524,7 +569,7 @@ public class QLogger
     *******************************************************************************/
    public void error(String message, Object... values)
    {
-      logger.error(makeJsonString(message), values);
+      logger.error(makeJsonString(new ParameterizedMessage(message, values).getFormattedMessage()));
    }
 
 
@@ -617,7 +662,7 @@ public class QLogger
          logPairList.add(logPair("stackTrace", LogUtils.filterStackTrace(org.apache.commons.lang3.exception.ExceptionUtils.getStackTrace(t))));
       }
 
-      return (LogUtils.jsonLog(logPairList));
+      return (redact(LogUtils.jsonLog(logPairList)));
    }
 
 

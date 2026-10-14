@@ -224,7 +224,7 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
    private void before(Context context) throws QException
    {
       LOG.debug("In before handler for simpleFileSystemRouter", logPair("hostedPath", hostedPath));
-      QContext.init(qInstance, new QSystemUserSession());
+      QContext.init(qInstance, new QSystemUserSession(qInstance));
 
       if(routeAuthenticator != null)
       {

@@ -28,6 +28,12 @@ include::metaData/SecurtiyKeyTypes.adoc[leveloffset=+1]
 include::metaData/Reports.adoc[leveloffset=+1]
 include::metaData/Icons.adoc[leveloffset=+1]
 include::metaData/PermissionRules.adoc[leveloffset=+1]
+include::misc/CorePermissionEnforcement.adoc[leveloffset=+1]
+include::misc/ClassifiedValueTokens.adoc[leveloffset=+1]
+include::misc/RecordPicker.adoc[leveloffset=+1]
+include::misc/Alerts.adoc[leveloffset=+1]
+include::misc/RecordFeatures.adoc[leveloffset=+1]
+include::misc/Realtime.adoc[leveloffset=+1]
 
 == Services
 
@@ -44,6 +50,7 @@ See the {qqq-tree-url}/qqq-middleware-javalin/src/main/java/com/kingsrook/qqq/mi
 == Custom Application Code
 include::misc/QContext.adoc[leveloffset=+1]
 include::misc/QRecords.adoc[leveloffset=+1]
+include::misc/CustomFields.adoc[leveloffset=+1]
 include::misc/QRecordEntities.adoc[leveloffset=+1]
 include::misc/ProcessBackendSteps.adoc[leveloffset=+1]
 include::misc/RenderingWidgets.adoc[leveloffset=+1]
@@ -79,6 +86,7 @@ include::actions/RenderTemplateAction.adoc[leveloffset=+1]
 
 == QQQ Utility Classes
 include::utilities/RecordLookupHelper.adoc[leveloffset=+1]
+include::utilities/WebhookSigningAndSafeHttp.adoc[leveloffset=+1]
 
 == Migration Guides
 

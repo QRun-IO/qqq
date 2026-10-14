@@ -32,6 +32,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
+import com.kingsrook.qqq.backend.core.realtime.RealtimeBus;
+import com.kingsrook.qqq.backend.core.realtime.RealtimeMessage;
 import com.kingsrook.qqq.middleware.javalin.executors.io.LogoutInput;
 import com.kingsrook.qqq.middleware.javalin.executors.io.LogoutOutputInterface;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
@@ -53,6 +55,11 @@ public class LogoutExecutor extends AbstractMiddlewareExecutor<LogoutInput, Logo
    public void execute(LogoutInput input, LogoutOutputInterface output) throws QException
    {
       QInstance                       qInstance                       = QContext.getQInstance();
+      if(input.getSessionUUID() != null)
+      {
+         RealtimeBus.get(qInstance).publish(new RealtimeMessage()
+            .withChannel("session:" + input.getSessionUUID()).withEvent("session-ended"));
+      }
       QAuthenticationModuleDispatcher qAuthenticationModuleDispatcher = new QAuthenticationModuleDispatcher();
 
       /////////////////////////////////////////////////////////////////////////

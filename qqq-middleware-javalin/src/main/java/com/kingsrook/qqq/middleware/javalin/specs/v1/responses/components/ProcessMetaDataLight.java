@@ -21,11 +21,14 @@
 package com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components;
 
 
+import java.util.List;
+import java.util.Map;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendProcessMetaData;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIExclude;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIMapKnownEntries;
+import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIMapValueType;
 
 
 /***************************************************************************
@@ -129,6 +132,28 @@ public class ProcessMetaDataLight implements ToSchema
    /***************************************************************************
     **
     ***************************************************************************/
+   @OpenAPIDescription("True when the process can run as a durable background job (POST /processes/{processName}/jobs): clients may offer \"Run in background\".")
+   public Boolean getDurableJobEligible()
+   {
+      return (this.wrapped.getDurableJobEligible());
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @OpenAPIDescription("True when the process always runs as a durable background job (too large to run while the user waits).")
+   public Boolean getDurableJobAlways()
+   {
+      return (this.wrapped.getDurableJobAlways());
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
    @OpenAPIDescription("Boolean to indicate if the user has permission for the process.")
    public Boolean getHasPermission()
    {
@@ -168,4 +193,15 @@ public class ProcessMetaDataLight implements ToSchema
       return (this.wrapped.getMaxInputRecords());
    }
 
+
+
+   /*******************************************************************************
+    ** Help content by slot, filtered for the current session.
+    *******************************************************************************/
+   @OpenAPIDescription("Help entries by slot, filtered for the current session.")
+   @OpenAPIMapValueType(value = HelpContentV1.class, useRef = true, array = true)
+   public Map<String, List<HelpContentV1>> getHelpContents()
+   {
+      return (HelpContentV1.of(wrapped.getHelpContents()));
+   }
 }

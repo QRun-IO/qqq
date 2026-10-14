@@ -33,13 +33,13 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 import com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager;
-import com.kingsrook.qqq.esb.api.EsbRouteProvider;
+import com.kingsrook.qqq.esb.api.EsbJavalinMetaDataProducer;
 import com.kingsrook.qqq.esb.connection.EsbConnectionManager;
 import com.kingsrook.qqq.esb.metadata.EsbOverviewWidgetMetaDataProducer;
 import com.kingsrook.qqq.esb.runtime.EsbTriggerState;
 import com.kingsrook.qqq.esb.runtime.QEsbRuntime;
 import com.kingsrook.qqq.esb.stats.EsbStats;
-import com.kingsrook.qqq.middleware.javalin.QJavalinMetaData;
+import com.kingsrook.qqq.middleware.javalin.specs.extensions.MiddlewareSpecExtensionsMetaData;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -67,10 +67,12 @@ class SampleEsbTest
       {
          assertNotNull(instance.getProcess(process), process);
       }
-      QJavalinMetaData javalin = QJavalinMetaData.of(instance);
-      assertNotNull(javalin);
-      assertTrue(javalin.getAdditionalRouteProviderReferences().stream()
-         .anyMatch(reference -> EsbRouteProvider.class.getName().equals(reference.getName())));
+      //////////////////////////////////////////////////////////////////
+      // the /qqq/v1/esb endpoints are a UI API extension (spec'd)     //
+      //////////////////////////////////////////////////////////////////
+      MiddlewareSpecExtensionsMetaData extensions = MiddlewareSpecExtensionsMetaData.of(instance);
+      assertNotNull(extensions);
+      assertTrue(extensions.getExtensions().containsKey(EsbJavalinMetaDataProducer.EXTENSION_NAME));
    }
 
 

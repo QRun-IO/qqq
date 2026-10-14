@@ -37,6 +37,19 @@
       <!-- none at this time -->
    </properties>
 
+   <dependencyManagement>
+      <dependencies>
+         <!-- keep in step with qqq-backend-core's awssdk bom -->
+         <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>bom</artifactId>
+            <version>2.41.10</version>
+            <type>pom</type>
+            <scope>import</scope>
+         </dependency>
+      </dependencies>
+   </dependencyManagement>
+
    <dependencies>
       <!-- other qqq modules deps -->
       <dependency>
@@ -46,22 +59,19 @@
       </dependency>
 
       <!-- 3rd party deps specifically for this module -->
+      <!-- AWS SDK for Java v2 (v1 reached end of support 2025-12-31). Version from the awssdk bom below. -->
       <dependency>
-         <groupId>com.amazonaws</groupId>
-         <artifactId>aws-java-sdk-s3</artifactId>
-         <version>1.12.797</version>
+         <groupId>software.amazon.awssdk</groupId>
+         <artifactId>s3</artifactId>
+      </dependency>
+      <dependency>
+         <groupId>software.amazon.awssdk</groupId>
+         <artifactId>apache-client</artifactId>
       </dependency>
       <dependency>
          <groupId>org.apache.sshd</groupId>
          <artifactId>sshd-sftp</artifactId>
          <version>2.16.0</version>
-      </dependency>
-
-      <dependency>
-         <groupId>cloud.localstack</groupId>
-         <artifactId>localstack-utils</artifactId>
-         <version>0.2.23</version>
-         <scope>test</scope>
       </dependency>
 
       <dependency>
@@ -71,7 +81,7 @@
          <scope>test</scope>
       </dependency>
       <dependency>
-         <!-- Required by Testcontainers 2.x; overrides older version from localstack-utils -->
+         <!-- Required by Testcontainers 2.x -->
          <groupId>org.apache.commons</groupId>
          <artifactId>commons-lang3</artifactId>
          <version>3.20.0</version>

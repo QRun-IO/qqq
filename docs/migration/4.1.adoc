@@ -52,8 +52,8 @@ Which candidate has which feature:
 
 The `4.1.0-RC.3` BOM manages the Next dashboard (`com.kingsrook.qqq:qqq-frontend-next`) at `1.0.0-RC.11`, the
 artifact that candidate was accepted with. Next `1.0.0-RC.11` does not render `FILE_PREVIEW` or the home app.
-To see them, override the Next version in your own `dependencyManagement` (for example `1.0.0-RC.13`), and treat
-that pairing as not yet covered by the 4.1 acceptance record. Material Dashboard ignores both features.
+To see them on RC.3, override the Next version in your own `dependencyManagement` (for example `1.0.0-RC.13`), and treat
+that pairing as not yet covered by the 4.1 acceptance record. From `4.1.0-RC.4`, the BOM manages Next at `1.0.0-RC.14`. Material Dashboard ignores both features.
 
 == Record search providers
 
@@ -161,6 +161,58 @@ qInstance.withHomeAppName("home");
 * The metadata response (`homeAppName`) includes it only for users who may access that app. Other users keep the
   frontend's default home page.
 
+== S3 backend on AWS SDK v2 and S3-compatible stores
+
+`qqq-backend-module-filesystem` now uses AWS SDK for Java v2 (v1 reached end of support on 2025-12-31).
+
+*If you only declare an `S3BackendMetaData` and use QQQ actions,* nothing changes. Optionally point it at any
+S3-compatible store:
+
+[source,java]
+----
+new S3BackendMetaData()
+   .withName("files")
+   .withBucketName("${env.S3_BUCKET_NAME}")
+   .withEndpoint("${env.S3_ENDPOINT}")        // e.g. http://minio:9000; empty means AWS
+   .withPathStyleAccess(true)                  // most self-hosted stores
+   .withRegion("${env.S3_REGION}")             // R2: "auto"; Garage: its configured region
+   .withAccessKey("${env.S3_ACCESS_KEY}")
+   .withSecretKey("${env.S3_SECRET_KEY}")
+   .withCaCertificatesPem("${env.S3_CA_PEM}")  // only for a private CA
+   .withMaxListedObjects(100_000);             // null = default; 0 or negative = no cap
+----
+
+With an `endpoint`, `checksumMode` defaults to `WHEN_REQUIRED`. Set `S3ChecksumMode.WHEN_SUPPORTED` only for a store you
+have verified accepts SDK v2's default trailing checksums.
+
+*If your code touches SDK types,* update it:
+
+[cols="1,1"]
+|===
+|Before (v1) |Now (v2)
+
+|`S3Utils.getAmazonS3()` / `setAmazonS3(AmazonS3)`
+|`S3Utils.getS3Client()` / `setS3Client(S3Client)`
+
+|`AbstractS3Action.buildAmazonS3ClientFromBackendMetaData(...)`
+|`buildS3ClientFromBackendMetaData(...)` -- returns a shared client from `S3ClientFactory`; do not close it
+
+|`com.amazonaws.services.s3.model.S3ObjectSummary` (file type of S3 actions)
+|`com.kingsrook.qqq.backend.module.filesystem.s3.model.S3ObjectSummary` (`getLastModified()` is an `Instant`)
+
+|`new S3UploadOutputStream(AmazonS3, ...)`
+|`new S3UploadOutputStream(S3Client, ...)`
+
+|`AmazonS3Exception`, `AmazonClientException`
+|`S3Exception` (`statusCode()`, `awsErrorDetails().errorCode()`), `SdkException`
+|===
+
+The module no longer brings `com.amazonaws:aws-java-sdk-s3` onto the classpath; declare it yourself if your own code
+still uses it.
+
+Listings that match more than `maxListedObjects` objects (default 100,000) now fail with a clear error instead of
+exhausting memory.
+
 == Upgrade notes from 4.0
 
 * *Next dashboard at `/`.* `QApplicationJavalinServer` serves `qqq-frontend-next` at `/` when its jar is on the
@@ -178,3 +230,34 @@ qInstance.withHomeAppName("home");
   `homeAppName`, behavior is unchanged.
 
 The full list of changes is in the link:../../CHANGELOG.md[changelog].
+
+== Help bundles and provenance
+
+Before enabling bundle synchronization on an existing `helpContent` table, add these nullable
+columns using your database migration tool:
+
+[cols="1,1",options="header"]
+|===
+|Column |Type
+|source |varchar(20)
+|bundleId |varchar(100)
+|bundleVersion |varchar(50)
+|lastSeededHash |varchar(64)
+|upstreamStatus |varchar(30)
+|upstreamSummary |varchar(500)
+|upstreamContent |text
+|modifiedBy |varchar(100)
+|===
+
+`source` uses `CORE`, `QBIT`, `HOST`, or `USER`; `upstreamStatus` uses `CURRENT`,
+`UPSTREAM_CHANGED`, or `RETIRED`. Keep existing user rows' bundle IDs and hashes null:
+sync leaves them untouched. Do not populate a baseline hash unless it describes the exact
+bundle text that originally supplied the row.
+
+Use `new HelpContentMetaDataProvider().withProvenanceFields(false)` until migration is complete.
+This disables provenance columns and bundle management processes. The older targeting opt-out
+is independent; bundle management requires both extensions. New tables created from metadata
+include the fields by default. Register host/qbit resources with `HelpBundles.register`, then
+call `HelpBundles.syncOnStartup(qInstance)` after `QInstanceHelpContentManager.loadHelpContent`.
+See `docs/HELP-CONTENT.md` section 5 for the bundle format, review behavior and coverage gate.
+No `/qqq/v1` schema regeneration is required for this change.

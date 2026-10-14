@@ -27,6 +27,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import com.kingsrook.qqq.backend.core.actions.interfaces.QStorageInterface;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
@@ -42,6 +43,24 @@ import org.jetbrains.annotations.NotNull;
  *******************************************************************************/
 public class FilesystemStorageAction extends AbstractFilesystemAction implements QStorageInterface
 {
+
+   /*******************************************************************************
+    ** Delete an object, including an incomplete report output.
+    *******************************************************************************/
+   @Override
+   public void deleteObject(StorageInput storageInput) throws QException
+   {
+      try
+      {
+         Files.deleteIfExists(Path.of(getFullPath(storageInput)));
+      }
+      catch(IOException e)
+      {
+         throw new QException("IOException deleting storage object", e);
+      }
+   }
+
+
 
    /*******************************************************************************
     **

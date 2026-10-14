@@ -21,11 +21,11 @@
 package com.kingsrook.qqq.backend.module.filesystem.s3.actions;
 
 
-import com.amazonaws.regions.Regions;
-import com.amazonaws.services.s3.AmazonS3;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.module.filesystem.s3.model.metadata.S3BackendMetaData;
 import org.junit.jupiter.api.Test;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -40,15 +40,15 @@ class AbstractS3ActionTest
     **
     *******************************************************************************/
    @Test
-   void testBuildAmazonS3ClientFromBackendMetaData()
+   void testBuildS3ClientFromBackendMetaData()
    {
-      String regionName = Regions.AP_SOUTHEAST_3.getName();
+      String regionName = Region.AP_SOUTHEAST_3.id();
       S3BackendMetaData s3BackendMetaData = new S3BackendMetaData()
          .withAccessKey("Not a real access key")
          .withSecretKey("Also not a real key")
          .withRegion(regionName);
-      AmazonS3 amazonS3 = new AbstractS3Action().buildAmazonS3ClientFromBackendMetaData(s3BackendMetaData);
-      assertEquals(regionName, amazonS3.getRegionName());
+      S3Client s3Client = new AbstractS3Action().buildS3ClientFromBackendMetaData(s3BackendMetaData);
+      assertEquals(regionName, s3Client.serviceClientConfiguration().region().id());
    }
 
 
@@ -57,11 +57,11 @@ class AbstractS3ActionTest
     **
     *******************************************************************************/
    @Test
-   void testBuildAmazonS3ClientFromBackendMetaDataWrongType()
+   void testBuildS3ClientFromBackendMetaDataWrongType()
    {
       assertThrows(IllegalArgumentException.class, () ->
       {
-         new AbstractS3Action().buildAmazonS3ClientFromBackendMetaData(new QBackendMetaData());
+         new AbstractS3Action().buildS3ClientFromBackendMetaData(new QBackendMetaData());
       });
    }
 }

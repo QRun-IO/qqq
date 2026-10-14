@@ -23,8 +23,10 @@ package com.kingsrook.qqq.backend.core.actions.tables;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.search.RecordSearchInput;
@@ -46,6 +48,8 @@ public class TestRecordSearchProvider implements RecordSearchProviderInterface
    private static List<RecordSearchInput>  inputs            = new ArrayList<>();
    private static boolean                  failSearch        = false;
    private static boolean                  failClaim         = false;
+   private static Exception                failure           = null;
+   private static Map<String, Integer>     totals            = null;
 
 
 
@@ -59,6 +63,42 @@ public class TestRecordSearchProvider implements RecordSearchProviderInterface
       inputs = new ArrayList<>();
       failSearch = false;
       failClaim = false;
+      failure = null;
+      totals = null;
+   }
+
+
+
+   /*******************************************************************************
+    ** Respond to searches with these results (as given).
+    *******************************************************************************/
+   public static void respondWith(RecordSearchResult... resultsToAdd)
+   {
+      results.addAll(List.of(resultsToAdd));
+   }
+
+
+
+   /*******************************************************************************
+    ** Report this total number of matches for a table.
+    *******************************************************************************/
+   public static void total(String tableName, Integer total)
+   {
+      if(totals == null)
+      {
+         totals = new HashMap<>();
+      }
+      totals.put(tableName, total);
+   }
+
+
+
+   /*******************************************************************************
+    ** Make search throw this exception.
+    *******************************************************************************/
+   public static void failWith(Exception exception)
+   {
+      failure = exception;
    }
 
 
@@ -129,11 +169,19 @@ public class TestRecordSearchProvider implements RecordSearchProviderInterface
    public RecordSearchOutput search(RecordSearchInput input) throws QException
    {
       inputs.add(input);
+      if(failure instanceof QException qException)
+      {
+         throw (qException);
+      }
+      if(failure instanceof RuntimeException runtimeException)
+      {
+         throw (runtimeException);
+      }
       if(failSearch)
       {
          throw (new QException("test search index unavailable"));
       }
-      return (new RecordSearchOutput().withResults(new ArrayList<>(results)));
+      return (new RecordSearchOutput().withResults(new ArrayList<>(results)).withTotalCountByTable(totals));
    }
 
 }

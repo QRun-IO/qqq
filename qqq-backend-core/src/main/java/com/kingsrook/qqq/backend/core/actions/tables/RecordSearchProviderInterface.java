@@ -28,6 +28,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 
 
 /*******************************************************************************
+ ** Search terms beginning with # are passed through to providers as-is.
+ **
  ** Instance-level provider that {@link RecordSearchAction} (and so the v1
  ** POST /search endpoint) asks to search the tables it claims - e.g., a search
  ** index such as OpenSearch - instead of the default "contains" query over each
@@ -69,10 +71,19 @@ public interface RecordSearchProviderInterface
    /*******************************************************************************
     ** Search the claimed tables.  The input's searchTerm is trimmed and
     ** validated, its tableNames are exactly the claimed tables the session may
-    ** read (never empty), its limitPerTable is the effective (bounded) limit, and
-    ** its inputSource is the caller's.  Return results only for those tables,
-    ** each with at least tableName and recordId (the primary key value), ordered
-    ** by relevance within each table.
+    ** read (never empty), its limitPerTable is the effective (bounded) limit, its
+    ** offset is the (bounded, non-negative) number of matches to skip in each
+    ** table, its sort is the requested order (never null; honor RECENT if you
+    ** can, else return relevance order), and its inputSource is the caller's.
+    ** Return results only for those tables, each with at least tableName and
+    ** recordId (the primary key value), ordered within each table.
+    **
+    ** Optionally, also return on each result a score (relevance, higher is
+    ** better) and highlights (plain text - never markup - with match ranges as
+    ** character offsets; core keeps only well-formed ones, for fields the
+    ** session can see, where its own highlighting found no match), and on the
+    ** output a totalCountByTable (approximate total matches per table, used to
+    ** tell callers there are more).
     *******************************************************************************/
    RecordSearchOutput search(RecordSearchInput input) throws QException;
 

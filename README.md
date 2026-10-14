@@ -173,6 +173,8 @@ isolated resource-only probes from a module directory need `-Dcheckstyle.skip=tr
 
 ## Documentation
 
+[Contingent possible values](docs/CONTINGENT-POSSIBLE-VALUES.md) documents dependent choices, frontend integration, server validation and the address-book sample.
+
 Start with the [sample application](qqq-sample-project/README.md), [4.0 migration guide](docs/migration/4.0.adoc), [framework documentation](https://www.qrun.io/docs), and [QQQ Wiki](https://github.com/QRun-IO/qqq/wiki).
 
 ## License

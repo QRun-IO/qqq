@@ -112,7 +112,7 @@ public class QInstance
    // Important to use LinkedHashmap here, to preserve the order in which entries are added. //
    ////////////////////////////////////////////////////////////////////////////////////////////
    private Map<String, QBitMetaData>             qBits                = new LinkedHashMap<>();
-   private Map<String, QTableMetaData>           tables               = new LinkedHashMap<>();
+   private volatile Map<String, QTableMetaData>  tables               = new LinkedHashMap<>();
    private Map<String, QJoinMetaData>            joins                = new LinkedHashMap<>();
    private Map<String, QPossibleValueSource>     possibleValueSources = new LinkedHashMap<>();
    private Map<String, QProcessMetaData>         processes            = new LinkedHashMap<>();
@@ -164,6 +164,18 @@ public class QInstance
    // property qqq.metaData.failOnProducerError=true turns this on too.          //
    ////////////////////////////////////////////////////////////////////////////////
    private Boolean failOnMetaDataProducerError = false;
+
+   ////////////////////////////////////////////////////////////////////////////////////
+   // if true, core actions (Query, Get, Count, Aggregate, Insert, Update, Delete,   //
+   // Replace, RunProcess, RenderWidget, GenerateReport, Export) enforce the        //
+   // session's table/process/widget/report permissions and field security locks   //
+   // on their outermost (non-nested) calls - see CorePermissionEnforcer.  null     //
+   // means "not configured": the system property                                   //
+   // qqq.enforcePermissionsInCoreActions or the environment variable               //
+   // QQQ_ENFORCE_PERMISSIONS_IN_CORE_ACTIONS is used if set, else OFF (in 4.1.x;   //
+   // the default is planned to change to ON in 4.2).                               //
+   ////////////////////////////////////////////////////////////////////////////////////
+   private Boolean enforcePermissionsInCoreActions = null;
 
    //////////////////////////////////////////////////////////////////////////////////////
    // todo - lock down the object (no more changes allowed) after it's been validated? //
@@ -485,6 +497,22 @@ public class QInstance
    public void setBackends(Map<String, QBackendMetaData> backends)
    {
       this.backends = backends;
+   }
+
+
+
+   /*******************************************************************************
+    ** Replace existing, validated tables atomically; keep startup validation state.
+    *******************************************************************************/
+   public synchronized void replaceTables(Map<String, QTableMetaData> replacements, QInstanceValidationKey key)
+   {
+      if(key == null || !tables.keySet().containsAll(replacements.keySet()))
+      {
+         throw (new IllegalArgumentException("Only validated replacements of existing tables are allowed"));
+      }
+      Map<String, QTableMetaData> updated = new LinkedHashMap<>(tables);
+      updated.putAll(replacements);
+      tables = updated;
    }
 
 
@@ -2267,6 +2295,40 @@ public class QInstance
    public QInstance withFailOnMetaDataProducerError(Boolean failOnMetaDataProducerError)
    {
       this.failOnMetaDataProducerError = failOnMetaDataProducerError;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for enforcePermissionsInCoreActions (may be null, meaning "not
+    ** configured" - see CorePermissionEnforcer.isInstanceEnforcementEnabled for
+    ** the effective value).
+    *******************************************************************************/
+   public Boolean getEnforcePermissionsInCoreActions()
+   {
+      return (this.enforcePermissionsInCoreActions);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for enforcePermissionsInCoreActions
+    *******************************************************************************/
+   public void setEnforcePermissionsInCoreActions(Boolean enforcePermissionsInCoreActions)
+   {
+      this.enforcePermissionsInCoreActions = enforcePermissionsInCoreActions;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for enforcePermissionsInCoreActions - set to true so that core
+    ** actions enforce table/process/widget/report permissions and field security
+    ** locks themselves, for every entry point (not only the middlewares).
+    *******************************************************************************/
+   public QInstance withEnforcePermissionsInCoreActions(Boolean enforcePermissionsInCoreActions)
+   {
+      this.enforcePermissionsInCoreActions = enforcePermissionsInCoreActions;
       return (this);
    }
 

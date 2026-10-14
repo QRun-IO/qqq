@@ -22,8 +22,10 @@ package com.kingsrook.qqq.middleware.javalin.executors.io;
 
 
 import java.io.Serializable;
+import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.model.actions.processes.ProcessMetaDataAdjustment;
+import com.kingsrook.qqq.backend.core.model.secrets.OneTimeSecret;
 
 
 /*******************************************************************************
@@ -66,6 +68,14 @@ public interface ProcessInitOrStepOrStatusOutputInterface extends AbstractMiddle
     ** Setter for values
     *******************************************************************************/
    void setValues(Map<String, Serializable> values);
+
+   /*******************************************************************************
+    ** Secrets for synchronous init/step responses only; never called for status.
+    *******************************************************************************/
+   default void setOneTimeSecrets(List<OneTimeSecret> oneTimeSecrets)
+   {
+   }
+
 
    /*******************************************************************************
     ** Setter for jobUUID

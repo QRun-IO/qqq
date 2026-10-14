@@ -224,8 +224,9 @@ both extensions. The provenance section uses tier T3.
 
 ### 5.3 Sync (startup, and on demand)
 
-The sync runs at startup, in the background. It runs as a durable job once the durable job kernel
-(qqq#1178) is in the instance, and as an async process otherwise. Admins can also run it from the
+The sync runs at startup, in the background, as the system user. It always runs inline, never as
+a durable job: it is short, system-scoped work, and durable jobs are for user-launched work that
+a user owns. So it completes the same way with or without durable jobs. Admins can also run it from the
 Help app as "Sync help from bundles". Hosts call this after defining all metadata and loading help:
 
 ```java
@@ -233,10 +234,8 @@ QInstanceHelpContentManager.loadHelpContent(qInstance);
 HelpBundles.syncOnStartup(qInstance);
 ```
 
-Startup uses a system session through the async process runner and logs failures without failing
-startup. Detection of `qInstance.getSupplementalMetaData("durableJobs")` has no compile-time kernel
-dependency. Until qqq#1178 supplies the submission API, that branch uses the same async runner
-at the marked `STAND-IN` call site.
+Startup uses a system session through the async process runner (with `durableRunInline`) and logs
+failures without failing startup.
 
 `actions.help.HelpBundleSyncAction.execute()` synchronizes the registered winners; `preview()`
 calculates the same counts without writes or alerts. Reads and writes use normal QQQ actions in

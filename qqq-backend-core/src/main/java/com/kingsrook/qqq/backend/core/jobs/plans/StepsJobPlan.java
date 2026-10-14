@@ -141,6 +141,15 @@ public class StepsJobPlan implements JobPlan
 
       input.setBackendStepListener((stepName, processState) ->
       {
+         //////////////////////////////////////////////////////////////////
+         // the step's outbox effects are written before its checkpoint: //
+         // a resume after this step never re-emits them (and a rerun of //
+         // the step emits the same keys, which are skipped)             //
+         //////////////////////////////////////////////////////////////////
+         if(JobChunkScope.current().isPresent())
+         {
+            context.recordEffects(JobChunkScope.current().get().drainEffects());
+         }
          if(!atomic)
          {
             Map<String, Object> checkpoint = new LinkedHashMap<>();
@@ -152,7 +161,7 @@ public class StepsJobPlan implements JobPlan
          context.check();
       });
 
-      try(JobChunkScope ignored = JobChunkScope.open(null))
+      try(JobChunkScope scope = JobChunkScope.open(null, null, context.identity()))
       {
          context.check();
          RunProcessOutput output = new RunProcessAction().execute(input);
@@ -160,6 +169,7 @@ public class StepsJobPlan implements JobPlan
          {
             throw (output.getException().get());
          }
+         context.recordEffects(scope.drainEffects());
 
          Integer recordCount = ValueUtils.getValueAsInteger(output.getValues().get(StreamedETLProcess.FIELD_RECORD_COUNT));
          int     rows        = recordCount == null ? 0 : recordCount;
@@ -282,5 +292,4 @@ public class StepsJobPlan implements JobPlan
       }
       return (rs);
    }
-
 }

@@ -48,6 +48,7 @@ public class QueryInput extends AbstractTableActionInput implements QueryOrGetIn
 {
    private QBackendTransaction transaction;
    private QQueryFilter        filter;
+   private QueryLockMode       lockMode;
 
    private RecordPipe recordPipe;
    private Integer    timeoutSeconds;
@@ -856,4 +857,36 @@ public class QueryInput extends AbstractTableActionInput implements QueryOrGetIn
       return (rawReadReason);
    }
 
+
+
+
+   /*******************************************************************************
+    ** Getter for lockMode: row locks to take (null for none). Only on backends
+    ** that support the mode; run inside a transaction.
+    *******************************************************************************/
+   public QueryLockMode getLockMode()
+   {
+      return (this.lockMode);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for lockMode
+    *******************************************************************************/
+   public void setLockMode(QueryLockMode lockMode)
+   {
+      this.lockMode = lockMode;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for lockMode
+    *******************************************************************************/
+   public QueryInput withLockMode(QueryLockMode lockMode)
+   {
+      this.lockMode = lockMode;
+      return (this);
+   }
 }

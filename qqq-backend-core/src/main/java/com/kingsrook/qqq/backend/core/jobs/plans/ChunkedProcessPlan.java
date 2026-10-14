@@ -370,7 +370,7 @@ public class ChunkedProcessPlan implements JobPlan
 
       boolean             sameTransaction = JobIdempotency.SAME_TRANSACTION.name().equals(job.getValueString("idempotency")) && !isValidate;
       QBackendTransaction transaction     = sameTransaction ? QBackendTransaction.openFor(new InsertInput(destinationTableName(job, process))) : null;
-      try(JobChunkScope scope = JobChunkScope.open(transaction, context::check))
+      try(JobChunkScope scope = JobChunkScope.open(transaction, context::check, context.identity()))
       {
          context.check();
 
@@ -424,12 +424,13 @@ public class ChunkedProcessPlan implements JobPlan
 
          if(transaction != null)
          {
-            context.completeInTransaction(outcome, rowErrors, transaction);
+            context.completeInTransaction(outcome, rowErrors, scope.drainEffects(), transaction);
             transaction.commit();
          }
          else
          {
             context.getStore().recordRowErrors(rowErrors, null);
+            context.recordEffects(scope.drainEffects());
          }
          return (outcome);
       }

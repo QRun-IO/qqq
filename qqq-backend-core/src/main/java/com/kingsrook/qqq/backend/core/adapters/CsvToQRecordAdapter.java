@@ -296,7 +296,7 @@ public class CsvToQRecordAdapter
    {
       if(inputWrapper.doCorrectValueTypes)
       {
-         qRecord.setValue(field.getName(), ValueUtils.getValueAsFieldType(field.getType(), valueString));
+         qRecord.setValue(field.getName(), ValueUtils.getValueAsFieldType(inputWrapper.getTable(), field, valueString));
       }
       else
       {

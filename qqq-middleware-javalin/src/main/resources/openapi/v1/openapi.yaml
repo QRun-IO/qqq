@@ -333,6 +333,192 @@ components:
         name:
           type: "string"
       type: "object"
+    BulkLoadColumnProfile:
+      properties:
+        classification:
+          description: "Data classification of the mapped field (PUBLIC, CONFIDENTIAL,\
+            \ PII, PHI), or null."
+          type: "string"
+        columnIndex:
+          description: "Zero-based column index in the file."
+          type: "number"
+        columnLetter:
+          description: "Spreadsheet-style column letter (A, B, ... AA)."
+          type: "string"
+        distinctCount:
+          description: "Distinct non-blank values counted (capped at 1000)."
+          type: "number"
+        distinctCountCapped:
+          description: "Whether more distinct values exist than were counted."
+          type: "boolean"
+        header:
+          description: "Header text (or Column A, Column B ... when the file has no\
+            \ header row)."
+          type: "string"
+        inferredType:
+          description: "INTEGER, DECIMAL, BOOLEAN, DATE, DATE_TIME or STRING, from\
+            \ the profiled values."
+          type: "string"
+        mappedFieldName:
+          description: "The table field the suggested mapping assigns this column\
+            \ to, or null."
+          type: "string"
+        maxLength:
+          description: "Longest value length."
+          type: "number"
+        patternClass:
+          description: "DATE_LIKE, EMAIL_LIKE, NUMERIC, CODE_LIKE, TEXT or EMPTY."
+          type: "string"
+        percentBlank:
+          description: "Percent of profiled rows where the column is blank."
+          type: "number"
+        sampleValues:
+          description: "Up to sampleCount distinct values, only when samplesAllowed;\
+            \ otherwise empty."
+          items:
+            type: "string"
+          type: "array"
+        samplesAllowed:
+          description: "Whether sample values may be shown: an AI route of hipaa,\
+            \ or a mapped field that is unclassified or PUBLIC. Unmapped columns are\
+            \ treated as classified."
+          type: "boolean"
+      type: "object"
+    BulkLoadColumnRef:
+      properties:
+        columnIndex:
+          description: "Zero-based column index in the file."
+          type: "number"
+        header:
+          description: "Header text."
+          type: "string"
+      type: "object"
+    BulkLoadFieldRef:
+      properties:
+        fieldName:
+          description: "Field name."
+          type: "string"
+        label:
+          description: "Field label."
+          type: "string"
+        possibleValueSourceName:
+          description: "Possible value source of the field, if any (its file values\
+            \ need mapping)."
+          type: "string"
+      type: "object"
+    BulkLoadRowError:
+      properties:
+        errorCode:
+          description: "VALUE_TYPE, POSSIBLE_VALUE, DUPLICATE, REQUIRED or OTHER."
+          type: "string"
+        fieldName:
+          description: "The field the error is about, when known."
+          type: "string"
+        message:
+          description: "The error message (value-free)."
+          type: "string"
+        rowNumbers:
+          description: "File rows with the error, e.g. Row 3; Rows 7-9 (no values)."
+          type: "string"
+      type: "object"
+    BulkLoadSuggestMappingResponseV1:
+      properties:
+        profile:
+          description: "The suggested bulk load profile (v1: version, layout, hasHeaderRow,\
+            \ isBulkEdit, and fieldList entries of fieldName, columnIndex, headerName,\
+            \ defaultValue, doValueMapping, valueMappings, clearIfEmpty)."
+          type: "object"
+        unmappedColumns:
+          description: "File columns the suggestion does not map."
+          items:
+            $ref: "#/components/schemas/BulkLoadColumnRef"
+          type: "array"
+        unmappedRequiredFields:
+          description: "Required table fields the suggestion does not fill."
+          items:
+            $ref: "#/components/schemas/BulkLoadFieldRef"
+          type: "array"
+        valueMappingFields:
+          description: "Mapped fields with a possible value source, whose file values\
+            \ may need mapping."
+          items:
+            $ref: "#/components/schemas/BulkLoadFieldRef"
+          type: "array"
+      type: "object"
+    BulkLoadSummaryLine:
+      properties:
+        bulletsOfText:
+          description: "Example rows (and their values, unless masked for a classified\
+            \ field)."
+          items:
+            type: "string"
+          type: "array"
+        count:
+          description: "Number of records the line describes."
+          type: "number"
+        message:
+          description: "The standard process summary message."
+          type: "string"
+        status:
+          description: "OK, INFO, WARNING or ERROR."
+          type: "string"
+      type: "object"
+    BulkLoadUploadProfileResponseV1:
+      properties:
+        columns:
+          description: "The columns."
+          items:
+            $ref: "#/components/schemas/BulkLoadColumnProfile"
+          type: "array"
+        fileName:
+          description: "The uploaded file name."
+          type: "string"
+        hasHeaderRow:
+          description: "Whether row 1 looks like a header row (the suggester maps\
+            \ at least one of its values)."
+          type: "boolean"
+        rowsProfiled:
+          description: "Data rows profiled (up to 1000)."
+          type: "number"
+        uploadRef:
+          description: "The upload ref."
+          type: "string"
+      type: "object"
+    BulkLoadValidateResponseV1:
+      properties:
+        errorCount:
+          description: "Records with errors."
+          type: "number"
+        errors:
+          description: "Error groups with row numbers (up to 100)."
+          items:
+            $ref: "#/components/schemas/BulkLoadRowError"
+          type: "array"
+        jobId:
+          description: "Reserved: a FULL run over the durable threshold will run as\
+            \ a VALIDATE job and return its id. Always null in this version."
+          type: "number"
+        mode:
+          description: "SAMPLE (the first 100 rows) or FULL (the whole file)."
+          type: "string"
+        okCount:
+          description: "Records that would be inserted."
+          type: "number"
+        previewRecordCount:
+          description: "For SAMPLE, the rows validated."
+          type: "number"
+        processName:
+          description: "The table's bulk-insert process the dry run used."
+          type: "string"
+        recordCount:
+          description: "Records read from the file."
+          type: "number"
+        summaryLines:
+          description: "The standard process summary lines."
+          items:
+            $ref: "#/components/schemas/BulkLoadSummaryLine"
+          type: "array"
+      type: "object"
     ExposedJoin:
       properties:
         isMany:
@@ -8626,3 +8812,162 @@ paths:
       summary: "Run a report and download the file"
       tags:
       - "Reports"
+  /qqq/v1/bulkLoad/uploads/{uploadRef}/profile:
+    get:
+      description: "Read an uploaded file (by its upload ref, which must be the session\
+        \ user's) and describe it for a bulk load into a table: whether row 1 is a\
+        \ header row, and each column's inferred type, percent blank, distinct count,\
+        \ maximum length and pattern class.  Sample values are included only for columns\
+        \ mapped to an unclassified (or PUBLIC) field, or for every column when the\
+        \ request's `X-QQQ-AI-Route` header is `hipaa`; unmapped columns never get\
+        \ samples otherwise.  Requires the table's bulk-insert process permission.\
+        \  Nothing is stored."
+      parameters:
+      - description: "The opaque ref of an upload the session user owns."
+        in: "path"
+        name: "uploadRef"
+        required: true
+        schema:
+          type: "string"
+      - description: "The table the file would be loaded into."
+        example: "person"
+        in: "query"
+        name: "tableName"
+        required: true
+        schema:
+          type: "string"
+      - description: "Sample values per column, where allowed (0 to 20; default 5)."
+        in: "query"
+        name: "sampleCount"
+        required: false
+        schema:
+          type: "integer"
+      responses:
+        200:
+          content:
+            application/json:
+              examples:
+                profile:
+                  value:
+                    fileName: "people.csv"
+                    hasHeaderRow: true
+                    rowsProfiled: 250
+                    uploadRef: "u_4f2c"
+              schema:
+                $ref: "#/components/schemas/BulkLoadUploadProfileResponseV1"
+          description: "The upload's header guess and column profiles"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Profile an uploaded file for a bulk load"
+      tags:
+      - "Bulk Load"
+  /qqq/v1/bulkLoad/{tableName}/suggestMapping:
+    post:
+      description: "Run the bulk load mapping suggester over an uploaded file's header\
+        \ row and return a v1 bulk load profile, the file columns it leaves unmapped,\
+        \ the required fields it does not fill, and the mapped fields with a possible\
+        \ value source (whose file values may need value mapping).  The upload must\
+        \ be the session user's.  Requires the table's bulk-insert process permission.\
+        \  Nothing is stored."
+      parameters:
+      - description: "The table the file would be loaded into."
+        example: "person"
+        in: "path"
+        name: "tableName"
+        required: true
+        schema:
+          type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                uploadRef:
+                  description: "The opaque ref of an upload the session user owns."
+                  type: "string"
+                isBulkEdit:
+                  description: "Suggest a bulk edit profile (default false: bulk insert)."
+                  type: "boolean"
+              type: "object"
+        required: false
+      responses:
+        200:
+          content:
+            application/json:
+              examples:
+                suggestion:
+                  value:
+                    profile:
+                      version: "v1"
+                      layout: "FLAT"
+                      hasHeaderRow: true
+              schema:
+                $ref: "#/components/schemas/BulkLoadSuggestMappingResponseV1"
+          description: "The suggested profile and what it leaves unmapped"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Suggest a bulk load mapping for an uploaded file"
+      tags:
+      - "Bulk Load"
+  /qqq/v1/bulkLoad/{tableName}/validate:
+    post:
+      description: "Run the table's bulk-insert process over an uploaded file with\
+        \ the given v1 bulk load profile - the same mapping, value mapping and validation\
+        \ a real load uses - and stop at its review step, so nothing is stored.  SAMPLE\
+        \ validates the first 100 rows; FULL the whole file.  Returns the standard\
+        \ process summary lines, counts, and error groups with row numbers.  Values\
+        \ of classified fields are left out unless the request's `X-QQQ-AI-Route`\
+        \ header is `hipaa`.  The upload must be the session user's.  Requires the\
+        \ table's bulk-insert process permission."
+      parameters:
+      - description: "The table the file would be loaded into."
+        example: "person"
+        in: "path"
+        name: "tableName"
+        required: true
+        schema:
+          type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                uploadRef:
+                  description: "The opaque ref of an upload the session user owns."
+                  type: "string"
+                profile:
+                  description: "A v1 bulk load profile: version, layout (FLAT), hasHeaderRow,\
+                    \ and fieldList entries of fieldName, columnIndex, headerName,\
+                    \ defaultValue, doValueMapping, valueMappings and clearIfEmpty."
+                  type: "object"
+                mode:
+                  description: "SAMPLE (default, the first 100 rows) or FULL."
+                  enum:
+                  - "SAMPLE"
+                  - "FULL"
+                  type: "string"
+              type: "object"
+        required: false
+      responses:
+        200:
+          content:
+            application/json:
+              examples:
+                dryRun:
+                  value:
+                    errorCount: 1
+                    mode: "SAMPLE"
+                    okCount: 2
+                    processName: "person.bulkInsert"
+                    recordCount: 3
+              schema:
+                $ref: "#/components/schemas/BulkLoadValidateResponseV1"
+          description: "The dry run's summary and error groups"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Dry-run a bulk load profile over an uploaded file"
+      tags:
+      - "Bulk Load"

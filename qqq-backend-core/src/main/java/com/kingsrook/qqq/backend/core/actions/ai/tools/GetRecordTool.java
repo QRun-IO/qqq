@@ -29,7 +29,6 @@ import java.util.Map;
 import com.kingsrook.qqq.backend.core.actions.ai.AiRecordRef;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolKind;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolOutcome;
-import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
@@ -160,7 +159,7 @@ public class GetRecordTool extends AbstractAiTool
       getInput.setShouldTranslatePossibleValues(true);
       context.prepareInput(getInput);
 
-      QRecord record = new GetAction().execute(getInput).getRecord();
+      QRecord record = context.getDataGateway().get(getInput);
       if(record == null)
       {
          throw (new AiToolException(AiToolOutcome.NOT_FOUND, "No " + table.getLabel() + " record with id '" + id + "' was found (or you do not have permission to see it)."));

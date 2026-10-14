@@ -74,7 +74,7 @@ class ClientChannelPermissionsTest extends BaseTest
    private static final List<String> WALLED_TABLES = List.of(
       "assistant_provider", "assistant_model", "assistant_price", "assistant_profile", "assistant_skill", "assistant_policy",
       "assistant_budget", "assistant_usage", "assistant_tool_call_log", "assistant_conversation",
-      "authentik_user", "authentik_group_permission", "audit", "auditDetail", "apiKey", "api_key", "user_credential",
+      "authentik_user", "authentik_group_permission", "apiKey", "api_key", "user_credential",
       "webhooks_endpoint", "oauth_client_secret", "userSession", "user_role");
 
    private static final List<String> WALLED_PROCESSES = List.of("assistant_rotateProviderKey", "authentik_syncUsers");
@@ -97,6 +97,13 @@ class ClientChannelPermissionsTest extends BaseTest
       for(String name : WALLED_PROCESSES)
       {
          qInstance.addProcess(new QProcessMetaData().withName(name).withStep(new QBackendStepMetaData().withName("run").withCode(new QCodeReference(NoopStep.class))));
+      }
+      for(String name : List.of("audit", "auditDetail"))
+      {
+         if(qInstance.getTable(name) == null)
+         {
+            qInstance.addTable(simpleTable(name));
+         }
       }
       qInstance.addTable(simpleTable("ordinaryTable").withPermissionRules(new QPermissionRules().withLevel(PermissionLevel.NOT_PROTECTED).withDeniedClients(Set.of("cli"))));
       return (qInstance);
@@ -166,6 +173,18 @@ class ClientChannelPermissionsTest extends BaseTest
          assertFalse(PermissionsHelper.hasProcessPermission(input, process), "assistant denied process " + process);
       }
       assertTrue(PermissionsHelper.hasTablePermission(input, TestUtils.TABLE_NAME_PERSON_MEMORY, TablePermissionSubType.READ));
+
+      ///////////////////////////////////////////////////////////////////////////
+      // audits: readable (record history), never written - no tampering        //
+      ///////////////////////////////////////////////////////////////////////////
+      for(String table : List.of("audit", "auditDetail"))
+      {
+         assertTrue(PermissionsHelper.hasTablePermission(input, table, TablePermissionSubType.READ), "assistant reads " + table);
+         for(TablePermissionSubType write : List.of(TablePermissionSubType.INSERT, TablePermissionSubType.EDIT, TablePermissionSubType.DELETE))
+         {
+            assertFalse(PermissionsHelper.hasTablePermission(input, table, write), "assistant may not " + write + " " + table);
+         }
+      }
 
       ///////////////////////////////////////////////////////////////
       // metadata omits the walled objects for the assistant only  //

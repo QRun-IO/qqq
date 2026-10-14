@@ -90,6 +90,7 @@ spec'd routes.
   - channel deny rules: `QPermissionRules.withDeniedClients`, plus denied objects and patterns, with a
     default wall that keeps the assistant away from its own configuration, identity, permissions,
     audits, API keys, credentials and secrets.
+- AI tool kernel data access goes through the UI API. `AiToolKernelSettings.withDataGateway(new UiApiAiDataGateway(...))` makes every query, count, get, search and widget render a `/qqq/v1` call, made as the user through the assistant channel. `CoreAiDataGateway` remains the default for other kernels. The assistant wall makes `audit*` write-denied only: the assistant can read a record's history, but cannot write audits.
 - Added `docs/UI-API-CLIENTS.md`: how web, CLI, TUI and iOS clients render each type.
 - Record collaboration (docs/COLLABORATION.md):
   - Table metadata gains `recordFeatures` (`RecordFeaturesV1`), and the metadata responses gain

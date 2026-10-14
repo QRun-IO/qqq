@@ -741,9 +741,10 @@ public class PermissionsHelper
       // client-channel deny rules come first: nothing (custom checkers, unprotected //
       // objects, the user's permissions) overrides them                             //
       /////////////////////////////////////////////////////////////////////////////////
-      if(isDeniedForClientChannel(metaDataWithPermissionRules, effectivePermissionRules))
+      if(isDeniedForClientChannel(metaDataWithPermissionRules, effectivePermissionRules)
+         || (isWriteSubType(permissionSubType) && isWriteDeniedForClientChannel(metaDataWithPermissionRules, effectivePermissionRules)))
       {
-         LOG.info("Client channel denied", logPair("clientChannel", QContext.getQSession() == null ? null : QContext.getQSession().getClientChannel()), logPair("name", name));
+         LOG.info("Client channel denied", logPair("clientChannel", QContext.getQSession() == null ? null : QContext.getQSession().getClientChannel()), logPair("name", name), logPair("permissionSubType", permissionSubType));
          throw (new QPermissionDeniedException("Permission denied."));
       }
 
@@ -783,6 +784,34 @@ public class PermissionsHelper
    private static String getPermissionName(String permissionBaseName, PermissionSubType permissionSubType)
    {
       return permissionBaseName + "." + permissionSubType.getPermissionSuffix();
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether a permission sub-type is a write (insert, edit, delete, write).
+    *******************************************************************************/
+   private static boolean isWriteSubType(PermissionSubType permissionSubType)
+   {
+      return (permissionSubType == TablePermissionSubType.INSERT || permissionSubType == TablePermissionSubType.EDIT
+         || permissionSubType == TablePermissionSubType.DELETE || permissionSubType == PrivatePermissionSubType.WRITE);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether the session's client channel (if any) may not write this object.
+    *******************************************************************************/
+   public static boolean isWriteDeniedForClientChannel(MetaDataWithPermissionRules metaDataWithPermissionRules, QPermissionRules effectiveRules)
+   {
+      QSession session = QContext.getQSession();
+      String   channel = session == null ? null : session.getClientChannelName();
+      if(channel == null)
+      {
+         return (false);
+      }
+
+      return (ClientChannelsMetaData.of(QContext.getQInstance()).isWriteDenied(channel, metaDataWithPermissionRules.getName(), effectiveRules));
    }
 
 

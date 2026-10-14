@@ -80,8 +80,9 @@ The destinations are held in the supplemental `DeliveryDestinationsMetaData`, na
 | `codeReference` | The `DeliveryDestinationInterface` |
 | `permissionName` | Optional. Users without it never see the destination |
 | `maxClassification` | The highest `DataClassification` it may receive. Download: PHI. Email: as the provider declares. Slack: CONFIDENTIAL |
-| `maxAttachmentBytes` | Beyond this an attachment becomes a link (section 3). Null means no attachments |
+| `maxAttachmentBytes` | A per-destination setting (Email defaults to 10 MB, Slack to 50 MB). Beyond it an attachment becomes a link (section 2). Null means no attachments |
 | `allowBearerLinks` | May receive presigned storage URLs, which only apply below PII |
+| `aboveMaxClassification` | What happens to content above `maxClassification`: `REFUSE` (the default, and Slack's choice) or `LINK_ONLY`. With `LINK_ONLY` the destination receives only the title and an authenticated app link, and no data. qbit-email uses this with its `email_secure_message` template |
 
 ### 1.2 Contingent pickers
 
@@ -120,7 +121,10 @@ fields are the workspace from the user's own connections, then the channel the u
    with the captured security keys for jobs (jobs spec 2.10). If the session can't be built, the result is
    UNAUTHORIZED.
 2. **Visibility.** The destination's `permissionName` is checked.
-3. **Classification gate.** If `contentClassification > maxClassification`, the result is REFUSED with:
+3. **Classification gate.** If `contentClassification > maxClassification` and the destination is
+   `LINK_ONLY`, the attachments and summary are dropped. The destination receives the title and the
+   authenticated app link (step 4), and the log records it as delivered as a link. Otherwise the result is
+   REFUSED with:
    "This output includes restricted fields (Patient name, Date of birth). <Destination> can't receive them.
    Leave them out, or choose another destination."
    - When `leaveOutRestricted` is true, the producer must already have rendered without those fields, and
@@ -212,7 +216,12 @@ Process integration:
 
 - **DOWNLOAD:** the output stays in storage, and the result is DELIVERED with the app link. This is today's
   behaviour, now logged.
-- **EMAIL:** through `SendMessageAction` with the configured provider (`emailProviderName`). The targets are
+- **EMAIL:** through `SendMessageAction` with the configured provider (`emailProviderName`).
+  `maxClassification` is CONFIDENTIAL and `aboveMaxClassification` is `LINK_ONLY`. qbit-email will register
+  its own destination under the same name: `deliver` calls `EmailApi.sendOnce` with the delivery key, and
+  `lookup` calls `getMessageByIdempotencyKey`. It may raise `maxClassification` to PHI only by an explicit
+  setting, validated against `EmailApi.readiness(instance, category, true)`: the template must be
+  phi_approved, the provider phi_allowed, and the body key set. The targets are
   "me" (the owner's email) and, with `delivery.email.others`, a free list of addresses. Attachments are
   attached up to `maxAttachmentBytes` (10 MB), and become links beyond that. qbit-email may register its
   own richer destination under the same name.

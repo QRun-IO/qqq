@@ -73,7 +73,7 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 
 ## Versions
 
-### 1.3.0 (unreleased)
+### 1.4.0 (unreleased)
 - Added `POST /table/{tableName}/formAdjuster/{identifier}/{event}` (tag `Tables`, #1152): runs a
   table form's on-load or on-change adjuster and returns `FormAdjusterOutputV1`. It replaces the
   Material Dashboard module's unversioned `POST /material-dashboard-backend/form-adjuster/...`
@@ -86,6 +86,9 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
   `{api}/versions.json` for v1 clients. Modules contribute through `TableApisProviderInterface`
   (found with `ServiceLoader`); `qqq-middleware-api` provides one. The caller must be allowed to
   read the table.
+- `baseline.yaml` is now the RC.7 document (1.3.0).
+
+### 1.3.0 (QQQ 4.1.0-RC.7)
 - Added JVM-local loopback-only session tokens, streamed responses and multipart uploads to
   `UiApiInvoker` (in-process invocation; no change to the document).
 - Added `UiApiRequest.withHeader(name, value)` (no change to the document) for custom invocation headers; null values remove headers, and the invoker drops reserved credential, client-channel and request-metadata headers case-insensitively.
@@ -164,7 +167,7 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
   `validatePossibleValueSourceOnWrite(false)`. SYSTEM writes are excluded.
   See [Contingent possible values](CONTINGENT-POSSIBLE-VALUES.md) for examples,
   frontend obligations, sample fixtures and the process-step validation limitation.
-- `baseline.yaml` is now the RC.6 document (1.2.0). The bulk-load and contingent-field additions
+- `baseline.yaml` was the RC.6 document (1.2.0) for this release. The bulk-load and contingent-field additions
   above were first listed under 1.2.0, but they merged after RC.6 was cut, so they ship in 1.3.0.
 
 ### 1.2.0 (QQQ 4.1.0-RC.6)

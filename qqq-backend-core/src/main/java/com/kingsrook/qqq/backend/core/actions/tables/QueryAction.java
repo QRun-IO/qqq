@@ -42,7 +42,6 @@ import com.kingsrook.qqq.backend.core.actions.interfaces.QueryInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
 import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
-import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.AuditFieldAccess;
 import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.reporting.BufferedRecordPipe;
 import com.kingsrook.qqq.backend.core.actions.reporting.RecordPipeBufferedWrapper;
@@ -613,7 +612,6 @@ public class QueryAction
       ////////////////////////////////////////////////////////////////////////////
       if(enforcingPermissions)
       {
-         AuditFieldAccess.apply(queryInput.getTableName(), queryInput.getQueryJoins(), records);
          fieldAccessRecordCount += records.size();
          FieldAccessHelper.applyToRecords(queryInput.getTableName(), queryInput.getQueryJoins(), records, fieldAccessActionName);
       }

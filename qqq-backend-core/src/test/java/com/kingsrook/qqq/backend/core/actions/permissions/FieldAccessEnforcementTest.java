@@ -138,10 +138,10 @@ class FieldAccessEnforcementTest extends FieldAccessTestSupport
 
 
    /*******************************************************************************
-    ** Expansion precedes policy checks and count completion reports the outcome.
+    ** Expressions are accepted for FULL fields, but never for REVEALABLE searches.
     *******************************************************************************/
    @Test
-   void currentUserCriteriaEnforcedAfterExpansion() throws Exception
+   void currentUserCriteriaEnforcedBeforeExpansion() throws Exception
    {
       for(Serializable expression : List.of(new CurrentUser(), "${currentUser}"))
       {
@@ -152,24 +152,13 @@ class FieldAccessEnforcementTest extends FieldAccessTestSupport
          assertThrows(QPermissionDeniedException.class, () -> new CountAction().execute(new CountInput(TABLE).withFilter(filter)));
 
          restrict(FieldAccessTier.REVEALABLE);
-         for(String user : List.of(EMAIL, "no-match"))
-         {
-            QContext.setQSession(newSession(user));
-            resolver.events.clear();
-            resolver.fingerprintValues.clear();
-            int expected = EMAIL.equals(user) ? 2 : 0;
-            assertEquals(expected, new CountAction().execute(new CountInput(TABLE).withFilter(filter)).getCount());
-            assertEquals(List.of(user), resolver.fingerprintValues);
-            assertEquals(1, resolver.events.size());
-            FieldAccessEvent event = resolver.events.get(0);
-            assertEquals(FieldAccessEventType.EXACT_MATCH_FILTER, event.getType());
-            assertEquals(expected == 0 ? FieldAccessOutcome.NO_MATCH : FieldAccessOutcome.MATCH, event.getOutcome());
-            assertEquals(expected, event.getRecordCount());
-            assertEquals("count", event.getActionName());
-            resolver.fingerprintValues.clear();
-            assertEquals(expected, new QueryAction().execute(new QueryInput(TABLE).withFilter(filter)).getRecords().size());
-            assertEquals(List.of(user), resolver.fingerprintValues);
-         }
+         resolver.fingerprintValues.clear();
+         assertThrows(QPermissionDeniedException.class, () -> new QueryAction().execute(new QueryInput(TABLE).withFilter(filter)));
+         assertThrows(QPermissionDeniedException.class, () -> new CountAction().execute(new CountInput(TABLE).withFilter(filter)));
+         assertTrue(resolver.fingerprintValues.isEmpty());
+         restrict(FieldAccessTier.FULL);
+         assertEquals(2, new CountAction().execute(new CountInput(TABLE).withFilter(filter)).getCount());
+         assertEquals(2, new QueryAction().execute(new QueryInput(TABLE).withFilter(filter)).getRecords().size());
          assertEquals(expression, filter.getSubFilters().get(0).getCriteria().get(0).getValues().get(0));
       }
    }

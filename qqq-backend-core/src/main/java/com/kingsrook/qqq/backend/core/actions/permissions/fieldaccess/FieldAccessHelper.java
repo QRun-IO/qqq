@@ -22,9 +22,14 @@ package com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess;
 
 
 import java.io.Serializable;
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -40,6 +45,7 @@ import java.util.TreeMap;
 import com.kingsrook.qqq.backend.core.actions.ai.AiDataClassifications;
 import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
@@ -47,10 +53,13 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
+import com.kingsrook.qqq.backend.core.model.audits.AuditsMetaDataProvider;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.ClientChannelsMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSourceType;
 import com.kingsrook.qqq.backend.core.model.metadata.security.FieldSecurityLock;
 import com.kingsrook.qqq.backend.core.model.metadata.security.QSecurityKeyType;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Association;
@@ -119,8 +128,7 @@ public final class FieldAccessHelper
 
    /*******************************************************************************
     ** Combine locks, cached resolver decisions and the channel ceiling. Never
-    ** cache reveal grants. Primary keys bypass locks/resolvers, but the channel
-    ** still caps them (e.g., an assistant metadata-only table sends no values).
+    ** cache reveal grants. Primary keys are exempt from every policy ceiling.
     *******************************************************************************/
    public static FieldAccessDecision getDecision(QTableMetaData table, QFieldMetaData field)
    {
@@ -129,6 +137,10 @@ public final class FieldAccessHelper
          return (FieldAccessDecision.FULL);
       }
       boolean primaryKey = table != null && Objects.equals(field.getName(), table.getPrimaryKeyField());
+      if(primaryKey)
+      {
+         return (FieldAccessDecision.FULL);
+      }
       FieldAccessTier lockTier = primaryKey ? FieldAccessTier.FULL : getLockTier(field);
       FieldAccessResolverInterface resolver = resolver();
       FieldAccessDecision decision = FieldAccessDecision.FULL;
@@ -156,10 +168,10 @@ public final class FieldAccessHelper
       {
          channelDecision = Objects.requireNonNullElse(channelPolicy.resolve(table, field), FieldAccessDecision.FULL);
       }
-      FieldMaskStyle style = decision.maskStyle() == null ? channelDecision.maskStyle() : decision.maskStyle();
-      if(style == null && field.getFieldSecurityLock() != null)
+      FieldMaskStyle style = FieldMaskStyle.mostRestrictive(decision.maskStyle(), channelDecision.maskStyle());
+      if(field.getFieldSecurityLock() != null)
       {
-         style = field.getFieldSecurityLock().getMaskStyle();
+         style = FieldMaskStyle.mostRestrictive(style, field.getFieldSecurityLock().getMaskStyle());
       }
       FieldAccessTier tier = lockTier.mostRestrictive(decision.tier()).mostRestrictive(channelDecision.tier());
       String reason = lockTier == tier && lockTier != FieldAccessTier.FULL ? "field security lock"
@@ -325,19 +337,19 @@ public final class FieldAccessHelper
 
 
    /*******************************************************************************
-    ** Validate export criteria synchronously without reserving a second exact search.
+    ** Criteria-only mode has no fingerprints, guardrail callbacks or audit events.
     *******************************************************************************/
    public static PendingExactMatch assertCriteriaAllowed(String tableName, List<QueryJoin> joins, QQueryFilter filter, Collection<String> sortGroupAggregateFieldNames, boolean checkExactMatch) throws QPermissionDeniedException
    {
       Map<String, String> aliases = getAliasToTableNameMap(tableName, joins);
-      Map<String, FieldAccessEvent> exactMatches = new LinkedHashMap<>();
+      CriteriaCheck exactMatches = new CriteriaCheck(checkExactMatch);
       checkFilter(tableName, aliases, filter, exactMatches);
       for(String name : CollectionUtils.nonNullCollection(sortGroupAggregateFieldNames))
       {
          checkField(tableName, aliases, name, null, true, exactMatches);
       }
       FieldAccessResolverInterface resolver = resolver();
-      for(FieldAccessEvent event : exactMatches.values())
+      for(FieldAccessEvent event : exactMatches.events.values())
       {
          if(resolver != null && checkExactMatch)
          {
@@ -352,7 +364,7 @@ public final class FieldAccessHelper
             }
          }
       }
-      return (new PendingExactMatch(new ArrayList<>(exactMatches.values())));
+      return (new PendingExactMatch(new ArrayList<>(exactMatches.events.values())));
    }
 
 
@@ -360,7 +372,7 @@ public final class FieldAccessHelper
    /*******************************************************************************
     ** Walk nested filters, including comparisons to another field.
     *******************************************************************************/
-   private static void checkFilter(String tableName, Map<String, String> aliases, QQueryFilter filter, Map<String, FieldAccessEvent> exactMatches) throws QPermissionDeniedException
+   private static void checkFilter(String tableName, Map<String, String> aliases, QQueryFilter filter, CriteriaCheck exactMatches) throws QPermissionDeniedException
    {
       if(filter == null)
       {
@@ -393,7 +405,7 @@ public final class FieldAccessHelper
    /*******************************************************************************
     ** Field comparisons require FULL: they are not a search for a known literal value.
     *******************************************************************************/
-   private static void checkField(String tableName, Map<String, String> aliases, String name, QFilterCriteria criteria, boolean requiresFull, Map<String, FieldAccessEvent> exactMatches) throws QPermissionDeniedException
+   private static void checkField(String tableName, Map<String, String> aliases, String name, QFilterCriteria criteria, boolean requiresFull, CriteriaCheck exactMatches) throws QPermissionDeniedException
    {
       if(name == null || QContext.getQInstance() == null)
       {
@@ -403,18 +415,32 @@ public final class FieldAccessHelper
       QTableMetaData table = QContext.getQInstance().getTable(resolved.tableName());
       FieldAccessTier tier = getTier(table, resolved.fieldName());
       boolean allowed = requiresFull ? tier == FieldAccessTier.FULL : canFilter(table, resolved.fieldName(), criteria.getOperator());
-      if(tier == FieldAccessTier.REVEALABLE && criteria != null && criteria.getOperator() == QCriteriaOperator.IN && CollectionUtils.nonNullList(criteria.getValues()).size() > 25)
+      // Audit payload ownership is resolved per row, not proven by arbitrary boolean filters.
+      if((AuditsMetaDataProvider.TABLE_NAME_AUDIT_DETAIL.equals(resolved.tableName()) && Set.of("oldValue", "newValue", "message").contains(resolved.fieldName()))
+         || (AuditsMetaDataProvider.TABLE_NAME_AUDIT.equals(resolved.tableName()) && "message".equals(resolved.fieldName()))
+         || (name.contains(".") && table == null))
       {
          allowed = false;
       }
+      if(tier == FieldAccessTier.REVEALABLE && criteria != null)
+      {
+         int count = exactMatches.valueCounts.merge(resolved, CollectionUtils.nonNullList(criteria.getValues()).size(), Integer::sum);
+         if(count > 25 || criteria.getFieldFunction() != null || CollectionUtils.nonNullList(criteria.getValues()).stream().anyMatch(value -> !isLiteral(value)))
+         {
+            allowed = false;
+         }
+      }
       if(!allowed)
       {
-         notifyAccess(new FieldAccessEvent().withType(FieldAccessEventType.DENIED).withTableName(resolved.tableName()).withFieldNames(List.of(resolved.fieldName())));
+         if(exactMatches.audit)
+         {
+            notifyAccess(new FieldAccessEvent().withType(FieldAccessEventType.DENIED).withTableName(resolved.tableName()).withFieldNames(List.of(resolved.fieldName())));
+         }
          throw (new QPermissionDeniedException("Permission denied."));
       }
-      if(tier == FieldAccessTier.REVEALABLE)
+      if(tier == FieldAccessTier.REVEALABLE && exactMatches.audit)
       {
-         FieldAccessEvent event = exactMatches.computeIfAbsent(resolved.tableName(), ignored -> new FieldAccessEvent()
+         FieldAccessEvent event = exactMatches.events.computeIfAbsent(resolved.tableName(), ignored -> new FieldAccessEvent()
             .withType(FieldAccessEventType.EXACT_MATCH_FILTER).withTableName(resolved.tableName()).withFieldNames(new ArrayList<>()).withSearchValueFingerprints(List.of()));
          if(!event.getFieldNames().contains(resolved.fieldName()))
          {
@@ -434,6 +460,43 @@ public final class FieldAccessHelper
             }
             event.withSearchValueFingerprints(fingerprints);
          }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Only scalar query literals may enter the exact-match fingerprint callback.
+    ** Expression strings are rejected before expression expansion as well.
+    *******************************************************************************/
+   private static boolean isLiteral(Serializable value)
+   {
+      return (value == null || (value instanceof String string && !string.contains("${"))
+         || value instanceof Boolean || value instanceof Character || value instanceof Byte || value instanceof Short
+         || value instanceof Integer || value instanceof Long || value instanceof Float || value instanceof Double
+         || value instanceof BigDecimal || value instanceof BigInteger || value instanceof LocalDate
+         || value instanceof LocalTime || value instanceof Instant || value instanceof java.util.UUID);
+   }
+
+
+
+   /*******************************************************************************
+    ** One budget per resolved field across the complete filter tree.
+    *******************************************************************************/
+   private static class CriteriaCheck
+   {
+      private final Map<String, FieldAccessEvent> events = new LinkedHashMap<>();
+      private final Map<TableAndField, Integer> valueCounts = new HashMap<>();
+      private final boolean audit;
+
+
+
+      /*******************************************************************************
+       ** Criteria-only checks have no guardrail or audit side effects.
+       *******************************************************************************/
+      private CriteriaCheck(boolean audit)
+      {
+         this.audit = audit;
       }
    }
 
@@ -579,7 +642,31 @@ public final class FieldAccessHelper
          return;
       }
       Map<String, String> aliases = getAliasToTableNameMap(tableName, joins);
-      for(QRecord record : records)
+      List<QRecord> visible = new ArrayList<>(records);
+      try
+      {
+         AuditFieldAccess.apply(tableName, joins, visible);
+      }
+      catch(QException e)
+      {
+         LOG.warn("Unable to resolve audit ownership; withholding record values");
+         visible.clear();
+      }
+      if(visible.size() != records.size())
+      {
+         List<QRecord> withheld = new ArrayList<>(records);
+         withheld.removeAll(visible);
+         withheld.forEach(FieldAccessHelper::withholdValues);
+         try
+         {
+            records.removeAll(withheld);
+         }
+         catch(UnsupportedOperationException e)
+         {
+            // Fixed-size caller collections retain only the sanitized record identities.
+         }
+      }
+      for(QRecord record : visible)
       {
          if(record == null || !visited.computeIfAbsent(record, ignored -> new LinkedHashSet<>()).add(tableName))
          {
@@ -596,12 +683,33 @@ public final class FieldAccessHelper
          {
             TableAndField resolved = resolve(tableName, aliases, key);
             QTableMetaData valueTable = QContext.getQInstance().getTable(resolved.tableName());
+            if(valueTable == null && key.contains("."))
+            {
+               if(record.getValues() != null)
+               {
+                  record.getValues().remove(key);
+               }
+               if(record.getDisplayValues() != null)
+               {
+                  record.getDisplayValues().remove(key);
+               }
+               continue;
+            }
             QFieldMetaData field = field(valueTable, resolved.fieldName());
             if(field == null)
             {
                continue;
             }
             FieldAccessDecision decision = getDecision(valueTable, field);
+            QPossibleValueSource source = field.getPossibleValueSourceName() == null ? null : QContext.getQInstance().getPossibleValueSource(field.getPossibleValueSourceName());
+            if(source != null && source.getType() == QPossibleValueSourceType.TABLE)
+            {
+               QTableMetaData target = QContext.getQInstance().getTable(source.getTableName());
+               if(target == null || !isRecordLabelFullAccess(target))
+               {
+                  record.setDisplayValue(key, Objects.toString(record.getValue(key), null));
+               }
+            }
             String prefix = key.contains(".") ? key.substring(0, key.indexOf('.') + 1) : "";
             Serializable primaryKey = record.getValue(prefix + valueTable.getPrimaryKeyField());
             DataClassification classification = AiDataClassifications.ofField(valueTable, field.getName());
@@ -651,6 +759,56 @@ public final class FieldAccessHelper
             applyRecords(association.getAssociatedTableName(), null, CollectionUtils.nonNullMap(record.getAssociatedRecords()).get(association.getName()), actionName, audits, visited);
          }
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Process records can belong to different tables, independently of the process.
+    ** Unknown ownership cannot safely inherit another table's field policy.
+    *******************************************************************************/
+   public static void applyToProcessRecords(String processName, String fallbackTable, List<QRecord> records)
+   {
+      if(QContext.getQSession() instanceof QSystemUserSession)
+      {
+         return;
+      }
+      for(QRecord record : records)
+      {
+         String tableName = record.getTableName() == null ? fallbackTable : record.getTableName();
+         if(QContext.getQInstance().getTable(tableName) != null)
+         {
+            applyToRecords(tableName, null, List.of(record), "process");
+         }
+         else if(resolver() != null || QContext.getQInstance().getTables().values().stream().anyMatch(table -> getTiers(table).values().stream().anyMatch(tier -> tier != FieldAccessTier.FULL)))
+         {
+            withholdValues(record);
+            String warningKey = FieldAccessHelper.class.getName() + ".unknownProcessTable." + processName;
+            if(QContext.getObject(warningKey, Boolean.class).isEmpty())
+            {
+               LOG.warn("Withholding process record values with unknown table ownership", com.kingsrook.qqq.backend.core.logging.LogUtils.logPair("process", processName));
+               QContext.setObject(warningKey, true);
+            }
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Preserve only the conventional record identity when ownership is unknown.
+    *******************************************************************************/
+   private static void withholdValues(QRecord record)
+   {
+      Serializable id = record.getValue("id");
+      record.setValues(new LinkedHashMap<>());
+      if(id != null)
+      {
+         record.setValue("id", id);
+      }
+      record.setDisplayValues(new HashMap<>());
+      record.setRecordLabel(null);
+      record.setAssociatedRecords(new LinkedHashMap<>());
    }
 
 
@@ -761,7 +919,7 @@ public final class FieldAccessHelper
          TableAndField resolved = resolve(tableName, aliases, name);
          if(getTier(QContext.getQInstance().getTable(resolved.tableName()), resolved.fieldName()) == FieldAccessTier.HIDDEN)
          {
-            checkField(tableName, aliases, name, null, true, new LinkedHashMap<>());
+            checkField(tableName, aliases, name, null, true, new CriteriaCheck(true));
          }
       }
    }

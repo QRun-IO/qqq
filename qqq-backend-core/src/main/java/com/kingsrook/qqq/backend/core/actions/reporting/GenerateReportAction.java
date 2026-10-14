@@ -515,6 +515,7 @@ public class GenerateReportAction extends AbstractQActionFunction<ReportInput, R
       // run a record pipe loop, over the query (or other data-supplier/source) for this data source //
       /////////////////////////////////////////////////////////////////////////////////////////////////
       RecordPipe recordPipe = new BufferedRecordPipe(1000);
+      java.util.concurrent.atomic.AtomicReference<QueryInput> finalQuery = new java.util.concurrent.atomic.AtomicReference<>(new QueryInput(dataSource.getSourceTable()).withQueryJoins(cloneDataSourceQueryJoins(dataSource)));
       new AsyncRecordPipeLoop().run("Report[" + reportInput.getReportName() + "]", null, recordPipe, (callback) ->
       {
          if(dataSource.getCustomRecordSource() != null)
@@ -549,6 +550,7 @@ public class GenerateReportAction extends AbstractQActionFunction<ReportInput, R
             {
                FieldAccessHelper.assertCriteriaAllowed(queryInput.getTableName(), queryInput.getQueryJoins(), queryInput.getFilter(), null);
             }
+            finalQuery.set(queryInput);
             return (new QueryAction().execute(queryInput));
          }
          else if(dataSource.getStaticDataSupplier() != null)
@@ -584,7 +586,7 @@ public class GenerateReportAction extends AbstractQActionFunction<ReportInput, R
 
          if(enforceFieldAccess && dataSource.getSourceTable() != null)
          {
-            FieldAccessHelper.applyToRecords(dataSource.getSourceTable(), dataSource.getQueryJoins(), records, "report");
+            FieldAccessHelper.applyToRecords(finalQuery.get().getTableName(), finalQuery.get().getQueryJoins(), records, "report");
          }
 
          Integer total = countByDataSource.get(dataSource.getName());

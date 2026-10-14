@@ -26,6 +26,7 @@ import com.kingsrook.qqq.backend.core.actions.ai.AiToolKernelSettings;
 import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessChannelPolicyInterface;
 import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessDecision;
 import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessTier;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldMaskStyle;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
@@ -67,6 +68,6 @@ public class AiExposureChannelPolicy implements FieldAccessChannelPolicyInterfac
          case METADATA_ONLY, MASKED -> FieldAccessTier.MASKED;
          case VALUES -> FieldAccessTier.FULL;
       };
-      return (new FieldAccessDecision(tier, null, exposure == AiExposure.METADATA_ONLY ? METADATA_ONLY_REASON : policy.getFieldExposureReason(table, field)));
+      return (new FieldAccessDecision(tier, exposure == AiExposure.METADATA_ONLY ? FieldMaskStyle.FULL : null, exposure == AiExposure.METADATA_ONLY ? METADATA_ONLY_REASON : policy.getFieldExposureReason(table, field)));
    }
 }

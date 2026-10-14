@@ -23,6 +23,7 @@ package com.kingsrook.qqq.backend.core.processes.implementations.audits;
 
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Objects;
 import com.google.gson.reflect.TypeToken;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
@@ -166,9 +167,9 @@ public class GetAuditsForRecordProcess implements MetaDataProducerInterface<QPro
          }
       }
 
-      if(CorePermissionEnforcer.shouldEnforceFieldAccess(runBackendStepInput))
+      if(runBackendStepInput.isFieldAccessEnforced() || CorePermissionEnforcer.shouldEnforceFieldAccess(runBackendStepInput))
       {
-         FieldAccessHelper.applyToAuditDetails(tableName, auditRecords);
+         FieldAccessHelper.applyToRecords(AuditsMetaDataProvider.TABLE_NAME_AUDIT, List.of(auditDetailJoin), auditRecords, "process");
       }
       runBackendStepOutput.addValue("audits", auditRecords);
    }

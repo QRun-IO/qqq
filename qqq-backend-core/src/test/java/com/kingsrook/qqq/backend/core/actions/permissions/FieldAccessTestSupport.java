@@ -127,6 +127,7 @@ abstract class FieldAccessTestSupport extends BaseTest
       final List<Serializable> fingerprintValues = new ArrayList<>();
       final Set<String> reveals = new HashSet<>();
       int calls;
+      int exactMatchChecks;
       boolean throwOnAccess;
       boolean exactMatchAllowed = true;
       boolean refuseExactMatch;
@@ -149,6 +150,7 @@ abstract class FieldAccessTestSupport extends BaseTest
        *******************************************************************************/
       public void checkExactMatch(FieldAccessEvent event) throws com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException
       {
+         exactMatchChecks++;
          if(refuseExactMatch)
          {
             throw (new com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException("Exact-match search limit reached."));

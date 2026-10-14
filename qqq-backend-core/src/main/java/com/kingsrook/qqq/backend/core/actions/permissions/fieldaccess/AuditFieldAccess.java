@@ -60,18 +60,49 @@ public final class AuditFieldAccess
    {
       Set<String> prefixes = new LinkedHashSet<>();
       boolean auditTable = AuditsMetaDataProvider.TABLE_NAME_AUDIT.equals(tableName);
+      Set<String> auditPrefixes = new LinkedHashSet<>();
+      if(auditTable)
+      {
+         auditPrefixes.add("");
+      }
       if(AuditsMetaDataProvider.TABLE_NAME_AUDIT_DETAIL.equals(tableName))
       {
          prefixes.add("");
       }
       for(QueryJoin join : CollectionUtils.nonNullList(joins))
       {
+         if(join == null)
+         {
+            continue;
+         }
+         if(AuditsMetaDataProvider.TABLE_NAME_AUDIT.equals(join.getJoinTable()))
+         {
+            auditPrefixes.add(join.getJoinTableOrItsAlias() + ".");
+         }
          if(AuditsMetaDataProvider.TABLE_NAME_AUDIT_DETAIL.equals(join.getJoinTable()))
          {
             prefixes.add(join.getJoinTableOrItsAlias() + ".");
          }
       }
-      if(prefixes.isEmpty() && !auditTable)
+      // Trusted process/custom-source records may retain table-prefixed joins without a QueryInput.
+      for(QRecord record : records)
+      {
+         if(record == null)
+         {
+            continue;
+         }
+         Set<String> keys = new LinkedHashSet<>(CollectionUtils.nonNullMap(record.getValues()).keySet());
+         keys.addAll(CollectionUtils.nonNullMap(record.getDisplayValues()).keySet());
+         if(keys.stream().anyMatch(key -> key.startsWith(AuditsMetaDataProvider.TABLE_NAME_AUDIT_DETAIL + ".")))
+         {
+            prefixes.add(AuditsMetaDataProvider.TABLE_NAME_AUDIT_DETAIL + ".");
+         }
+         if(keys.stream().anyMatch(key -> key.startsWith(AuditsMetaDataProvider.TABLE_NAME_AUDIT + ".")))
+         {
+            auditPrefixes.add(AuditsMetaDataProvider.TABLE_NAME_AUDIT + ".");
+         }
+      }
+      if(prefixes.isEmpty() && auditPrefixes.isEmpty())
       {
          return;
       }
@@ -80,6 +111,10 @@ public final class AuditFieldAccess
       while(iterator.hasNext())
       {
          QRecord record = iterator.next();
+         if(record == null)
+         {
+            continue;
+         }
          boolean keep = true;
          for(String prefix : prefixes)
          {
@@ -117,7 +152,7 @@ public final class AuditFieldAccess
                keep = false;
                break;
             }
-            if(fieldName == null && restricted(auditedTableName))
+            if((fieldName == null || !QContext.getQInstance().getTable(auditedTableName).getFields().containsKey(fieldName)) && restricted(auditedTableName))
             {
                record.setValue(prefix + "oldValue", FieldValueMasker.MASK);
                record.setValue(prefix + "newValue", FieldValueMasker.MASK);
@@ -127,17 +162,18 @@ public final class AuditFieldAccess
                record.setDisplayValue(prefix + "message", null);
             }
          }
-         if(auditTable)
+         for(String prefix : auditPrefixes)
          {
-            String auditedTableName = tableNameForAudit(record.getValue("id"), tableNames);
+            String auditedTableName = tableNameForAudit(record.getValue(prefix + "id"), tableNames);
             if(auditedTableName == null)
             {
                keep = false;
             }
             else if(restricted(auditedTableName))
             {
-               record.setValue("message", null);
-               record.setDisplayValue("message", null);
+               record.setValue(prefix + "message", null);
+               record.setDisplayValue(prefix + "message", null);
+               record.setRecordLabel(null);
             }
          }
          if(!keep)
@@ -180,6 +216,9 @@ public final class AuditFieldAccess
     *******************************************************************************/
    private static QRecord get(String tableName, Serializable id) throws QException
    {
-      return (id == null ? null : new GetAction().executeForRecord(new GetInput(tableName).withPrimaryKey(id)));
+      try(com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer.AuthorizedScope ignored = com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer.openAuthorizedScope())
+      {
+         return (id == null ? null : new GetAction().executeForRecord(new GetInput(tableName).withPrimaryKey(id)));
+      }
    }
 }

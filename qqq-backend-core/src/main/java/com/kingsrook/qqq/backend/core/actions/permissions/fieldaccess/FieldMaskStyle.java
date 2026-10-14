@@ -28,5 +28,27 @@ package com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess;
  *******************************************************************************/
 public enum FieldMaskStyle
 {
-   AUTO, EMAIL, LAST_4, FIRST_LAST, FULL
+   AUTO, EMAIL, LAST_4, FIRST_LAST, FULL;
+
+
+
+   /*******************************************************************************
+    ** FULL > partial styles > AUTO. Different partial styles are incomparable:
+    ** use FULL rather than arbitrarily exposing one policy's protected characters.
+    ** Null is the unspecified (AUTO) style.
+    *******************************************************************************/
+   public static FieldMaskStyle mostRestrictive(FieldMaskStyle first, FieldMaskStyle second)
+   {
+      first = first == null ? AUTO : first;
+      second = second == null ? AUTO : second;
+      if(first == second || second == AUTO)
+      {
+         return (first);
+      }
+      if(first == AUTO)
+      {
+         return (second);
+      }
+      return (FULL);
+   }
 }

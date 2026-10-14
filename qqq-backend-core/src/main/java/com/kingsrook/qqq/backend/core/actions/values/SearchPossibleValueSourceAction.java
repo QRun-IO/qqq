@@ -103,8 +103,8 @@ public class SearchPossibleValueSourceAction
       QPossibleValueSource possibleValueSource = QContext.getQInstance() == null ? null : QContext.getQInstance().getPossibleValueSource(input.getPossibleValueSourceName());
       if(enforceFieldAccess && possibleValueSource != null && possibleValueSource.getTableName() != null)
       {
-         FieldSecurityLockHelper.assertCriteriaAccessible(possibleValueSource.getTableName(), null, input.getDefaultQueryFilter(), null);
-         FieldSecurityLockHelper.assertCriteriaAccessible(possibleValueSource.getTableName(), null, input.getPickerFilter(), null);
+         FieldAccessHelper.assertCriteriaAllowed(possibleValueSource.getTableName(), null, input.getDefaultQueryFilter(), null, false);
+         FieldAccessHelper.assertCriteriaAllowed(possibleValueSource.getTableName(), null, input.getPickerFilter(), null, false);
       }
 
       try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope())

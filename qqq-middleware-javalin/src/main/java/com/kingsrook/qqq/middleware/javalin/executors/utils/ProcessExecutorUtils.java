@@ -164,9 +164,9 @@ public class ProcessExecutorUtils
             }
          }
       }
-      if(tableName != null && CorePermissionEnforcer.shouldEnforceFieldAccess(new RunProcessInput().withInputSource(QInputSource.USER)))
+      if(CorePermissionEnforcer.shouldEnforceFieldAccess(new RunProcessInput().withInputSource(QInputSource.USER)))
       {
-         FieldAccessHelper.applyToRecords(tableName, null, copies, "process");
+         FieldAccessHelper.applyToProcessRecords(processName, tableName, copies);
       }
       return (copies);
    }
@@ -190,6 +190,12 @@ public class ProcessExecutorUtils
             copies.add(valueForCaller(processName, (Serializable) item));
          }
          return (copies);
+      }
+      if(value instanceof Map<?, ?> map)
+      {
+         LinkedHashMap<Serializable, Serializable> copy = new LinkedHashMap<>();
+         map.forEach((key, item) -> copy.put((Serializable) key, valueForCaller(processName, (Serializable) item)));
+         return (copy);
       }
       return (value);
    }

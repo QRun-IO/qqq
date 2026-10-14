@@ -39,7 +39,6 @@ import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMeta
 import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionEnforcement;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
-import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.AuditFieldAccess;
 import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.GetActionCacheHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
@@ -112,7 +111,6 @@ public class GetAction
          if(enforce && getOutput.getRecord() != null)
          {
             List<QRecord> records = new ArrayList<>(List.of(getOutput.getRecord()));
-            AuditFieldAccess.apply(getInput.getTableName(), getInput.getQueryJoins(), records);
             FieldAccessHelper.applyToRecords(getInput.getTableName(), getInput.getQueryJoins(), records, "get");
             getOutput.setRecord(records.isEmpty() ? null : records.get(0));
          }

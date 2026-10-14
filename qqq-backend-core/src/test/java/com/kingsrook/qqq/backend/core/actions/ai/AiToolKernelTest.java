@@ -733,7 +733,8 @@ class AiToolKernelTest extends BaseTest
       assertFalse(applicability(assistant, "query_records").getApplies());
       assertEquals("table not exposed to the assistant", applicability(assistant, "get_record").getReason());
       assertEquals("table values not exposed to the assistant", applicability(assistant, "search_records").getReason());
-      assertEquals("table", assistant.getFields().get(0).getReason());
+      assertEquals("table", assistant.getFields().stream().filter(field -> !field.getFieldName().equals("id")).findFirst().orElseThrow().getReason());
+      assertEquals(AiExposure.VALUES, assistant.getFields().stream().filter(field -> field.getFieldName().equals("id")).findFirst().orElseThrow().getExposure());
 
       AiAccessReport disabled = kernel.describeAccess(store1User(), TABLE_DISABLED, "abc");
       assertEquals(false, disabled.getRecordReadable());

@@ -1296,6 +1296,296 @@ components:
             \ to serve as the icon image instead of a material UI icon."
           type: "string"
       type: "object"
+    JobActionResponseV1:
+      properties:
+        jobId:
+          type: "number"
+      type: "object"
+    JobDetailV1:
+      properties:
+        actions:
+          items:
+            type: "string"
+          type: "array"
+        bytesDone:
+          type: "number"
+        bytesTotal:
+          type: "number"
+        chunksDone:
+          type: "number"
+        chunksTotal:
+          type: "number"
+        currentPhase:
+          type: "string"
+        etaSeconds:
+          type: "number"
+        finishedAt:
+          type: "string"
+        jobId:
+          type: "number"
+        label:
+          type: "string"
+        logSeq:
+          type: "number"
+        message:
+          type: "string"
+        percent:
+          type: "number"
+        processName:
+          type: "string"
+        progress:
+          properties:
+            bytesDone:
+              type: "number"
+            bytesTotal:
+              type: "number"
+            currentPhase:
+              type: "string"
+            done:
+              type: "number"
+            etaSeconds:
+              type: "number"
+            message:
+              type: "string"
+            percent:
+              type: "number"
+            phases:
+              items:
+                $ref: "#/components/schemas/JobPhaseV1"
+              type: "array"
+            total:
+              type: "number"
+            unitLabel:
+              type: "string"
+            updatedAt:
+              type: "string"
+          type: "object"
+        queuedAt:
+          type: "string"
+        rowsDone:
+          type: "number"
+        rowsFailed:
+          type: "number"
+        rowsTotal:
+          type: "number"
+        sourceType:
+          type: "string"
+        startedAt:
+          type: "string"
+        status:
+          type: "string"
+        summary:
+          type: "object"
+        userId:
+          type: "string"
+      type: "object"
+    JobListResponseV1:
+      properties:
+        activeCount:
+          type: "number"
+        generatedAt:
+          type: "string"
+        jobs:
+          items:
+            $ref: "#/components/schemas/JobSummaryV1"
+          type: "array"
+      type: "object"
+    JobLogLineV1:
+      properties:
+        attempt:
+          type: "number"
+        chunkId:
+          type: "number"
+        id:
+          type: "number"
+        jobId:
+          type: "number"
+        level:
+          type: "string"
+        loggedAt:
+          type: "string"
+        message:
+          type: "string"
+        phase:
+          type: "string"
+      type: "object"
+    JobPhaseV1:
+      properties:
+        label:
+          type: "string"
+        name:
+          type: "string"
+        status:
+          type: "string"
+        weight:
+          type: "number"
+      type: "object"
+    JobProgressPollV1:
+      properties:
+        job:
+          properties:
+            bytesDone:
+              type: "number"
+            bytesTotal:
+              type: "number"
+            chunksDone:
+              type: "number"
+            chunksTotal:
+              type: "number"
+            currentPhase:
+              type: "string"
+            etaSeconds:
+              type: "number"
+            finishedAt:
+              type: "string"
+            jobId:
+              type: "number"
+            label:
+              type: "string"
+            logSeq:
+              type: "number"
+            message:
+              type: "string"
+            percent:
+              type: "number"
+            processName:
+              type: "string"
+            queuedAt:
+              type: "string"
+            rowsDone:
+              type: "number"
+            rowsFailed:
+              type: "number"
+            rowsTotal:
+              type: "number"
+            sourceType:
+              type: "string"
+            startedAt:
+              type: "string"
+            status:
+              type: "string"
+            userId:
+              type: "string"
+          type: "object"
+        log:
+          items:
+            $ref: "#/components/schemas/JobLogLineV1"
+          type: "array"
+        logDropped:
+          type: "number"
+        nextAfterLogId:
+          type: "number"
+        progress:
+          properties:
+            bytesDone:
+              type: "number"
+            bytesTotal:
+              type: "number"
+            currentPhase:
+              type: "string"
+            done:
+              type: "number"
+            etaSeconds:
+              type: "number"
+            message:
+              type: "string"
+            percent:
+              type: "number"
+            phases:
+              items:
+                $ref: "#/components/schemas/JobPhaseV1"
+              type: "array"
+            total:
+              type: "number"
+            unitLabel:
+              type: "string"
+            updatedAt:
+              type: "string"
+          type: "object"
+        terminal:
+          type: "boolean"
+      type: "object"
+    JobProgressV1:
+      properties:
+        bytesDone:
+          type: "number"
+        bytesTotal:
+          type: "number"
+        currentPhase:
+          type: "string"
+        done:
+          type: "number"
+        etaSeconds:
+          type: "number"
+        message:
+          type: "string"
+        percent:
+          type: "number"
+        phases:
+          items:
+            $ref: "#/components/schemas/JobPhaseV1"
+          type: "array"
+        total:
+          type: "number"
+        unitLabel:
+          type: "string"
+        updatedAt:
+          type: "string"
+      type: "object"
+    JobSummaryV1:
+      properties:
+        bytesDone:
+          type: "number"
+        bytesTotal:
+          type: "number"
+        chunksDone:
+          type: "number"
+        chunksTotal:
+          type: "number"
+        currentPhase:
+          type: "string"
+        etaSeconds:
+          type: "number"
+        finishedAt:
+          type: "string"
+        jobId:
+          type: "number"
+        label:
+          type: "string"
+        logSeq:
+          type: "number"
+        message:
+          type: "string"
+        percent:
+          type: "number"
+        processName:
+          type: "string"
+        queuedAt:
+          type: "string"
+        rowsDone:
+          type: "number"
+        rowsFailed:
+          type: "number"
+        rowsTotal:
+          type: "number"
+        sourceType:
+          type: "string"
+        startedAt:
+          type: "string"
+        status:
+          type: "string"
+        userId:
+          type: "string"
+      type: "object"
+    JobTrackRequestV1:
+      properties:
+        jobUUID:
+          type: "string"
+        processName:
+          type: "string"
+        processUUID:
+          type: "string"
+      type: "object"
     LogoutResponseV1:
       type: "object"
     ManageSessionResponseV1:
@@ -2368,12 +2658,43 @@ components:
             description: "Optional indicator of progress (e.g., `current` of `total`,\
               \ as in (`1 of 10`)."
             type: "number"
+          logTail:
+            items:
+              $ref: "#/components/schemas/JobLogLineV1"
+            type: "array"
           message:
             description: "Status message regarding the running process step."
             type: "string"
           processUUID:
             description: "Unique identifier for a running instance the process."
             type: "string"
+          progress:
+            properties:
+              bytesDone:
+                type: "number"
+              bytesTotal:
+                type: "number"
+              currentPhase:
+                type: "string"
+              done:
+                type: "number"
+              etaSeconds:
+                type: "number"
+              message:
+                type: "string"
+              percent:
+                type: "number"
+              phases:
+                items:
+                  $ref: "#/components/schemas/JobPhaseV1"
+                type: "array"
+              total:
+                type: "number"
+              unitLabel:
+                type: "string"
+              updatedAt:
+                type: "string"
+            type: "object"
           total:
             description: "Optional indicator of progress (e.g., `current` of `total`,\
               \ as in (`1 of 10`)."
@@ -2407,12 +2728,43 @@ components:
           description: "Optional indicator of progress (e.g., `current` of `total`,\
             \ as in (`1 of 10`)."
           type: "number"
+        logTail:
+          items:
+            $ref: "#/components/schemas/JobLogLineV1"
+          type: "array"
         message:
           description: "Status message regarding the running process step."
           type: "string"
         processUUID:
           description: "Unique identifier for a running instance the process."
           type: "string"
+        progress:
+          properties:
+            bytesDone:
+              type: "number"
+            bytesTotal:
+              type: "number"
+            currentPhase:
+              type: "string"
+            done:
+              type: "number"
+            etaSeconds:
+              type: "number"
+            message:
+              type: "string"
+            percent:
+              type: "number"
+            phases:
+              items:
+                $ref: "#/components/schemas/JobPhaseV1"
+              type: "array"
+            total:
+              type: "number"
+            unitLabel:
+              type: "string"
+            updatedAt:
+              type: "string"
+          type: "object"
         total:
           description: "Optional indicator of progress (e.g., `current` of `total`,\
             \ as in (`1 of 10`)."
@@ -2518,6 +2870,39 @@ components:
           type: "integer"
         metaDataGeneration:
           type: "integer"
+      type: "object"
+    RealtimeJobProgressEventV1:
+      properties:
+        bytesDone:
+          type: "number"
+        bytesTotal:
+          type: "number"
+        chunksDone:
+          type: "number"
+        chunksTotal:
+          type: "number"
+        currentPhase:
+          type: "string"
+        etaSeconds:
+          type: "number"
+        jobId:
+          type: "number"
+        logSeq:
+          type: "number"
+        message:
+          type: "string"
+        percent:
+          type: "number"
+        rowsDone:
+          type: "number"
+        rowsFailed:
+          type: "number"
+        rowsPerSecond:
+          type: "number"
+        rowsTotal:
+          type: "number"
+        status:
+          type: "string"
       type: "object"
     RealtimeMetaDataChangedEventV1:
       properties:
@@ -6714,10 +7099,11 @@ paths:
         \ an event name and JSON data. hello identifies the connection; comment pings\
         \ maintain it. Last-Event-ID replays retained events on the same pod and session,\
         \ otherwise resync asks clients to refetch. Core event payloads use the Realtime*EventV1\
-        \ components. Qbits publish through RealtimeBus with their own event names,\
-        \ such as presence.changed and comment.added, described by RealtimeEventV1.\
-        \ Subscriptions require a separate POST; session-ended closes the stream and\
-        \ channel-revoked removes a subscription."
+        \ components. job.progress uses RealtimeJobProgressEventV1; an advancing logSeq\
+        \ tells clients to poll the job log. Qbits publish through RealtimeBus with\
+        \ their own event names, such as presence.changed and comment.added, described\
+        \ by RealtimeEventV1. Subscriptions require a separate POST; session-ended\
+        \ closes the stream and channel-revoked removes a subscription."
       parameters:
       - description: "Last received <connectionId>:<sequence> cursor."
         in: "header"
@@ -9616,6 +10002,296 @@ paths:
       - sessionUuidCookie:
         - "N/A"
       summary: "Run a process as a durable background job"
+      tags:
+      - "Processes"
+  /qqq/v1/jobs:
+    get:
+      description: "Requires jobs_job.read and the job owner lock; jobs_admin can\
+        \ see all jobs. Hidden jobs return 404; invalid transitions return 409. Progress\
+        \ polls include a twenty-id overlap for concurrent commits; deduplicate log\
+        \ lines by id. Recent jobs finished in the last seven days."
+      parameters:
+      - description: "mine (default), or all (requires jobs_admin)"
+        in: "query"
+        name: "scope"
+        required: false
+        schema:
+          type: "string"
+      - description: "active (default), recent, or all"
+        in: "query"
+        name: "state"
+        required: false
+        schema:
+          type: "string"
+      - description: "1-200; default 50"
+        in: "query"
+        name: "limit"
+        required: false
+        schema:
+          type: "integer"
+      - description: "Optional process filter"
+        in: "query"
+        name: "processName"
+        required: false
+        schema:
+          type: "string"
+      responses:
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Permission denied"
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Job not found or not visible"
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobListResponseV1"
+          description: "Job list result"
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Invalid job transition"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Jobs: list"
+      tags:
+      - "Processes"
+  /qqq/v1/jobs/{jobId}:
+    get:
+      description: "Requires jobs_job.read and the job owner lock; jobs_admin can\
+        \ see all jobs. Hidden jobs return 404; invalid transitions return 409. Progress\
+        \ polls include a twenty-id overlap for concurrent commits; deduplicate log\
+        \ lines by id. Recent jobs finished in the last seven days."
+      parameters:
+      - in: "path"
+        name: "jobId"
+        required: true
+        schema:
+          type: "integer"
+      responses:
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Permission denied"
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Job not found or not visible"
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobDetailV1"
+          description: "Job detail result"
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Invalid job transition"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Jobs: detail"
+      tags:
+      - "Processes"
+  /qqq/v1/jobs/{jobId}/progress:
+    get:
+      description: "Requires jobs_job.read and the job owner lock; jobs_admin can\
+        \ see all jobs. Hidden jobs return 404; invalid transitions return 409. Progress\
+        \ polls include a twenty-id overlap for concurrent commits; deduplicate log\
+        \ lines by id. Recent jobs finished in the last seven days."
+      parameters:
+      - in: "path"
+        name: "jobId"
+        required: true
+        schema:
+          type: "integer"
+      - description: "Last observed log id, default 0; response includes a twenty-id\
+          \ overlap"
+        in: "query"
+        name: "afterLogId"
+        required: false
+        schema:
+          type: "integer"
+      - description: "1-200 new lines, plus overlap; default 100"
+        in: "query"
+        name: "logLimit"
+        required: false
+        schema:
+          type: "integer"
+      responses:
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Permission denied"
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Job not found or not visible"
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobProgressPollV1"
+          description: "Job progress result"
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Invalid job transition"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Jobs: progress"
+      tags:
+      - "Processes"
+  /qqq/v1/jobs/{jobId}/cancel:
+    post:
+      description: "Requires jobs_job.read and the job owner lock; jobs_admin can\
+        \ see all jobs. Hidden jobs return 404; invalid transitions return 409. Progress\
+        \ polls include a twenty-id overlap for concurrent commits; deduplicate log\
+        \ lines by id. Recent jobs finished in the last seven days."
+      parameters:
+      - in: "path"
+        name: "jobId"
+        required: true
+        schema:
+          type: "integer"
+      responses:
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Permission denied"
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Job not found or not visible"
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobActionResponseV1"
+          description: "Job cancel result"
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Invalid job transition"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Jobs: cancel"
+      tags:
+      - "Processes"
+  /qqq/v1/jobs/{jobId}/retry:
+    post:
+      description: "Requires jobs_job.read and the job owner lock; jobs_admin can\
+        \ see all jobs. Hidden jobs return 404; invalid transitions return 409. Progress\
+        \ polls include a twenty-id overlap for concurrent commits; deduplicate log\
+        \ lines by id. Recent jobs finished in the last seven days."
+      parameters:
+      - in: "path"
+        name: "jobId"
+        required: true
+        schema:
+          type: "integer"
+      responses:
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Permission denied"
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Job not found or not visible"
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobActionResponseV1"
+          description: "Job retry result"
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Invalid job transition"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Jobs: retry"
+      tags:
+      - "Processes"
+  /qqq/v1/jobs/track:
+    post:
+      description: "Requires jobs_job.read and the job owner lock; jobs_admin can\
+        \ see all jobs. Hidden jobs return 404; invalid transitions return 409. Progress\
+        \ polls include a twenty-id overlap for concurrent commits; deduplicate log\
+        \ lines by id. Recent jobs finished in the last seven days."
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JobTrackRequestV1"
+        required: false
+      responses:
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Permission denied"
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Job not found or not visible"
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobActionResponseV1"
+          description: "Job track result"
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Invalid job transition"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Jobs: track"
       tags:
       - "Processes"
   /qqq/v1/uploads:

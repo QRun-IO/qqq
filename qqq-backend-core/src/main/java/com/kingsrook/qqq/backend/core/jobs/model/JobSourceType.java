@@ -30,6 +30,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.PossibleValu
  *******************************************************************************/
 public enum JobSourceType implements PossibleValueEnum<String>
 {
+   INLINE("Inline Process"),
    STEPS("Process Steps"),
    TABLE_FILTER("Table Filter"),
    RECORD_IDS("Record IDs"),

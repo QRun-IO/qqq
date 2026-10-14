@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Insert, update and delete inputs now offer `omitRecordChangeEvents` (default false) for trusted system writes of derived values. Optional event listeners are suppressed while required integrity listeners and normal security and validation still run.
 - Classpath help bundles with CORE/QBIT/HOST precedence, audited three-way synchronization, user-edit provenance, upstream review actions and background startup sync. Live metadata references render at the server boundary, and `HelpBundleAssertions` gates coverage without JUnit. Core ships `help/qqq-core.yaml`. See `docs/HELP-CONTENT.md` section 5.
 - Data-driven in-app help now supports summaries, permission/client-channel targeting, process/report/possible-value-source slots, author coverage, ranked search, and typed `/qqq/v1` help payloads. The AI `search_help` tool shares candidate collection and retains its exposure restrictions.
 - Help edits on other nodes are detected using count/max-modifyDate, at most once per 30 seconds per instance (`QInstanceHelpContentManager.setReloadIntervalMillis`). Explicit reloads preserve code-declared help, including declarations overridden by a data row. Help tables enable field audit when the audit, auditDetail, auditTable, and auditUser tables are already registered.

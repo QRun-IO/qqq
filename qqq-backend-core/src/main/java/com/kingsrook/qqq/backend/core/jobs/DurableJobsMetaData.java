@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.tables.ConditionalUpdateAction;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobLogRedactor;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaData;
@@ -47,6 +48,8 @@ public class DurableJobsMetaData implements QSupplementalInstanceMetaData
 {
    public static final String NAME = "durableJobs";
 
+   private Integer logMaxLines = 2000;
+   private JobLogRedactor logRedactor;
    private String storageTableName;
    private Integer workerThreads = 2;
    private Integer leaseTtlSeconds = 60;
@@ -128,7 +131,7 @@ public class DurableJobsMetaData implements QSupplementalInstanceMetaData
    @Override
    public void validate(QInstance qInstance, QInstanceValidator validator)
    {
-      for(String tableName : List.of(DurableJobsTables.TABLE_JOB, DurableJobsTables.TABLE_CHUNK, DurableJobsTables.TABLE_ROW_ERROR, DurableJobsTables.TABLE_EVENT, DurableJobsTables.TABLE_WORKER, DurableJobsTables.TABLE_UPLOAD, DurableJobsTables.TABLE_EFFECT))
+      for(String tableName : List.of(DurableJobsTables.TABLE_JOB, DurableJobsTables.TABLE_CHUNK, DurableJobsTables.TABLE_ROW_ERROR, DurableJobsTables.TABLE_EVENT, DurableJobsTables.TABLE_WORKER, DurableJobsTables.TABLE_UPLOAD, DurableJobsTables.TABLE_EFFECT, DurableJobsTables.TABLE_LOG))
       {
          validator.assertCondition(qInstance.getTable(tableName) != null, "Durable jobs are enabled but table " + tableName + " is not defined (use DurableJobsMetaDataProvider.defineAll).");
       }
@@ -143,6 +146,7 @@ public class DurableJobsMetaData implements QSupplementalInstanceMetaData
       {
          validator.assertCondition(target.getValue() != null, "Durable jobs effect target " + target.getKey() + " has no code reference.");
       }
+      validator.assertCondition(logMaxLines != null && logMaxLines >= 1, "Durable jobs logMaxLines must be at least 1.");
       validator.assertCondition(effectMaxAttempts != null && effectMaxAttempts >= 1, "Durable jobs effectMaxAttempts must be at least 1.");
       validator.assertCondition(effectLeaseTtlSeconds != null && effectLeaseTtlSeconds >= 1, "Durable jobs effectLeaseTtlSeconds must be at least 1.");
 
@@ -800,4 +804,67 @@ public class DurableJobsMetaData implements QSupplementalInstanceMetaData
       this.completionEffectProviders.add(codeReference);
       return (this);
    }
+
+
+
+   /*******************************************************************************
+    ** Getter for logMaxLines
+    *******************************************************************************/
+   public Integer getLogMaxLines()
+   {
+      return (this.logMaxLines);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for logMaxLines
+    *******************************************************************************/
+   public void setLogMaxLines(Integer logMaxLines)
+   {
+      this.logMaxLines = logMaxLines;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for logMaxLines
+    *******************************************************************************/
+   public DurableJobsMetaData withLogMaxLines(Integer logMaxLines)
+   {
+      this.logMaxLines = logMaxLines;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for logRedactor
+    *******************************************************************************/
+   public JobLogRedactor getLogRedactor()
+   {
+      return (this.logRedactor);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for logRedactor
+    *******************************************************************************/
+   public void setLogRedactor(JobLogRedactor logRedactor)
+   {
+      this.logRedactor = logRedactor;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for logRedactor
+    *******************************************************************************/
+   public DurableJobsMetaData withLogRedactor(JobLogRedactor logRedactor)
+   {
+      this.logRedactor = logRedactor;
+      return (this);
+   }
+
 }

@@ -21,7 +21,11 @@
 package com.kingsrook.qqq.backend.core.actions.async;
 
 
+import java.util.List;
 import java.util.UUID;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobLogLine;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobProgress;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobProgressSnapshot;
 import com.kingsrook.qqq.backend.core.state.StateType;
 import com.kingsrook.qqq.backend.core.state.UUIDAndTypeStateKey;
 
@@ -33,6 +37,7 @@ import com.kingsrook.qqq.backend.core.state.UUIDAndTypeStateKey;
  *******************************************************************************/
 public class AsyncJobCallback
 {
+   private transient JobProgress jobProgress;
    private UUID           jobUUID;
    private AsyncJobStatus asyncJobStatus;
 
@@ -179,4 +184,37 @@ public class AsyncJobCallback
       return (this.asyncJobStatus.getCancelRequested());
    }
 
+
+
+   /*******************************************************************************
+    ** Publish rich progress and the redacted tail through this callback.
+    *******************************************************************************/
+   public void updateProgress(JobProgressSnapshot progress, List<JobLogLine> logTail)
+   {
+      asyncJobStatus.setProgress(progress);
+      asyncJobStatus.setLogTail(logTail);
+      storeUpdatedStatus();
+   }
+
+
+   /*******************************************************************************
+    ** Read current status for adapters.
+    *******************************************************************************/
+   public AsyncJobStatus getAsyncJobStatus()
+   {
+      return (asyncJobStatus);
+   }
+
+
+   /*******************************************************************************
+    ** One shared progress reporter for this callback.
+    *******************************************************************************/
+   public synchronized JobProgress getJobProgress()
+   {
+      if(jobProgress == null)
+      {
+         jobProgress = new JobProgress(this);
+      }
+      return (jobProgress);
+   }
 }

@@ -1,5 +1,19 @@
 # Building a UI API client (web, CLI, TUI, iOS)
 
+For a jobs tray, list `GET /qqq/v1/jobs?scope=mine&state=active` and use `activeCount` for the badge.
+Open `/jobs/{jobId}` for phases, progress, summary, and available actions. A null percent means
+indeterminate progress. Subscribe to `user:me` for `job.progress` and `job.status`; when `logSeq`
+advances, fetch `/jobs/{jobId}/progress?afterLogId=...`. Poll responses include a twenty-id overlap:
+deduplicate by line id, retain the greatest `nextAfterLogId`, and display `logDropped` as omitted
+earlier lines. Without realtime, poll each second while visible and running, every ten seconds for
+the tray, and pause polling in hidden tabs. Stop active polling when `terminal` is true.
+
+Foreground async status can carry the same `progress` and a redacted 200-line `logTail`.
+`POST /jobs/track` detaches its display using `processName`, `processUUID`, and `jobUUID`; the resulting
+INLINE job remains dependent on that server pod. Durable processes use the existing process jobs
+launch operation and survive a restart. Use the cancel/retry operations and open the returned job id.
+Only show an all-users list to holders of `jobs_admin`.
+
 Every QQQ UI is a client of the UI API, `/qqq/v1`. Next UI is the web client. A CLI, TUI or native
 iOS client works from the same OpenAPI document: `GET /qqq/v1/openapi.json` on a server, or the
 committed `qqq-middleware-javalin/src/main/resources/openapi/v1/openapi.yaml` plus each extension's

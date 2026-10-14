@@ -27,6 +27,16 @@ QTableMetaData table = new QTableMetaData()
 instance.addTable(table);
 ```
 
+## Derived-value writes
+
+Trusted system jobs can use `withOmitRecordChangeEvents(true)` on `UpdateInput`,
+`InsertInput` and `DeleteInput` when writing derived counters or denormalized totals
+that are not business events. The default is false. Required integrity listeners
+still run; record locks, field security, validation and permissions are unchanged.
+This option does not change audit semantics or require restore mode. See the
+[UpdateInput options](../docs/actions/UpdateAction.adoc) for the separate automation,
+audit and modify-date controls.
+
 ## License
 
 See the repository [LICENSE](../LICENSE), [NOTICE](../NOTICE), and the license headers in individual source files.

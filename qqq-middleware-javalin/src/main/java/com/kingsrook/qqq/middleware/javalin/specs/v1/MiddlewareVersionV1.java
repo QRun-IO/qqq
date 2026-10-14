@@ -114,6 +114,7 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
       list.add(new ProcessRecordsSpecV1());
       list.add(new ProcessCancelSpecV1());
       list.add(new ProcessJobLaunchSpecV1());
+      list.addAll(JobsSpecV1.all());
       list.add(new UploadsSpecV1());
 
       list.add(new TableExportSpecV1());

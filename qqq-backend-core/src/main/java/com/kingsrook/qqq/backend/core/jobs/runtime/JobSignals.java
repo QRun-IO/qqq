@@ -42,6 +42,7 @@ import com.kingsrook.qqq.backend.core.alerts.QAlerts;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.jobs.DurableJobsTables;
 import com.kingsrook.qqq.backend.core.jobs.model.JobStatus;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobProgressLifecycle;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.realtime.RealtimeBus;
@@ -126,7 +127,13 @@ public final class JobSignals
       data.put("rowsTotal", rowsTotal);
       data.put("rowsFailed", intValue(job, "rowsFailed"));
       data.put("rowsPerSecond", Math.round(rowsPerSec * 10) / 10.0);
-      data.put("etaSeconds", etaSeconds);
+      data.put("etaSeconds", job.getValue("etaSeconds") == null ? etaSeconds : job.getValue("etaSeconds"));
+      data.put("currentPhase", job.getValueString("currentPhase"));
+      data.put("percent", JobProgressLifecycle.snapshot(job).getPercent());
+      data.put("message", job.getValueString("progressMessage"));
+      data.put("bytesDone", job.getValueLong("bytesDone"));
+      data.put("bytesTotal", job.getValueLong("bytesTotal"));
+      data.put("logSeq", job.getValueLong("logSeq"));
       publish(jobId, job.getValueString("userId"), EVENT_PROGRESS, data);
    }
 

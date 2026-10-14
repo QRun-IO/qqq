@@ -206,6 +206,72 @@ public class ProcessInitOrStepOrStatusResponseV1 implements ProcessInitOrStepOrS
 
       @OpenAPIDescription("Optional indicator of progress (e.g., `current` of `total`, as in (`1 of 10`).")
       private Integer total;
+      private JobProgressV1 progress;
+      @OpenAPIListItems(value = JobLogLineV1.class, useRef = true)
+      private List<JobLogLineV1> logTail;
+
+
+
+      /*******************************************************************************
+       ** Getter for progress
+       *******************************************************************************/
+      public JobProgressV1 getProgress()
+      {
+         return (this.progress);
+      }
+
+
+
+      /*******************************************************************************
+       ** Setter for progress
+       *******************************************************************************/
+      public void setProgress(JobProgressV1 progress)
+      {
+         this.progress = progress;
+      }
+
+
+
+      /*******************************************************************************
+       ** Fluent setter for progress
+       *******************************************************************************/
+      public ProcessStepRunning withProgress(JobProgressV1 progress)
+      {
+         this.progress = progress;
+         return (this);
+      }
+
+
+
+      /*******************************************************************************
+       ** Getter for logTail
+       *******************************************************************************/
+      public List<JobLogLineV1> getLogTail()
+      {
+         return (this.logTail);
+      }
+
+
+
+      /*******************************************************************************
+       ** Setter for logTail
+       *******************************************************************************/
+      public void setLogTail(List<JobLogLineV1> logTail)
+      {
+         this.logTail = logTail;
+      }
+
+
+
+      /*******************************************************************************
+       ** Fluent setter for logTail
+       *******************************************************************************/
+      public ProcessStepRunning withLogTail(List<JobLogLineV1> logTail)
+      {
+         this.logTail = logTail;
+         return (this);
+      }
+
 
 
 
@@ -509,6 +575,33 @@ public class ProcessInitOrStepOrStatusResponseV1 implements ProcessInitOrStepOrS
          complete.oneTimeSecrets = oneTimeSecrets.stream().map(secret -> new PreferenceSecretV1()
             .withLabel(secret.getLabel()).withValue(secret.getValue())
             .withMasked(secret.getMasked()).withUsageText(secret.getUsageText())).toList();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Publish optional progress.
+    *******************************************************************************/
+   @Override
+   public void setProgress(JobProgressV1 progress)
+   {
+      if(typedResponse instanceof ProcessStepRunning running)
+      {
+         running.progress = progress;
+      }
+   }
+
+
+   /*******************************************************************************
+    ** Publish optional logTail.
+    *******************************************************************************/
+   @Override
+   public void setLogTail(List<JobLogLineV1> logTail)
+   {
+      if(typedResponse instanceof ProcessStepRunning running)
+      {
+         running.logTail = logTail;
       }
    }
 

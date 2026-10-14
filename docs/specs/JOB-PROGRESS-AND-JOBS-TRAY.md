@@ -122,6 +122,11 @@ progress.warn("Skipped 3 missing media files");
   tracking row's pod gone and marks it `FAILED` with "The server restarted while this ran in the
   foreground; it was not a durable job, so it could not be resumed. Run it again." This is honest
   rather than crash-proof; processes that must survive a crash declare `alwaysDurable`.
+- **Tracking jobs for work with no process** (for example an assistant turn):
+  `JobTracking.start(TrackedJobRequest)` creates the same kind of `INLINE` row owned by this pod;
+  `JobTracking.progress(jobId)` returns a `JobProgress` for it, `heartbeat`, `finish(jobId, status,
+  message)` and `onCancel(jobId, listener)` (fired on the owning pod when a client cancels). Same
+  reaper rule when the pod goes away.
 - `qbit-backups` sets `alwaysDurable` on `backupRunPlan` (and restore and verify), so backups are
   crash-proof jobs and never inline.
 

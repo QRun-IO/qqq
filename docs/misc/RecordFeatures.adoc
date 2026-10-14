@@ -217,3 +217,28 @@ least one following character asks only expanders, with `SearchTermKind.TAG` and
 the prefix removed. Ordinary terms use `SearchTermKind.TEXT`. The expander owns
 exact versus partial matching. A table without an expander search field returns
 no matches for a tag term. Record-search providers receive `#` terms unchanged.
+
+== Record followers SPI
+
+Register a `RecordFollowersProviderInterface` on instance-level metadata only:
+
+[source,java]
+----
+RecordFeaturesMetaData.ofOrWithNew(instance)
+   .withFollowersProvider(new QCodeReference(MyFollowersProvider.class));
+
+List<RecordFollower> followers = RecordFollowers.get(instance,
+   new RecordReference(tableName, recordId), FollowEvent.ALERT);
+----
+
+The provider returns followers who want the requested `CHANGE`, `COMMENT`, or
+`ALERT` event; treat ALERT like CHANGE unless finer preferences are available.
+`RecordFollower` carries `userId`, `notifyOnChange`, `notifyOnComment`, and an
+optional `reason`. Core validates that the code reference loads and implements
+the SPI. App- and table-level provider registrations are not used.
+The helper returns empty if no provider is registered or FOLLOW is disabled by
+`RecordFeaturesResolver`; provider failures log a warning and return empty.
+
+Followers are not filtered by read access. Before sending record data, callers
+must check each recipient using `RecordAccessCheckerInterface`, or pass
+`sourceTableName` and `sourceRecordId` to `QAlerts.notify`, which re-checks access.

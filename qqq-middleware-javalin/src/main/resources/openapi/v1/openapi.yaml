@@ -1855,8 +1855,28 @@ components:
       type: "object"
     ProcessCancelResponseV1:
       type: "object"
+    ProcessJobLaunchResponseV1:
+      properties:
+        jobId:
+          description: "Id of the new durable job (a jobs_job record; read it with\
+            \ GET /table/jobs_job/{jobId})."
+          type: "number"
+        status:
+          description: "Status of the new job: QUEUED, or AWAITING_CONFIRMATION for\
+            \ a launch from the assistant channel."
+          type: "string"
+      type: "object"
     ProcessMetaData:
       properties:
+        durableJobAlways:
+          description: "True when the process always runs as a durable background\
+            \ job (too large to run while the user waits)."
+          type: "boolean"
+        durableJobEligible:
+          description: "True when the process can run as a durable background job\
+            \ (POST /processes/{processName}/jobs): clients may offer \"Run in background\"\
+            ."
+          type: "boolean"
         frontendSteps:
           description: "Frontend steps (aka, Screens) for this process."
           items:
@@ -1921,6 +1941,15 @@ components:
       type: "object"
     ProcessMetaDataLight:
       properties:
+        durableJobAlways:
+          description: "True when the process always runs as a durable background\
+            \ job (too large to run while the user waits)."
+          type: "boolean"
+        durableJobEligible:
+          description: "True when the process can run as a durable background job\
+            \ (POST /processes/{processName}/jobs): clients may offer \"Run in background\"\
+            ."
+          type: "boolean"
         hasPermission:
           description: "Boolean to indicate if the user has permission for the process."
           type: "boolean"
@@ -1965,6 +1994,15 @@ components:
       type: "object"
     ProcessMetaDataResponseV1:
       properties:
+        durableJobAlways:
+          description: "True when the process always runs as a durable background\
+            \ job (too large to run while the user waits)."
+          type: "boolean"
+        durableJobEligible:
+          description: "True when the process can run as a durable background job\
+            \ (POST /processes/{processName}/jobs): clients may offer \"Run in background\"\
+            ."
+          type: "boolean"
         frontendSteps:
           description: "Frontend steps (aka, Screens) for this process."
           items:
@@ -3852,6 +3890,26 @@ components:
         version:
           description: "The extension semantic version (MAJOR.MINOR.PATCH)."
           type: "string"
+      type: "object"
+    UploadRefResponseV1:
+      properties:
+        contentType:
+          description: "The file's content type, as uploaded."
+          type: "string"
+        expiresAt:
+          description: "When the ref stops working (ISO-8601). A job that uses it\
+            \ extends it."
+          type: "string"
+        fileName:
+          description: "The file's name."
+          type: "string"
+        ref:
+          description: "Opaque ref to the uploaded file, bound to the uploading user.\
+            \ Pass it in uploadRefs."
+          type: "string"
+        sizeBytes:
+          description: "The file's size in bytes."
+          type: "number"
       type: "object"
     VersionResponseV1:
       properties:
@@ -6955,6 +7013,8 @@ paths:
                     metaDataGeneration: 0
                     processes:
                       person.bulkInsert:
+                        durableJobAlways: false
+                        durableJobEligible: false
                         hasPermission: true
                         icon:
                           name: "library_add"
@@ -6965,6 +7025,8 @@ paths:
                         stepFlow: "LINEAR"
                         tableName: "person"
                       person.bulkEdit:
+                        durableJobAlways: false
+                        durableJobEligible: false
                         hasPermission: true
                         isHidden: true
                         label: "Person Bulk Edit"
@@ -6972,6 +7034,8 @@ paths:
                         stepFlow: "LINEAR"
                         tableName: "person"
                       samplePersonProcess:
+                        durableJobAlways: false
+                        durableJobEligible: false
                         hasPermission: true
                         icon:
                           name: "person_add"
@@ -6982,6 +7046,8 @@ paths:
                         stepFlow: "LINEAR"
                         tableName: "person"
                       person.bulkDelete:
+                        durableJobAlways: false
+                        durableJobEligible: false
                         hasPermission: true
                         isHidden: true
                         label: "Person Bulk Delete"
@@ -6989,6 +7055,8 @@ paths:
                         stepFlow: "LINEAR"
                         tableName: "person"
                       person.bulkEditWithFile:
+                        durableJobAlways: false
+                        durableJobEligible: false
                         hasPermission: true
                         isHidden: true
                         label: "Person Bulk Edit With File"
@@ -9293,6 +9361,142 @@ paths:
       - sessionUuidCookie:
         - "N/A"
       summary: "Cancel a running process"
+      tags:
+      - "Processes"
+  /qqq/v1/processes/{processName}/jobs:
+    post:
+      description: "Launch an eligible process as a durable job: it survives pod restarts,\
+        \ runs in checkpointed chunks under leases, and can be paused, resumed, cancelled,\
+        \ restarted and retried with the job control processes on the jobs_job table.\
+        \ Values for the process's frontend steps are given up front. The job runs\
+        \ with the caller's permissions (never more). A launch from the assistant\
+        \ client channel waits for confirmation (status AWAITING_CONFIRMATION). Progress\
+        \ arrives as job.progress and job.status events on the realtime channel record:jobs_job:{jobId}."
+      parameters:
+      - description: "Name of the process to run as a job"
+        example: "person.bulkEdit"
+        in: "path"
+        name: "processName"
+        required: true
+        schema:
+          type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              description: "The launch request."
+              properties:
+                values:
+                  description: "Process values (what the frontend steps would have\
+                    \ collected)."
+                  type: "object"
+                filter:
+                  description: "A records filter (QQueryFilter JSON) the process runs\
+                    \ over."
+                  type: "object"
+                recordIds:
+                  description: "Primary keys the process runs over."
+                  items:
+                    type: "string"
+                  type: "array"
+                uploadRefs:
+                  description: "Upload refs from POST /uploads."
+                  items:
+                    type: "string"
+                  type: "array"
+                savedBulkLoadProfileId:
+                  description: "A saved bulk load profile to load with."
+                  type: "integer"
+                profile:
+                  description: "A bulk load profile (BulkLoadProfile v1 JSON) to load\
+                    \ with."
+                  type: "object"
+                mode:
+                  description: "EXECUTE (default) or VALIDATE (no store)."
+                  enum:
+                  - "EXECUTE"
+                  - "VALIDATE"
+                  type: "string"
+                priority:
+                  description: "0-9, default 5 (higher runs first)."
+                  type: "integer"
+                notifyEmail:
+                  description: "Email the owner when the job finishes."
+                  type: "boolean"
+                label:
+                  description: "A label for the job (defaults to the process label)."
+                  type: "string"
+                startAfterStep:
+                  description: "The launch point: backend steps after this step run\
+                    \ in the job."
+                  type: "string"
+                expectedRows:
+                  description: "A known row count (e.g., from a count)."
+                  type: "integer"
+              type: "object"
+        required: false
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessJobLaunchResponseV1"
+          description: "The new job's id and status."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many jobs are waiting for this user (or for the assistant)."
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Run a process as a durable background job"
+      tags:
+      - "Processes"
+  /qqq/v1/uploads:
+    post:
+      description: "Streams a file into the application's uploads storage and returns\
+        \ an opaque, expiring ref bound to the caller. Pass the ref in uploadRefs\
+        \ when launching a job (POST /processes/{processName}/jobs). Send multipart\
+        \ form data with one file field, or the raw file as the request body with\
+        \ the fileName query parameter."
+      parameters:
+      - description: "The file's name, when the body is the raw file (not multipart)."
+        example: "people.csv"
+        in: "query"
+        name: "fileName"
+        required: false
+        schema:
+          type: "string"
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              description: "One file field."
+              properties:
+                file:
+                  description: "The file."
+                  format: "binary"
+                  type: "string"
+              type: "object"
+          application/octet-stream:
+            schema:
+              description: "The raw file (give its name in the fileName query parameter)."
+              format: "binary"
+              type: "string"
+        required: false
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadRefResponseV1"
+          description: "The upload's ref, name, size, content type and expiry."
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Upload a file for a job or a bulk load"
       tags:
       - "Processes"
   /qqq/v1/table/{tableName}/export:

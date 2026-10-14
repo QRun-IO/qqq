@@ -81,6 +81,12 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
   route for v1 clients. The adjuster runs in the caller's session (the legacy route runs it as the
   system user, unauthenticated), and the caller must be allowed to insert or edit records in the
   table. It answers 404 when the application registers no form adjusters.
+- Added `GET /table/{tableName}/apis` (tag `Tables`, #1152): the application APIs that expose a
+  table, with each API's versions, semantic versions and the path of the table's OpenAPI document
+  in each (`TableApisResponseV1`). It replaces the unversioned `/apis.json?tableName=` and
+  `{api}/versions.json` for v1 clients. Modules contribute through `TableApisProviderInterface`
+  (found with `ServiceLoader`); `qqq-middleware-api` provides one. The caller must be allowed to
+  read the table.
 - Added the assisted bulk-load operations (tag `Bulk Load`, design spec #1171 section 3.2):
   `GET /bulkLoad/uploads/{uploadRef}/profile`, `POST /bulkLoad/{tableName}/suggestMapping` and
   `POST /bulkLoad/{tableName}/validate` (a dry run through the table's bulk-insert process; nothing

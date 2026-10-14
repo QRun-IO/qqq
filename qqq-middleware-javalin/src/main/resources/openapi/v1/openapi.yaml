@@ -2660,6 +2660,52 @@ components:
             \ without a value are omitted."
           type: "object"
       type: "object"
+    TableApiV1:
+      description: "An application API that exposes the table."
+      properties:
+        name:
+          description: "The API's name (a stable key)."
+          type: "string"
+        label:
+          description: "Label to show users."
+          type: "string"
+        path:
+          description: "Root-relative base path of the API, e.g. `/api/`."
+          type: "string"
+        currentVersion:
+          description: "The version the API calls current."
+          nullable: true
+          type: "string"
+        versions:
+          description: "Every version the API serves."
+          items:
+            $ref: "#/components/schemas/TableApiVersionV1"
+          type: "array"
+      type: "object"
+    TableApiVersionV1:
+      description: "One version of an API."
+      properties:
+        version:
+          description: "The version, as it appears in the API's URLs."
+          type: "string"
+        semanticVersion:
+          description: "Its semantic version, when the API declares one."
+          nullable: true
+          type: "string"
+        tableSpecPath:
+          description: "Root-relative path of the table's OpenAPI document (JSON)\
+            \ in this version."
+          type: "string"
+      type: "object"
+    TableApisResponseV1:
+      description: "The APIs that expose a table."
+      properties:
+        apis:
+          description: "The APIs, by name."
+          items:
+            $ref: "#/components/schemas/TableApiV1"
+          type: "array"
+      type: "object"
     TableCountResponseV1:
       properties:
         count:
@@ -7008,6 +7054,32 @@ paths:
       - sessionUuidCookie:
         - "N/A"
       summary: "Run a form adjuster"
+      tags:
+      - "Tables"
+  /qqq/v1/table/{tableName}/apis:
+    get:
+      description: "The application APIs (served by the API middleware beside this\
+        \ one) that expose the table, with each API's versions and the root-relative\
+        \ path of the table's OpenAPI document in each version.  Empty when the application\
+        \ serves no APIs.  The caller must be allowed to read the table."
+      parameters:
+      - description: "Name of the table."
+        in: "path"
+        name: "tableName"
+        required: true
+        schema:
+          type: "string"
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TableApisResponseV1"
+          description: "Successful Response"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "List the APIs that expose a table"
       tags:
       - "Tables"
   /qqq/v1/table/{tableName}:

@@ -31,6 +31,7 @@ import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaDataInterface;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.WidgetDropdownData;
+import com.kingsrook.qqq.backend.core.model.metadata.help.HelpContentVisibility;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
 
@@ -95,7 +96,7 @@ public class QFrontendWidgetMetaData
          this.icons = qWidgetMetaData.getIcons();
       }
 
-      this.helpContent = widgetMetaData.getHelpContent();
+      this.helpContent = HelpContentVisibility.filter(widgetMetaData.getHelpContent());
       this.defaultValues = widgetMetaData.getDefaultValues();
 
       hasPermission = PermissionsHelper.hasWidgetPermission(actionInput, name);

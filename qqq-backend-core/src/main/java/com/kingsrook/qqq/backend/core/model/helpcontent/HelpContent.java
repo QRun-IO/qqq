@@ -47,6 +47,15 @@ public class HelpContent extends QRecordEntity
    @QField(isRequired = true, maxLength = 250, valueTooLongBehavior = ValueTooLongBehavior.ERROR)
    private String key;
 
+   @QField(maxLength = 500, valueTooLongBehavior = ValueTooLongBehavior.ERROR)
+   private String summary;
+
+   @QField(maxLength = 250, valueTooLongBehavior = ValueTooLongBehavior.ERROR)
+   private String permissionName;
+
+   @QField(maxLength = 100, valueTooLongBehavior = ValueTooLongBehavior.ERROR)
+   private String clientChannel;
+
    @QField()
    private String content;
 
@@ -292,4 +301,97 @@ public class HelpContent extends QRecordEntity
       return (this);
    }
 
+
+
+
+   /*******************************************************************************
+    ** Getter for summary
+    *******************************************************************************/
+   public String getSummary()
+   {
+      return (this.summary);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for summary
+    *******************************************************************************/
+   public void setSummary(String summary)
+   {
+      this.summary = summary;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for summary
+    *******************************************************************************/
+   public HelpContent withSummary(String summary)
+   {
+      this.summary = summary;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for permissionName
+    *******************************************************************************/
+   public String getPermissionName()
+   {
+      return (this.permissionName);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for permissionName
+    *******************************************************************************/
+   public void setPermissionName(String permissionName)
+   {
+      this.permissionName = permissionName;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for permissionName
+    *******************************************************************************/
+   public HelpContent withPermissionName(String permissionName)
+   {
+      this.permissionName = permissionName;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for clientChannel
+    *******************************************************************************/
+   public String getClientChannel()
+   {
+      return (this.clientChannel);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for clientChannel
+    *******************************************************************************/
+   public void setClientChannel(String clientChannel)
+   {
+      this.clientChannel = clientChannel;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for clientChannel
+    *******************************************************************************/
+   public HelpContent withClientChannel(String clientChannel)
+   {
+      this.clientChannel = clientChannel;
+      return (this);
+   }
 }

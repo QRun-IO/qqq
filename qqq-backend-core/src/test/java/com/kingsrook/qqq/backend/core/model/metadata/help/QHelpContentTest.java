@@ -22,7 +22,9 @@ package com.kingsrook.qqq.backend.core.model.metadata.help;
 
 
 import com.kingsrook.qqq.backend.core.BaseTest;
+import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
@@ -51,4 +53,24 @@ class QHelpContentTest extends BaseTest
       assertEquals("*hi*", new QHelpContent().withFormat(null).withContent("*hi*").getContentAsHtml());
    }
 
+
+
+   /*******************************************************************************
+    ** Markdown escapes raw HTML and drops unsafe link schemes.
+    *******************************************************************************/
+   @Test
+   void safeMarkdownAndDerivedSummaries()
+   {
+      String html = new QHelpContent().withContentAsMarkdown("<script>alert(1)</script>\n\n[click](javascript:alert(1))").getContentAsHtml();
+      assertThat(html).contains("&lt;script&gt;").doesNotContain("<script>", "href=\"javascript:");
+      assertEquals("First sentence.", new QHelpContent().withContentAsMarkdown("**First** sentence. Second sentence.").getSummaryOrDerived());
+      assertEquals("One & two.", new QHelpContent().withContentAsHTML("<p>One &amp; two.</p><p>Three.</p>").getSummaryOrDerived());
+      assertEquals("Explicit", new QHelpContent("Long body").withSummary("Explicit").getSummaryOrDerived());
+      assertThat(new QHelpContent("a".repeat(250)).getSummaryOrDerived()).hasSize(200).endsWith("…");
+      assertEquals("", new QHelpContent().getSummaryOrDerived());
+      QHelpContent original = new QHelpContent("body").withSummary("summary").withPermissionName("private").withClientChannel("web");
+      assertEquals("summary", original.clone().getSummary());
+      assertEquals("private", original.clone().getPermissionName());
+      assertThat(JsonUtils.toJson(original)).doesNotContain("permissionName", "clientChannel");
+   }
 }

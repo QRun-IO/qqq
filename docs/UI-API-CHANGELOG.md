@@ -84,9 +84,6 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 - Added JVM-local loopback-only session tokens, streamed responses and multipart uploads to
   `UiApiInvoker` (in-process invocation; no change to the document).
 - Added `UiApiRequest.withHeader(name, value)` (no change to the document) for custom invocation headers; null values remove headers, and the invoker drops reserved credential, client-channel and request-metadata headers case-insensitively.
-### Unreleased (after 1.2.0; no change to the document)
-- Added `UiApiRequest.withHeader(name, value)` for custom invocation headers; null values remove headers, and the invoker drops reserved credential, client-channel and request-metadata headers case-insensitively.
-### 1.3.0 (unreleased)
 - The assistant wall denies `audit*` (reads and writes) by default again; `withAssistantAuditReads()`
   is the host opt-in for reads. See the security record in UI-API-CLIENT-CHANNELS.md.
 - Durable jobs (docs/specs/DURABLE-JOBS-AND-ASSISTED-BULK-LOAD.md):

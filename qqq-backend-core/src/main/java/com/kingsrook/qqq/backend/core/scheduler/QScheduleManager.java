@@ -77,6 +77,7 @@ public class QScheduleManager
    private final  Supplier<QSession> systemUserSessionSupplier;
 
    private Map<String, QSchedulerInterface> schedulers = new HashMap<>();
+   private volatile boolean started;
 
 
 
@@ -170,6 +171,7 @@ public class QScheduleManager
       // start each scheduler //
       //////////////////////////
       schedulers.values().forEach(s -> s.start());
+      started = true;
    }
 
 
@@ -177,8 +179,19 @@ public class QScheduleManager
    /*******************************************************************************
     **
     *******************************************************************************/
+   public boolean isStarted()
+   {
+      return (started);
+   }
+
+
+
+   /*******************************************************************************
+    ** Stop all schedulers and expose the stopped state to health probes.
+    *******************************************************************************/
    public void stop()
    {
+      started = false;
       schedulers.values().forEach(s -> s.stop());
    }
 
@@ -189,6 +202,7 @@ public class QScheduleManager
     *******************************************************************************/
    public void stopAsync()
    {
+      started = false;
       schedulers.values().forEach(s -> s.stopAsync());
    }
 
@@ -544,6 +558,7 @@ public class QScheduleManager
     *******************************************************************************/
    public void unInit()
    {
+      started = false;
       qScheduleManager = null;
       schedulers.values().forEach(s -> s.unInit());
       schedulers.clear();

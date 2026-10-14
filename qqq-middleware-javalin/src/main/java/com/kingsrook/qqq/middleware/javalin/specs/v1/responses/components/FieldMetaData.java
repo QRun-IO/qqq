@@ -23,11 +23,14 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessTier;
+import com.kingsrook.qqq.backend.core.actions.values.ContingentPossibleValueHelper;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehaviorForFrontend;
@@ -36,11 +39,13 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QSupplementalFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.PossibleValueDependencyBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValuePicker;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
+import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIEnumSubSet;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIExclude;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIListItems;
 
@@ -205,7 +210,57 @@ public class FieldMetaData implements ToSchema
 
    }
 
-   // todo - PVS filter!!
+
+
+   /*******************************************************************************
+    ** Other input fields that control this field's possible values.
+    *******************************************************************************/
+   @OpenAPIDescription("Names of fields controlling this field's choices, including explicit and filter dependencies. Absent for non-contingent fields.")
+   @OpenAPIListItems(String.class)
+   public List<String> getPossibleValueSourceDependsOn()
+   {
+      if(wrappedFull == null)
+      {
+         return (wrappedFrontend.getPossibleValueSourceDependsOn());
+      }
+      return (ContingentPossibleValueHelper.isContingent(wrappedFull) ? new ArrayList<>(ContingentPossibleValueHelper.getDependencyFieldNames(wrappedFull)) : null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Enum values for the string wire representation.
+    *******************************************************************************/
+   public static class DependencyBehaviors implements OpenAPIEnumSubSet.EnumSubSet<PossibleValueDependencyBehavior>
+   {
+      /*******************************************************************************
+       ** All supported dependency behaviors.
+       *******************************************************************************/
+      public EnumSet<PossibleValueDependencyBehavior> getSubSet()
+      {
+         return (EnumSet.allOf(PossibleValueDependencyBehavior.class));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Behavior while any dependency is unset.
+    *******************************************************************************/
+   @OpenAPIDescription("DISABLE_UNTIL_SET disables a contingent field until its dependencies are set (default). SHOW_ALL_UNTIL_SET keeps it enabled and omits criteria with missing inputs in form searches. Absent for non-contingent fields.")
+   @OpenAPIEnumSubSet(DependencyBehaviors.class)
+   public String getPossibleValueSourceDependencyBehavior()
+   {
+      if(wrappedFull == null)
+      {
+         return (wrappedFrontend.getPossibleValueSourceDependencyBehavior());
+      }
+      return (ContingentPossibleValueHelper.isContingent(wrappedFull)
+         ? Objects.requireNonNullElse(wrappedFull.getPossibleValueSourceDependencyBehavior(), PossibleValueDependencyBehavior.DISABLE_UNTIL_SET).name() : null);
+   }
+
+
+
 
    /***************************************************************************
     ** The record picker declared by this field's possible value source, if any.

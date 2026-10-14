@@ -191,4 +191,33 @@ class PrepareBulkEditStepTest extends BaseTest
       assertThat(dependentsForStore).contains("Region Id", "Store Group Id");
    }
 
+
+
+
+   /*******************************************************************************
+    ** Explicit and multi-criterion dependencies participate in bulk preparation.
+    *******************************************************************************/
+   @Test
+   void testExplicitAndNestedDependencies() throws QException
+   {
+      QInstance instance = QContext.getQInstance();
+      QContext.getQSession().setSecurityKeyValues(Map.of(TestUtils.SECURITY_KEY_TYPE_STORE_ALL_ACCESS, List.of(true)));
+      instance.getTable(TestUtils.TABLE_NAME_ORDER).addField(new QFieldMetaData("regionCode", QFieldType.STRING));
+      instance.getTable(TestUtils.TABLE_NAME_ORDER).addField(new QFieldMetaData("dependentChoice", QFieldType.INTEGER)
+         .withLabel("Dependent choice").withPossibleValueSourceDependsOn(List.of("storeId"))
+         .withPossibleValueSourceFilter(new QQueryFilter(new QFilterCriteria("active", EQUALS, true))
+            .withSubFilters(List.of(new QQueryFilter(new QFilterCriteria("region", EQUALS, "${input.regionCode}"))))));
+      TestUtils.insertRecords(instance.getTable(TestUtils.TABLE_NAME_ORDER), List.of(
+         new QRecord().withValue("id", 1).withValue("storeId", 1).withValue("regionCode", "north"),
+         new QRecord().withValue("id", 2).withValue("storeId", 2).withValue("regionCode", "north")));
+      RunBackendStepInput input = new RunBackendStepInput();
+      input.setTableName(TestUtils.TABLE_NAME_ORDER);
+      input.addValue("recordIds", "1,2");
+      RunBackendStepOutput output = new RunBackendStepOutput();
+      new PrepareBulkEditStep().run(input, output);
+      assertThat(output.getValue("possibleValueFilterValueRegionCode")).isEqualTo("north");
+      @SuppressWarnings("unchecked")
+      ListingHash<String, String> nonDistinct = (ListingHash<String, String>) output.getValue("nonDistinctPVSFields");
+      assertThat(nonDistinct.get("Store Id")).contains("Dependent choice");
+   }
 }

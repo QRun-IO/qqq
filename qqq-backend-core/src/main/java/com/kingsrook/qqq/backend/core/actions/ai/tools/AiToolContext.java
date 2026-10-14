@@ -30,11 +30,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import com.kingsrook.qqq.backend.core.actions.ai.AiDataGateway;
 import com.kingsrook.qqq.backend.core.actions.ai.AiExposure;
 import com.kingsrook.qqq.backend.core.actions.ai.AiRecordRef;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolKernelSettings;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolOutcome;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolResult;
+import com.kingsrook.qqq.backend.core.actions.ai.CoreAiDataGateway;
 import com.kingsrook.qqq.backend.core.actions.ai.exposure.AiExposureChannelPolicy;
 import com.kingsrook.qqq.backend.core.actions.ai.exposure.AiExposurePolicy;
 import com.kingsrook.qqq.backend.core.actions.ai.output.AiLinkBuilder;
@@ -103,6 +105,8 @@ public class AiToolContext
 
    private final Set<String> redactions = new TreeSet<>();
 
+   private static final AiDataGateway CORE_DATA_GATEWAY = new CoreAiDataGateway();
+
    private MetaDataActionCustomizerInterface metaDataActionCustomizer;
 
 
@@ -117,6 +121,18 @@ public class AiToolContext
       this.exposurePolicy = exposurePolicy;
       this.redactor = redactor;
       this.result = result;
+   }
+
+
+
+   /*******************************************************************************
+    ** How the data tools read data: the settings' gateway (the assistant's UI API
+    ** gateway), else the core actions.
+    *******************************************************************************/
+   public AiDataGateway getDataGateway()
+   {
+      AiDataGateway gateway = settings == null ? null : settings.getDataGateway();
+      return (gateway == null ? CORE_DATA_GATEWAY : gateway);
    }
 
 

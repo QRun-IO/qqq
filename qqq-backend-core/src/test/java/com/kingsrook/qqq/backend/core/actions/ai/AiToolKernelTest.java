@@ -762,6 +762,12 @@ class AiToolKernelTest extends BaseTest
    {
       QInstance instance = kernelInstanceWithData();
       instance.getSupplementalMetaData().remove(ClientChannelsMetaData.NAME);
+
+      ////////////////////////////////////////////////////////////////////////////
+      // audit reads are open to the assistant since #1157; wall them here so   //
+      // the history tool proves the kernel runs under the assistant channel.  //
+      ////////////////////////////////////////////////////////////////////////////
+      ClientChannelsMetaData.ofOrWithNew(instance).withDeniedObject("assistant", "audit");
       QSession caller = store1User().withClientChannel("next-ui");
       QContext.init(instance, caller);
       AiToolKernel assistant = new AiToolKernel(instance, AiKernelTestSupport.settings());

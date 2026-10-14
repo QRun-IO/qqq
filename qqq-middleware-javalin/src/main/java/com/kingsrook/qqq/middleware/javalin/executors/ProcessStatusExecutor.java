@@ -25,6 +25,7 @@ import java.util.Optional;
 import com.kingsrook.qqq.backend.core.actions.async.AsyncJobManager;
 import com.kingsrook.qqq.backend.core.actions.async.AsyncJobState;
 import com.kingsrook.qqq.backend.core.actions.async.AsyncJobStatus;
+import com.kingsrook.qqq.backend.core.actions.processes.OneTimeSecretHandoff;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -78,13 +79,18 @@ public class ProcessStatusExecutor extends AbstractMiddlewareExecutor<ProcessSta
             {
                ///////////////////////////////////////////////////////////////////////////////////////
                // if the job is complete, get the process result from state provider, and return it //
-               // this output should look like it did if the job finished synchronously!!           //
+               // one-time secrets: only the parked hand-off, once (state keeps masked forms only) //
                ///////////////////////////////////////////////////////////////////////////////////////
                Optional<ProcessState> processState = RunProcessAction.getStateForUser(processUUID, processName);
                if(processState.isPresent())
                {
                   RunProcessOutput runProcessOutput = new RunProcessOutput(processState.get());
                   ProcessExecutorUtils.serializeRunProcessResultForCaller(output, processName, runProcessOutput);
+                  java.util.List<com.kingsrook.qqq.backend.core.model.secrets.OneTimeSecret> secrets = OneTimeSecretHandoff.take(processUUID);
+                  if(!secrets.isEmpty())
+                  {
+                     output.setOneTimeSecrets(secrets);
+                  }
                   QJavalinAccessLogger.logProcessSummary(processName, processUUID, runProcessOutput);
                }
                else

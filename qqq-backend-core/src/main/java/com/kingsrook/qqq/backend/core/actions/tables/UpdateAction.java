@@ -46,6 +46,7 @@ import com.kingsrook.qqq.backend.core.actions.interfaces.UpdateInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
 import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.ClassifiedValues;
 import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordDiscovery;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
@@ -722,7 +723,7 @@ public class UpdateAction
 
       for(QRecord record : records)
       {
-         Serializable value = ValueUtils.getValueAsFieldType(primaryKeyField.getType(), record.getValue(table.getPrimaryKeyField()));
+         Serializable value = ValueUtils.getValueAsFieldType(table, primaryKeyField, record.getValue(table.getPrimaryKeyField()));
          if(value == null)
          {
             continue;
@@ -731,7 +732,7 @@ public class UpdateAction
          Object key = AssociatedRecordUpdate.primaryKey(table, record);
          if(!lookedUpRecords.containsKey(key))
          {
-            record.addError(new NotFoundStatusMessage("No record was found to update for " + primaryKeyField.getLabel() + " = " + value));
+            record.addError(new NotFoundStatusMessage("No record was found to update for " + primaryKeyField.getLabel() + " = " + ClassifiedValues.diagnostic(table, primaryKeyField.getName(), value)));
          }
          else if(authorizedOldRecords != null)
          {

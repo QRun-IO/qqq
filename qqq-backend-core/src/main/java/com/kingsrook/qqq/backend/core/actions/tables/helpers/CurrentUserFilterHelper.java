@@ -65,8 +65,8 @@ public class CurrentUserFilterHelper
             }
             else
             {
-               Serializable typedUserId = ValueUtils.getValueAsFieldType(
-                  FieldAndJoinTable.get(input.getTable(), criterion.getFieldName(), input.getQueryJoins(), true).field().getType(), userId);
+               FieldAndJoinTable field = FieldAndJoinTable.get(input.getTable(), criterion.getFieldName(), input.getQueryJoins(), true);
+               Serializable typedUserId = ValueUtils.getValueAsFieldType(field.joinTable(), field.field(), userId);
                replacement.getValues().replaceAll(value -> value instanceof CurrentUser || "${currentUser}".equals(value) ? typedUserId : value);
             }
             if(result == filter)

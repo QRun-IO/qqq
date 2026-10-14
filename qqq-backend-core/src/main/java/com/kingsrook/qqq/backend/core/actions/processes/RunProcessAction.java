@@ -98,6 +98,8 @@ public class RunProcessAction
    public static final String BASEPULL_TIMESTAMP_FIELD  = "basepullTimestampField";
    public static final String BASEPULL_CONFIGURATION    = "basepullConfiguration";
 
+   public static final String ONE_TIME_SECRETS_MASKED = "oneTimeSecretsMasked";
+
    public static final String PROCESS_TRACER_CODE_REFERENCE_FIELD = "processTracerCodeReference";
 
    ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -760,6 +762,20 @@ public class RunProcessAction
       traceStepStart(runBackendStepInput);
 
       RunBackendStepOutput runBackendStepOutput = new RunBackendStepAction().execute(runBackendStepInput);
+      if(!runBackendStepOutput.getOneTimeSecrets().isEmpty())
+      {
+         runProcessOutput.getOneTimeSecrets().addAll(runBackendStepOutput.getOneTimeSecrets());
+         ArrayList<String> masked = new ArrayList<>();
+         if(processState.getValues().get(ONE_TIME_SECRETS_MASKED) instanceof List<?> previousMasks)
+         {
+            for(Object previousMask : previousMasks)
+            {
+               masked.add((String) previousMask);
+            }
+         }
+         runBackendStepOutput.getOneTimeSecrets().forEach(secret -> masked.add(secret.getMasked()));
+         runBackendStepOutput.addValue(ONE_TIME_SECRETS_MASKED, masked);
+      }
       storeState(stateKey, runBackendStepOutput.getProcessState());
 
       traceStepFinish(runBackendStepInput, runBackendStepOutput);

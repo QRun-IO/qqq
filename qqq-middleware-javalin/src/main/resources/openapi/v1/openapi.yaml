@@ -1819,6 +1819,17 @@ components:
       type: "object"
     ProcessCancelResponseV1:
       type: "object"
+    ProcessJobLaunchResponseV1:
+      properties:
+        jobId:
+          description: "Id of the new durable job (a jobs_job record; read it with\
+            \ GET /table/jobs_job/{jobId})."
+          type: "number"
+        status:
+          description: "Status of the new job: QUEUED, or AWAITING_CONFIRMATION for\
+            \ a launch from the assistant channel."
+          type: "string"
+      type: "object"
     ProcessMetaData:
       properties:
         frontendSteps:
@@ -9124,6 +9135,97 @@ paths:
       - sessionUuidCookie:
         - "N/A"
       summary: "Cancel a running process"
+      tags:
+      - "Processes"
+  /qqq/v1/processes/{processName}/jobs:
+    post:
+      description: "Launch an eligible process as a durable job: it survives pod restarts,\
+        \ runs in checkpointed chunks under leases, and can be paused, resumed, cancelled,\
+        \ restarted and retried with the job control processes on the jobs_job table.\
+        \ Values for the process's frontend steps are given up front. The job runs\
+        \ with the caller's permissions (never more). A launch from the assistant\
+        \ client channel waits for confirmation (status AWAITING_CONFIRMATION). Progress\
+        \ arrives as job.progress and job.status events on the realtime channel record:jobs_job:{jobId}."
+      parameters:
+      - description: "Name of the process to run as a job"
+        example: "person.bulkEdit"
+        in: "path"
+        name: "processName"
+        required: true
+        schema:
+          type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              description: "The launch request."
+              properties:
+                values:
+                  description: "Process values (what the frontend steps would have\
+                    \ collected)."
+                  type: "object"
+                filter:
+                  description: "A records filter (QQueryFilter JSON) the process runs\
+                    \ over."
+                  type: "object"
+                recordIds:
+                  description: "Primary keys the process runs over."
+                  items:
+                    type: "string"
+                  type: "array"
+                uploadRefs:
+                  description: "Upload refs from POST /uploads."
+                  items:
+                    type: "string"
+                  type: "array"
+                savedBulkLoadProfileId:
+                  description: "A saved bulk load profile to load with."
+                  type: "integer"
+                profile:
+                  description: "A bulk load profile (BulkLoadProfile v1 JSON) to load\
+                    \ with."
+                  type: "object"
+                mode:
+                  description: "EXECUTE (default) or VALIDATE (no store)."
+                  enum:
+                  - "EXECUTE"
+                  - "VALIDATE"
+                  type: "string"
+                priority:
+                  description: "0-9, default 5 (higher runs first)."
+                  type: "integer"
+                notifyEmail:
+                  description: "Email the owner when the job finishes."
+                  type: "boolean"
+                label:
+                  description: "A label for the job (defaults to the process label)."
+                  type: "string"
+                startAfterStep:
+                  description: "The launch point: backend steps after this step run\
+                    \ in the job."
+                  type: "string"
+                expectedRows:
+                  description: "A known row count (e.g., from a count)."
+                  type: "integer"
+              type: "object"
+        required: false
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessJobLaunchResponseV1"
+          description: "The new job's id and status."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many jobs are waiting for this user (or for the assistant)."
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Run a process as a durable background job"
       tags:
       - "Processes"
   /qqq/v1/table/{tableName}/export:

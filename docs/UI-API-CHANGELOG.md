@@ -119,6 +119,11 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
   - It is intersected with the user's live permissions.
   - The session's client channel is `token:<id>`; "token" is a new default channel.
   - Access tokens from qbit-authentik set it.
+- In-app help (docs/HELP-CONTENT.md):
+  - Typed `HelpContentV1` entries and slot maps across all existing help properties; new `helpContents` maps on apps, processes and reports. Targeting fields remain server-only.
+  - Added secured `GET /help/search?q=&limit=` with ranked results, canonical keys, summaries, long help and application-relative links (default 20, maximum 50).
+  - Added `GET /help/coverage?kind=&missingOnly=&parentKey=` for users with INSERT or EDIT permission on `helpContent`; includes hidden targets and scoped totals before the missing-only filter.
+  - Per-session permission and client-channel targeting, safe Markdown rendering and cross-node reload. `GET /version` advertises the `help` feature.
 - Added the assisted bulk-load operations (tag `Bulk Load`, design spec #1171 section 3.2):
   `GET /bulkLoad/uploads/{uploadRef}/profile`, `POST /bulkLoad/{tableName}/suggestMapping` and
   `POST /bulkLoad/{tableName}/validate` (a dry run through the table's bulk-insert process; nothing

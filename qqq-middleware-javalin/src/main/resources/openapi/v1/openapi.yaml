@@ -15,6 +15,13 @@ components:
           items:
             $ref: "#/components/schemas/AppTreeNode"
           type: "array"
+        helpContents:
+          additionalProperties:
+            items:
+              $ref: "#/components/schemas/HelpContentV1"
+            type: "array"
+          description: "Help entries by slot, filtered for the current session."
+          type: "object"
         icon:
           $ref: "#/components/schemas/Icon"
           description: "Icon to display for the app."
@@ -730,6 +737,8 @@ components:
           type: "number"
         helpContents:
           description: "Help Contents for this field."
+          items:
+            $ref: "#/components/schemas/HelpContentV1"
           type: "array"
         inlinePossibleValueSource:
           description: "Inline possible-value source for this field; enumValues supply\
@@ -749,6 +758,8 @@ components:
               type: "object"
             enumValues:
               type: "array"
+            helpContent:
+              type: "object"
             idType:
               enum:
               - "STRING"
@@ -1076,6 +1087,8 @@ components:
           type: "string"
         helpContents:
           description: "Help content shown on the step/screen."
+          items:
+            $ref: "#/components/schemas/HelpContentV1"
           type: "array"
         label:
           description: "The user-facing name for this step"
@@ -1093,6 +1106,124 @@ components:
           items:
             $ref: "#/components/schemas/FieldMetaData"
           type: "array"
+      type: "object"
+    HelpContentV1:
+      properties:
+        content:
+          description: "Long help in the declared format."
+          type: "string"
+        contentAsHtml:
+          description: "Rendered Markdown (raw HTML escaped, unsafe links removed).\
+            \ Explicit HTML is unchanged and clients must sanitize it."
+          type: "string"
+        format:
+          description: "Format of the long help."
+          enum:
+          - "TEXT"
+          - "HTML"
+          - "MARKDOWN"
+          type: "string"
+        roles:
+          description: "Screen roles covered by this entry."
+          items:
+            type: "string"
+          type: "array"
+        summary:
+          description: "Optional short plain-text tooltip."
+          type: "string"
+      type: "object"
+    HelpCoverageEntryV1:
+      properties:
+        hasContent:
+          description: "Whether visible help has long content."
+          type: "boolean"
+        hasSummary:
+          description: "Whether visible help has an explicit summary."
+          type: "boolean"
+        hidden:
+          description: "Whether the target is hidden in metadata."
+          type: "boolean"
+        key:
+          description: "Canonical helpContent address."
+          type: "string"
+        kind:
+          description: "Help target kind."
+          type: "string"
+        label:
+          description: "User-facing target label."
+          type: "string"
+        parentKey:
+          description: "Canonical parent address."
+          type: "string"
+        roles:
+          description: "Screen roles covered by this entry."
+          items:
+            type: "string"
+          type: "array"
+      type: "object"
+    HelpCoverageResponseV1:
+      properties:
+        entries:
+          items:
+            $ref: "#/components/schemas/HelpCoverageEntryV1"
+          type: "array"
+        totals:
+          items:
+            $ref: "#/components/schemas/HelpCoverageTotalV1"
+          type: "array"
+      type: "object"
+    HelpCoverageTotalV1:
+      properties:
+        kind:
+          description: "Help target kind."
+          type: "string"
+        total:
+          description: "Number of targets in the selected kind and parent scope."
+          type: "number"
+        withHelp:
+          description: "Targets with a visible summary or long content."
+          type: "number"
+      type: "object"
+    HelpSearchResponseV1:
+      properties:
+        results:
+          items:
+            $ref: "#/components/schemas/HelpSearchResultV1"
+          type: "array"
+      type: "object"
+    HelpSearchResultV1:
+      properties:
+        contentAsHtml:
+          description: "Rendered Markdown (raw HTML escaped, unsafe links removed).\
+            \ Explicit HTML is unchanged and clients must sanitize it."
+          type: "string"
+        href:
+          description: "Application-relative navigation link, when available."
+          type: "string"
+        key:
+          description: "Canonical helpContent address."
+          type: "string"
+        kind:
+          description: "Help target kind."
+          type: "string"
+        label:
+          description: "User-facing target label."
+          type: "string"
+        name:
+          description: "Target metadata name."
+          type: "string"
+        process:
+          description: "Related process name, when applicable."
+          type: "string"
+        summary:
+          description: "Optional short plain-text tooltip."
+          type: "string"
+        table:
+          description: "Related table name, when applicable."
+          type: "string"
+        text:
+          description: "Plain-text help excerpt, at most 600 characters."
+          type: "string"
       type: "object"
     Icon:
       properties:
@@ -1212,7 +1343,10 @@ components:
             \ allow-list - never the whole environment.  Omitted when none are set."
           type: "object"
         helpContents:
-          additionalProperties: true
+          additionalProperties:
+            items:
+              $ref: "#/components/schemas/HelpContentV1"
+            type: "array"
           description: "Instance-level help content, by slot name (for example the\
             \ query screen's bulkAddFilterValues and bulkAddFilterValuesPossibleValueSource\
             \ slots).  Omitted when the instance defines none."
@@ -1236,6 +1370,13 @@ components:
             properties:
               hasPermission:
                 description: "Whether the user may run the report."
+                type: "object"
+              helpContents:
+                additionalProperties:
+                  items:
+                    $ref: "#/components/schemas/HelpContentV1"
+                  type: "array"
+                description: "Help entries by slot, filtered for the current session."
                 type: "object"
               iconName:
                 description: "Name of the report's icon."
@@ -1340,8 +1481,11 @@ components:
                 description: "Whether the user may render the widget."
                 type: "object"
               helpContent:
-                additionalProperties: true
-                description: "Help content by role."
+                additionalProperties:
+                  items:
+                    $ref: "#/components/schemas/HelpContentV1"
+                  type: "array"
+                description: "Help content by slot."
                 type: "object"
               icon:
                 description: "Name of the widget's icon."
@@ -1721,6 +1865,13 @@ components:
         hasPermission:
           description: "Boolean to indicate if the user has permission for the process."
           type: "boolean"
+        helpContents:
+          additionalProperties:
+            items:
+              $ref: "#/components/schemas/HelpContentV1"
+            type: "array"
+          description: "Help entries by slot, filtered for the current session."
+          type: "object"
         icon:
           $ref: "#/components/schemas/Icon"
           description: "Icon to display for the process."
@@ -1773,6 +1924,13 @@ components:
         hasPermission:
           description: "Boolean to indicate if the user has permission for the process."
           type: "boolean"
+        helpContents:
+          additionalProperties:
+            items:
+              $ref: "#/components/schemas/HelpContentV1"
+            type: "array"
+          description: "Help entries by slot, filtered for the current session."
+          type: "object"
         icon:
           $ref: "#/components/schemas/Icon"
           description: "Icon to display for the process."
@@ -1815,6 +1973,13 @@ components:
         hasPermission:
           description: "Boolean to indicate if the user has permission for the process."
           type: "boolean"
+        helpContents:
+          additionalProperties:
+            items:
+              $ref: "#/components/schemas/HelpContentV1"
+            type: "array"
+          description: "Help entries by slot, filtered for the current session."
+          type: "object"
         icon:
           description: "Icon to display for the process."
           properties:
@@ -1926,6 +2091,8 @@ components:
                     type: "string"
                   helpContents:
                     description: "Help content shown on the step/screen."
+                    items:
+                      $ref: "#/components/schemas/HelpContentV1"
                     type: "array"
                   label:
                     description: "The user-facing name for this step"
@@ -2050,6 +2217,8 @@ components:
                       type: "string"
                     helpContents:
                       description: "Help content shown on the step/screen."
+                      items:
+                        $ref: "#/components/schemas/HelpContentV1"
                       type: "array"
                     label:
                       description: "The user-facing name for this step"
@@ -2919,6 +3088,13 @@ components:
         hasPermission:
           description: "Whether the user may run the report."
           type: "object"
+        helpContents:
+          additionalProperties:
+            items:
+              $ref: "#/components/schemas/HelpContentV1"
+            type: "array"
+          description: "Help entries by slot, filtered for the current session."
+          type: "object"
         iconName:
           description: "Name of the report's icon."
           type: "string"
@@ -3204,6 +3380,10 @@ components:
             \ for the current session."
           type: "boolean"
         helpContents:
+          additionalProperties:
+            items:
+              $ref: "#/components/schemas/HelpContentV1"
+            type: "array"
           description: "Help Contents for this table."
           type: "object"
         icon:
@@ -3320,6 +3500,10 @@ components:
             \ table."
           type: "boolean"
         helpContents:
+          additionalProperties:
+            items:
+              $ref: "#/components/schemas/HelpContentV1"
+            type: "array"
           description: "Help Contents for this table."
           type: "object"
         icon:
@@ -3405,6 +3589,10 @@ components:
             \ for the current session."
           type: "boolean"
         helpContents:
+          additionalProperties:
+            items:
+              $ref: "#/components/schemas/HelpContentV1"
+            type: "array"
           description: "Help Contents for this table."
           type: "object"
         icon:
@@ -3545,6 +3733,8 @@ components:
           type: "number"
         helpContents:
           description: "Help Contents for this section table."
+          items:
+            $ref: "#/components/schemas/HelpContentV1"
           type: "array"
         icon:
           $ref: "#/components/schemas/Icon"
@@ -3744,6 +3934,8 @@ components:
           type: "number"
         helpContents:
           description: "Help Contents for this field."
+          items:
+            $ref: "#/components/schemas/HelpContentV1"
           type: "array"
         inlinePossibleValueSource:
           description: "Inline possible-value source for this field; enumValues supply\
@@ -3763,6 +3955,8 @@ components:
               type: "object"
             enumValues:
               type: "array"
+            helpContent:
+              type: "object"
             idType:
               enum:
               - "STRING"
@@ -4184,6 +4378,8 @@ components:
                     type: "number"
                   helpContents:
                     description: "Help Contents for this field."
+                    items:
+                      $ref: "#/components/schemas/HelpContentV1"
                     type: "array"
                   inlinePossibleValueSource:
                     description: "Inline possible-value source for this field; enumValues\
@@ -4203,6 +4399,8 @@ components:
                         type: "object"
                       enumValues:
                         type: "array"
+                      helpContent:
+                        type: "object"
                       idType:
                         enum:
                         - "STRING"
@@ -7233,6 +7431,74 @@ paths:
       summary: "Search records across tables"
       tags:
       - "Tables"
+  /qqq/v1/help/search:
+    get:
+      description: "Search help visible to the session. Label hits weigh 3, summary\
+        \ hits 2 and content hits 1. Stable ties sort by kind and key. Limit defaults\
+        \ to 20 and is capped at 50."
+      parameters:
+      - in: "query"
+        name: "q"
+        required: true
+        schema:
+          type: "string"
+      - in: "query"
+        name: "limit"
+        required: false
+        schema:
+          type: "number"
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HelpSearchResponseV1"
+          description: "Help search results"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Search visible application help"
+      tags:
+      - "General"
+  /qqq/v1/help/coverage:
+    get:
+      description: "Requires INSERT or EDIT permission on helpContent. Includes hidden\
+        \ targets. Totals reflect kind and parent scope before missingOnly is applied."
+      parameters:
+      - in: "query"
+        name: "kind"
+        required: false
+        schema:
+          type: "string"
+      - in: "query"
+        name: "missingOnly"
+        required: false
+        schema:
+          type: "boolean"
+      - in: "query"
+        name: "parentKey"
+        required: false
+        schema:
+          type: "string"
+      responses:
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "No INSERT or EDIT permission on helpContent"
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HelpCoverageResponseV1"
+          description: "Help coverage results"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Inspect application help coverage"
+      tags:
+      - "General"
   /qqq/v1/table/{tableName}/variants:
     get:
       description: "List the variants a table's backend can be scoped to (for example\

@@ -544,6 +544,12 @@ class AiToolKernelTest extends BaseTest
       List<Map<String, Object>> results = (List<Map<String, Object>>) data(result).get("results");
       assertThat(results).isNotEmpty();
       assertThat(results.stream().map(r -> r.get("kind") + ":" + r.get("name")).toList()).contains("field:name", "table:customer");
+      assertThat(results).allSatisfy(row -> assertThat(row).containsKey("key"));
+      assertThat(results).anySatisfy(row ->
+      {
+         assertEquals("table:customer;field:name", row.get("key"));
+         assertEquals("The customer's full legal name.", row.get("summary"));
+      });
       assertThat(JsonUtils.toJson(results)).doesNotContain("Jane").doesNotContain("assistantConversation");
 
       result = run(store1User(), call("search_help", "query", "recalculate"));

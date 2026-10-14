@@ -17,7 +17,7 @@ parameters:
     default: ""
 
 orbs:
-  qqq-orb: kingsrook/qqq-orb@0.6.8
+  qqq-orb: kingsrook/qqq-orb@0.6.9
 
 commands:
   start-mongo-bind-trace:

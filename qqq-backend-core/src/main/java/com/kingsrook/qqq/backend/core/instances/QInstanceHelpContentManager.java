@@ -21,6 +21,8 @@
 package com.kingsrook.qqq.backend.core.instances;
 
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.ListIterator;
@@ -28,8 +30,17 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.WeakHashMap;
+import com.kingsrook.qqq.backend.core.actions.help.HelpTargetCatalog;
+import com.kingsrook.qqq.backend.core.actions.tables.AggregateAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
+import com.kingsrook.qqq.backend.core.context.CapturedContext;
+import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.Aggregate;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
@@ -47,6 +58,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.processes.QFrontendStepMeta
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QFieldSection;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
+import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
@@ -58,6 +70,9 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  *******************************************************************************/
 public class QInstanceHelpContentManager
 {
+   private static volatile long reloadIntervalMillis = 30_000;
+   private static final Map<QInstance, ReloadState> RELOAD_STATES = Collections.synchronizedMap(new WeakHashMap<>());
+
    private static final QLogger LOG = QLogger.getLogger(QInstanceHelpContentManager.class);
 
 
@@ -67,25 +82,7 @@ public class QInstanceHelpContentManager
     *******************************************************************************/
    public static void loadHelpContent(QInstance qInstance)
    {
-      try
-      {
-         if(qInstance.getTable(HelpContent.TABLE_NAME) == null)
-         {
-            return;
-         }
-
-         QueryInput queryInput = new QueryInput();
-         queryInput.setTableName(HelpContent.TABLE_NAME);
-         QueryOutput queryOutput = new QueryAction().execute(queryInput);
-         for(QRecord record : queryOutput.getRecords())
-         {
-            processHelpContentRecord(qInstance, record);
-         }
-      }
-      catch(Exception e)
-      {
-         LOG.error("Error loading help content", e);
-      }
+      reloadHelpContent(qInstance);
    }
 
 
@@ -123,12 +120,18 @@ public class QInstanceHelpContentManager
          String stepName    = nameValuePairs.get("step");
          String widgetName  = nameValuePairs.get("widget");
          String slotName    = nameValuePairs.get("slot");
+         String reportName = nameValuePairs.get("report");
+         String sourceName = nameValuePairs.get("possibleValueSource");
 
          ///////////////////////////////////////////////////////////
          // build a help content meta-data object from the record //
          ///////////////////////////////////////////////////////////
          QHelpContent helpContent = new QHelpContent()
             .withContent(record.getValueString("content"))
+            .withSummary(record.getValueString("summary"))
+            .withPermissionName(record.getValueString("permissionName"))
+            .withClientChannel(record.getValueString("clientChannel"))
+            .withFromData(true)
             .withRole(QHelpRole.valueOf(record.getValueString("role"))); // mmm, we could fall down a bit here w/ other app-defined roles...
 
          if(StringUtils.hasContent(record.getValueString("format")))
@@ -141,9 +144,25 @@ public class QInstanceHelpContentManager
          // check - if there are no contents, then let's remove this help content from the container      //
          // (note pre-delete customizer will take advantage of this, passing in empty content on purpose) //
          ///////////////////////////////////////////////////////////////////////////////////////////////////
-         if(!StringUtils.hasContent(helpContent.getContent()))
+         if(!StringUtils.hasContent(helpContent.getContent()) && !StringUtils.hasContent(helpContent.getSummary()))
          {
+            for(var target : HelpTargetCatalog.collect(qInstance))
+            {
+               Map<String, String> matchingParts = new HashMap<>(nameValuePairs);
+               if(processName != null && processName.startsWith("*") && target.process() != null && target.process().endsWith(processName.substring(1)))
+               {
+                  matchingParts.put("process", target.process());
+               }
+               if(keyParts(target.key()).equals(matchingParts))
+               {
+                  removeDataContents(target.contents(), roles);
+               }
+            }
             helpContent = null;
+            if(appName != null || tableName != null || processName != null || widgetName != null || reportName != null || sourceName != null || nameValuePairs.containsKey("instanceLevel"))
+            {
+               return;
+            }
          }
 
          ///////////////////////////////////////////////////////////////////////////////////
@@ -151,23 +170,31 @@ public class QInstanceHelpContentManager
          ///////////////////////////////////////////////////////////////////////////////////
          if(StringUtils.hasContent(appName))
          {
-            processHelpContentForApp(qInstance, key, appName, slotName, roles, helpContent);
+            processHelpContentForApp(qInstance, key, appName, slotName, helpContent);
          }
          else if(StringUtils.hasContent(tableName))
          {
-            processHelpContentForTable(qInstance, key, tableName, sectionName, fieldName, slotName, roles, helpContent);
+            processHelpContentForTable(qInstance, key, tableName, sectionName, fieldName, slotName, helpContent);
          }
          else if(StringUtils.hasContent(processName))
          {
-            processHelpContentForProcess(qInstance, key, processName, fieldName, stepName, roles, helpContent);
+            processHelpContentForProcess(qInstance, key, processName, fieldName, stepName, slotName, helpContent);
+         }
+         else if(StringUtils.hasContent(reportName) && qInstance.getReport(reportName) != null && StringUtils.hasContent(slotName))
+         {
+            qInstance.getReport(reportName).withHelpContent(slotName, helpContent);
+         }
+         else if(StringUtils.hasContent(sourceName) && qInstance.getPossibleValueSource(sourceName) != null && StringUtils.hasContent(slotName))
+         {
+            qInstance.getPossibleValueSource(sourceName).withHelpContent(slotName, helpContent);
          }
          else if(StringUtils.hasContent(widgetName))
          {
-            processHelpContentForWidget(qInstance, key, widgetName, slotName, roles, helpContent);
+            processHelpContentForWidget(qInstance, key, widgetName, slotName, helpContent);
          }
          else if(nameValuePairs.containsKey("instanceLevel"))
          {
-            processHelpContentForInstance(qInstance, key, slotName, roles, helpContent);
+            processHelpContentForInstance(qInstance, key, slotName, helpContent);
          }
          else
          {
@@ -198,7 +225,7 @@ public class QInstanceHelpContentManager
    /*******************************************************************************
     **
     *******************************************************************************/
-   private static void processHelpContentForApp(QInstance qInstance, String key, String appName, String slotName, Set<HelpRole> roles, QHelpContent helpContent)
+   private static void processHelpContentForApp(QInstance qInstance, String key, String appName, String slotName, QHelpContent helpContent)
    {
       QAppMetaData app = qInstance.getApp(appName);
       if(!StringUtils.hasContent(slotName))
@@ -211,14 +238,7 @@ public class QInstanceHelpContentManager
       }
       else
       {
-         if(helpContent != null)
-         {
-            app.withHelpContent(slotName, helpContent);
-         }
-         else
-         {
-            app.removeHelpContent(slotName, roles);
-         }
+         app.withHelpContent(slotName, helpContent);
       }
    }
 
@@ -227,7 +247,7 @@ public class QInstanceHelpContentManager
    /*******************************************************************************
     **
     *******************************************************************************/
-   private static void processHelpContentForTable(QInstance qInstance, String key, String tableName, String sectionName, String fieldName, String slotName, Set<HelpRole> roles, QHelpContent helpContent)
+   private static void processHelpContentForTable(QInstance qInstance, String key, String tableName, String sectionName, String fieldName, String slotName, QHelpContent helpContent)
    {
       QTableMetaData table = qInstance.getTable(tableName);
       if(table == null)
@@ -244,13 +264,9 @@ public class QInstanceHelpContentManager
          {
             LOG.info("Unrecognized table field in help content", logPair("key", key));
          }
-         else if(helpContent != null)
-         {
-            field.withHelpContent(helpContent);
-         }
          else
          {
-            field.removeHelpContent(roles);
+            field.withHelpContent(helpContent);
          }
       }
       else if(StringUtils.hasContent(sectionName))
@@ -263,13 +279,9 @@ public class QInstanceHelpContentManager
          {
             LOG.info("Unrecognized table section in help content", logPair("key", key));
          }
-         else if(helpContent != null)
-         {
-            optionalSection.get().withHelpContent(helpContent);
-         }
          else
          {
-            optionalSection.get().removeHelpContent(roles);
+            optionalSection.get().withHelpContent(helpContent);
          }
       }
       else
@@ -280,14 +292,7 @@ public class QInstanceHelpContentManager
          }
          else
          {
-            if(helpContent != null)
-            {
-               table.withHelpContent(slotName, helpContent);
-            }
-            else
-            {
-               table.removeHelpContent(slotName, roles);
-            }
+            table.withHelpContent(slotName, helpContent);
          }
       }
    }
@@ -297,7 +302,7 @@ public class QInstanceHelpContentManager
    /*******************************************************************************
     **
     *******************************************************************************/
-   private static void processHelpContentForProcess(QInstance qInstance, String key, String processName, String fieldName, String stepName, Set<HelpRole> roles, QHelpContent helpContent)
+   private static void processHelpContentForProcess(QInstance qInstance, String key, String processName, String fieldName, String stepName, String slotName, QHelpContent helpContent)
    {
       if(processName.startsWith("*") && processName.length() > 1)
       {
@@ -308,7 +313,7 @@ public class QInstanceHelpContentManager
             if(process.getName().endsWith(subName))
             {
                anyMatched = true;
-               processHelpContentForProcess(qInstance, key, process.getName(), fieldName, stepName, roles, helpContent);
+               processHelpContentForProcess(qInstance, key, process.getName(), fieldName, stepName, slotName, helpContent);
             }
          }
 
@@ -338,13 +343,9 @@ public class QInstanceHelpContentManager
          {
             LOG.info("Unrecognized process field in help content", logPair("key", key));
          }
-         else if(helpContent != null)
-         {
-            optionalField.get().withHelpContent(helpContent);
-         }
          else
          {
-            optionalField.get().removeHelpContent(roles);
+            optionalField.get().withHelpContent(helpContent);
          }
       }
       else if(StringUtils.hasContent(stepName))
@@ -358,14 +359,14 @@ public class QInstanceHelpContentManager
          {
             LOG.info("Unrecognized process step in help content", logPair("key", key));
          }
-         else if(helpContent != null)
+         else
          {
             frontendStep.withHelpContent(helpContent);
          }
-         else
-         {
-            frontendStep.removeHelpContent(roles);
-         }
+      }
+      else if(StringUtils.hasContent(slotName))
+      {
+         process.withHelpContent(slotName, helpContent);
       }
       else
       {
@@ -378,7 +379,7 @@ public class QInstanceHelpContentManager
    /*******************************************************************************
     **
     *******************************************************************************/
-   private static void processHelpContentForWidget(QInstance qInstance, String key, String widgetName, String slotName, Set<HelpRole> roles, QHelpContent helpContent)
+   private static void processHelpContentForWidget(QInstance qInstance, String key, String widgetName, String slotName, QHelpContent helpContent)
    {
       QWidgetMetaDataInterface widget = qInstance.getWidget(widgetName);
       if(!StringUtils.hasContent(slotName))
@@ -391,14 +392,7 @@ public class QInstanceHelpContentManager
       }
       else
       {
-         if(helpContent != null)
-         {
-            widget.withHelpContent(slotName, helpContent);
-         }
-         else
-         {
-            widget.removeHelpContent(slotName, roles);
-         }
+         widget.withHelpContent(slotName, helpContent);
       }
    }
 
@@ -407,7 +401,7 @@ public class QInstanceHelpContentManager
    /*******************************************************************************
     **
     *******************************************************************************/
-   private static void processHelpContentForInstance(QInstance qInstance, String key, String slotName, Set<HelpRole> roles, QHelpContent helpContent)
+   private static void processHelpContentForInstance(QInstance qInstance, String key, String slotName, QHelpContent helpContent)
    {
       if(!StringUtils.hasContent(slotName))
       {
@@ -415,14 +409,7 @@ public class QInstanceHelpContentManager
       }
       else
       {
-         if(helpContent != null)
-         {
-            qInstance.withHelpContent(slotName, helpContent);
-         }
-         else
-         {
-            qInstance.removeHelpContent(slotName, roles);
-         }
+         qInstance.withHelpContent(slotName, helpContent);
       }
    }
 
@@ -434,12 +421,20 @@ public class QInstanceHelpContentManager
     *******************************************************************************/
    public static void putHelpContentInList(QHelpContent helpContent, List<QHelpContent> helpContents)
    {
+      if(helpContent.getFromData())
+      {
+         helpContent = helpContent.clone();
+      }
       ListIterator<QHelpContent> iterator = helpContents.listIterator();
       while(iterator.hasNext())
       {
          QHelpContent existingContent = iterator.next();
          if(Objects.equals(existingContent.getRoles(), helpContent.getRoles()))
          {
+            if(helpContent.getFromData())
+            {
+               helpContent.setCodeContent(existingContent.getFromData() ? existingContent.getCodeContent() : existingContent);
+            }
             iterator.set(helpContent);
             return;
          }
@@ -464,4 +459,185 @@ public class QInstanceHelpContentManager
       helpContents.removeIf(existingContent -> Objects.equals(existingContent.getRoles(), roles));
    }
 
+
+
+   /*******************************************************************************
+    ** Configure the per-instance poll throttle; zero is useful for deterministic tests.
+    *******************************************************************************/
+   public static void setReloadIntervalMillis(long intervalMillis)
+   {
+      reloadIntervalMillis = Math.max(0, intervalMillis);
+   }
+
+
+
+   /*******************************************************************************
+    ** Reload only after the table's count/max-modifyDate signature changes.
+    ** Polling is internal metadata maintenance, independent of the viewing user's
+    ** permissions on the authoring table. The user's context is always restored.
+    *******************************************************************************/
+   public static void reloadIfChanged(QInstance instance)
+   {
+      if(instance == null || instance.getTable(HelpContent.TABLE_NAME) == null)
+      {
+         return;
+      }
+      ReloadState state = RELOAD_STATES.computeIfAbsent(instance, key -> new ReloadState());
+      synchronized(state)
+      {
+         long now = System.currentTimeMillis();
+         if(now - state.lastChecked < reloadIntervalMillis)
+         {
+            return;
+         }
+         state.lastChecked = now;
+         try
+         {
+            QContext.withTemporaryContext(new CapturedContext(instance, new QSystemUserSession(instance)), () ->
+            {
+               String signature = signature();
+               if(!Objects.equals(signature, state.signature))
+               {
+                  reload(instance, state, signature);
+               }
+            });
+         }
+         catch(Exception e)
+         {
+            LOG.warn("Error checking help content changes", e);
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Replace data-applied help, restoring any code declaration it had overridden.
+    *******************************************************************************/
+   public static void reloadHelpContent(QInstance instance)
+   {
+      if(instance == null || instance.getTable(HelpContent.TABLE_NAME) == null)
+      {
+         return;
+      }
+      ReloadState state = RELOAD_STATES.computeIfAbsent(instance, key -> new ReloadState());
+      synchronized(state)
+      {
+         try
+         {
+            QContext.withTemporaryContext(new CapturedContext(instance, new QSystemUserSession(instance)), () -> reload(instance, state, signature()));
+         }
+         catch(Exception e)
+         {
+            LOG.error("Error loading help content", e);
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Read successfully before changing live metadata; failed reads leave help intact.
+    *******************************************************************************/
+   private static void reload(QInstance instance, ReloadState state, String signature) throws QException
+   {
+      QueryOutput output = new QueryAction().execute(new QueryInput().withTableName(HelpContent.TABLE_NAME));
+      for(var target : HelpTargetCatalog.collect(instance))
+      {
+         removeDataContents(target.contents(), null);
+      }
+      for(QRecord record : output.getRecords())
+      {
+         processHelpContentRecord(instance, record);
+      }
+      state.signature = signature;
+      state.lastChecked = System.currentTimeMillis();
+   }
+
+
+
+   /*******************************************************************************
+    ** Two database aggregates avoid fetching content on unchanged polls.
+    *******************************************************************************/
+   private static String signature() throws QException
+   {
+      Aggregate count = new Aggregate("id", AggregateOperator.COUNT);
+      Aggregate modified = new Aggregate("modifyDate", AggregateOperator.MAX);
+      var results = new AggregateAction().execute(new AggregateInput().withTableName(HelpContent.TABLE_NAME).withAggregate(count).withAggregate(modified)).getResults();
+      return (results.isEmpty() ? "0:null" : results.getFirst().getAggregateValue(count) + ":" + results.getFirst().getAggregateValue(modified));
+   }
+
+
+
+   /*******************************************************************************
+    ** Remove data entries only. A null role set selects all data entries.
+    *******************************************************************************/
+   private static void removeDataContents(List<QHelpContent> contents, Set<HelpRole> roles)
+   {
+      if(contents == null)
+      {
+         return;
+      }
+      var iterator = contents.listIterator();
+      while(iterator.hasNext())
+      {
+         QHelpContent content = iterator.next();
+         if(content.getFromData() && (roles == null || Objects.equals(roles, content.getRoles())))
+         {
+            if(content.getCodeContent() == null)
+            {
+               iterator.remove();
+            }
+            else
+            {
+               iterator.set(content.getCodeContent());
+            }
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Deep copy help slots when metadata is cloned.
+    *******************************************************************************/
+   public static Map<String, List<QHelpContent>> cloneHelpContent(Map<String, List<QHelpContent>> contents)
+   {
+      if(contents == null)
+      {
+         return (null);
+      }
+      Map<String, List<QHelpContent>> copy = new HashMap<>();
+      contents.forEach((slot, entries) -> copy.put(slot, entries == null ? null : new ArrayList<>(entries.stream().map(QHelpContent::clone).toList())));
+      return (copy);
+   }
+
+
+
+   /*******************************************************************************
+    ** Weakly keyed per-instance polling state; does not retain the instance.
+    *******************************************************************************/
+   private static class ReloadState
+   {
+      private long lastChecked;
+      private String signature;
+   }
+
+
+   /*******************************************************************************
+    ** Normalize help addresses so deletion is independent of key-part order.
+    *******************************************************************************/
+   private static Map<String, String> keyParts(String key)
+   {
+      Map<String, String> parts = new HashMap<>();
+      for(String part : key.split(";"))
+      {
+         String[] pair = part.split(":", 2);
+         if(pair.length == 2)
+         {
+            parts.put(pair[0], pair[1]);
+         }
+      }
+      return (parts);
+   }
 }

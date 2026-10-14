@@ -188,7 +188,15 @@ with it without overwriting anything a person has edited.
       retired: true            # explicit removal
   ```
 - Core, each qbit and the host register their bundles with `HelpBundles.register(qInstance, "help/x.yaml")`.
-  Qbits register theirs from their producer.
+  Qbits register theirs from their producer. The classes live in `model.metadata.help.bundles`.
+  An optional third `ClassLoader` argument supports isolated qbit/host class loaders; otherwise
+  registration uses the thread context class loader (falling back to core's loader if absent).
+  Invalid resources fail immediately with the resource name. `HelpBundles.of(qInstance).getBundles()`
+  returns registration order; `resolveWinningEntries()` maps `EntryKey(key, role)` to
+  `WinningEntry(entry, bundle)`. Equal-layer ties are logged and later registration wins.
+  `HelpContentMetaDataProvider.defineAll` registers `help/qqq-core.yaml` when both targeting and
+  provenance fields are enabled. Its optional saved-view/report/audit/script targets apply when
+  those providers are installed.
 - Layering: **CORE < QBIT < HOST < USER**. For a given `(key, role)` the highest bundle layer
   supplies the text the sync seeds. An edit made in the UI (USER) always wins over any bundle.
 
@@ -202,13 +210,42 @@ with it without overwriting anything a person has edited.
 - `upstreamSummary` and `upstreamContent`: the bundle's newer text, kept while the status is UPSTREAM_CHANGED.
 - `modifiedBy`.
 
-A row with no `bundleId` is USER-created.
+A row with no `bundleId` is USER-created. User inserts receive `source=USER`; editing bundled
+rows preserves their source. Pre-insert/pre-update customizers record the session user's ID in
+`modifiedBy`. Sync uses a scoped `HelpContentSyncContext` to preserve that attribution.
+`HelpContentHash.of(format, summary, content)` hashes UTF-8 bytes of
+`format + "\u0000" + summary + "\u0000" + content`, with nulls treated as empty, into lowercase
+SHA-256 hex. The hash always uses raw text, including unresolved live-reference syntax.
+
+Provenance fields are enabled by default. Existing schemas can opt out using
+`new HelpContentMetaDataProvider().withProvenanceFields(false)` until the columns are added.
+This option is independent of `withTargetingFields(false)`; bundle management processes require
+both extensions. The provenance section uses tier T3.
 
 ### 5.3 Sync (startup, and on demand)
 
 The sync runs at startup, in the background. It runs as a durable job once the durable job kernel
 (qqq#1178) is in the instance, and as an async process otherwise. Admins can also run it from the
-Help app as "Sync help from bundles". For each winning bundle entry:
+Help app as "Sync help from bundles". Hosts call this after defining all metadata and loading help:
+
+```java
+QInstanceHelpContentManager.loadHelpContent(qInstance);
+HelpBundles.syncOnStartup(qInstance);
+```
+
+Startup uses a system session through the async process runner and logs failures without failing
+startup. Detection of `qInstance.getSupplementalMetaData("durableJobs")` has no compile-time kernel
+dependency. Until qqq#1178 supplies the submission API, that branch uses the same async runner
+at the marked `STAND-IN` call site.
+
+`actions.help.HelpBundleSyncAction.execute()` synchronizes the registered winners; `preview()`
+calculates the same counts without writes or alerts. Reads and writes use normal QQQ actions in
+batches of 250, with explicit help reload after writes. `helpBundleSync` is scoped to the
+`helpContent` table and is not added to navigation. Its Review and Result screens use standard
+process summary components. `helpAcceptUpstream` and `helpKeepMine` require selected records;
+only records in `UPSTREAM_CHANGED` are eligible for either operation.
+
+For each winning bundle entry:
 
 | Database row | Action |
 |---|---|
@@ -223,7 +260,15 @@ For keys that are no longer in any bundle (or are marked `retired`):
 
 The run writes a summary (inserted, updated, upstream-changed, retired) to the process result and to
 the log. In the Help app, admins accept the upstream text or keep theirs. Either way the status
-goes back to CURRENT and the hash is set to the new upstream text.
+goes back to CURRENT and the hash is set to the new upstream text. The Java operations are
+`acceptUpstream(ids)` and `keepMine(ids)`. Accept also adopts the winning entry's format; keep
+preserves the current format, summary and content. Both clear the pending upstream text.
+If the winning bundle changes again before review, the operation asks the author to sync again
+rather than accept text that was not shown in the pending review.
+Rows with no bundle ID are left untouched, including when their key matches a bundle entry.
+Repeated syncs avoid timestamp/audit churn. Counts include `deleted` and `unchanged` as well;
+`upstreamChanged` includes entries still awaiting review, so an idempotent run keeps their alert
+open. Alerts use type `help.upstream.changed` and dedup key `help-sync`.
 
 ### 5.4 Live values instead of copied ones
 
@@ -238,7 +283,18 @@ metadata, search, assistant), so help never repeats a default or label that migh
 | `{{values:possibleValueSource}}` | the enum's labels, comma-separated |
 | `{{setting:name}}` | a value from a registered `HelpValueProvider` (hosts and qbits register them; for example `alerts.digestHour.default`) |
 
-An unknown reference renders as an empty string and is logged once. The coverage gate (5.5)
+`model.metadata.help.HelpTextRenderer` renders values when `HelpContentVisibility` makes a
+per-session copy. Frontend metadata, help search and `AiHelpText` share that path. Markdown HTML
+is computed from the rendered copy; persisted text remains raw. Substituted values are escaped
+for Markdown. Labels resolve fields first, then tables, processes and apps (in that order for
+ambiguous names). Only enum possible-value sources are expanded; no record queries run.
+
+Register a setting resolver with
+`HelpBundles.of(qInstance).withValueProvider(name -> Optional.of(...))`. The
+`model.metadata.help.HelpValueProvider` SPI returns `Optional.empty()` for unknown names;
+the first registered provider returning a value wins.
+
+An unknown reference renders as an empty string and is logged once per reference key. The coverage gate (5.5)
 fails on references that cannot be resolved.
 
 ### 5.5 Coverage gate
@@ -249,7 +305,7 @@ the host call from one test:
 ```java
 HelpBundleAssertions.forInstance(qInstance)
    .bundles("help/qbit-alerts.yaml")
-   .owning(t -> t.getName().startsWith("alerts_"))   // the objects this bundle must cover
+   .owning(t -> t.name().startsWith("alerts_"))   // the objects this bundle must cover
    .excluding("table:alerts_alert;field:id", ...)    // explicit exclusions
    .assertComplete();
 ```
@@ -259,6 +315,14 @@ It fails when any of these is true:
 - an entry's key does not resolve.
 - a summary is longer than 120 characters, or contains markup.
 - a `{{...}}` reference does not resolve.
+
+`testing.HelpBundleAssertions` loads the named resources independently of registration and
+throws one `AssertionError` listing every issue. `report()` returns that list without throwing.
+The ownership predicate receives `actions.help.HelpTarget` (kind, key, name, table, process and
+owner); owning a table also requires help for its non-trivial fields. `.excludingFields(Predicate<QFieldMetaData>)`
+handles application-specific trivial fields. Explicit key exclusions affect required coverage,
+not validation of entries that were supplied. Use a fully enriched test instance, including
+optional providers when the bundle documents them, so generated actions and labels exist. Process suffix wildcard keys and extensible slots are supported.
 
 As a result, new metadata cannot merge without help.
 

@@ -251,11 +251,12 @@ class HelpActionsTest extends BaseTest
    void legacySchemaOption() throws Exception
    {
       var instance = QContext.getQInstance();
-      new HelpContentMetaDataProvider().withTargetingFields(false).defineAll(instance, TestUtils.MEMORY_BACKEND_NAME, null);
+      new HelpContentMetaDataProvider().withTargetingFields(false).withProvenanceFields(false).defineAll(instance, TestUtils.MEMORY_BACKEND_NAME, null);
       assertThat(instance.getTable(HelpContent.TABLE_NAME).getFields()).doesNotContainKeys("summary", "permissionName", "clientChannel");
       assertThat(instance.getTable(HelpContent.TABLE_NAME).getSections()).extracting(section -> section.getName()).containsExactly("identity", "content", "dates");
       assertThat(instance.getTable(HelpContent.TABLE_NAME).getAuditRules()).isNull();
    }
+
 
 
    /*******************************************************************************

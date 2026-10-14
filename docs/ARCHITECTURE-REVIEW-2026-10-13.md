@@ -409,3 +409,32 @@ There are no cycles. No other qbit references another qbit's packages
 The new extension PRs (collaboration #8, data-analysis #5, assistant #19) follow the pattern
 correctly: specs, a committed fragment and a contract test. No open PR adds a new raw `/qqq/v1`
 route provider.
+
+## 7. Issue index (label `architecture`)
+
+| Finding | Issue(s) |
+|---|---|
+| F1 | QRun-IO/qqq#1151 (core typed widgets; checklist of the 14 qbits) |
+| F2 | QRun-IO/qbit-alerts#13, QRun-IO/qbit-sql-workbench#20 |
+| F3 | QRun-IO/qbit-alerts#15, QRun-IO/qbit-backups#19, QRun-IO/qbit-assistant#28, QRun-IO/qbit-object-storage#10, QRun-IO/qbit-collaboration#10, QRun-IO/qbit-data-analysis#7 |
+| F4 | QRun-IO/qbit-easypost-tracking#15 |
+| F5 | QRun-IO/qbit-assistant#30, QRun-IO/qbit-marketing#9 |
+| F6 | QRun-IO/qqq-frontend-next#107 |
+| F7 | QRun-IO/qbit-alerts#14 |
+| F8 | QRun-IO/qqq#1152, KofTwentyTwo/Website-Backend#162 |
+| F9 | QRun-IO/qqq#1153, KofTwentyTwo/Website-Backend#163 |
+| F10 | QRun-IO/qbit-quick-search#50, KofTwentyTwo/Website-Backend#164 |
+| F11 | QRun-IO/qqq#1160 (qbit-webhooks has issues disabled), QRun-IO/qbit-cdn#15, the alerts signer in QRun-IO/qbit-alerts#15 |
+| F12 | QRun-IO/qbit-alerts#16; the notification stand-ins are in the F3 and F4 issues; core #1125 |
+| F13 | QRun-IO/qbit-assistant#29 |
+| F14 | QRun-IO/qqq#1154 |
+| F15 | QRun-IO/qqq#1155 |
+| F16 | QRun-IO/qqq#1156 |
+| F17 | QRun-IO/qqq#1157 |
+| F18 | QRun-IO/qqq#1158 |
+| F19 | QRun-IO/qbit-secured-data#4, QRun-IO/qbit-authentik#20 |
+| F20 | QRun-IO/qqq-frontend-next#108 |
+| G1, G3, G4, G5, G7 | QRun-IO/qbit-bom#9 (`qbit-build-parent`) |
+| G2 | QRun-IO/qqq#1159 |
+| G6 | QRun-IO/qqq-frontend-next#107 |
+| G8 | QRun-IO/qqq#1152 |

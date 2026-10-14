@@ -83,7 +83,6 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
   table. It answers 404 when the application registers no form adjusters.
 - Added JVM-local loopback-only session tokens, streamed responses and multipart uploads to
   `UiApiInvoker` (in-process invocation; no change to the document).
-### 1.3.0 (unreleased)
 - Extended preferences with `POST /preferences/{sectionName}/actions/{actionName}` and
   `PreferenceActionRequestV1`, `PreferenceActionResponseV1`, `PreferenceActionV1`, and
   `PreferenceSecretV1`. Section actions support SECTION/LIST/ROW scopes, typed inputs,
@@ -108,10 +107,6 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
   - It is intersected with the user's live permissions.
   - The session's client channel is `token:<id>`; "token" is a new default channel.
   - Access tokens from qbit-authentik set it.
-
-### 1.2.0 (QQQ 4.1.0-RC.6)
-1.1.0 was never released; its additions ship here.
-- Added JVM-local loopback-only session tokens, streamed responses and multipart uploads to `UiApiInvoker`.
 - Added the assisted bulk-load operations (tag `Bulk Load`, design spec #1171 section 3.2):
   `GET /bulkLoad/uploads/{uploadRef}/profile`, `POST /bulkLoad/{tableName}/suggestMapping` and
   `POST /bulkLoad/{tableName}/validate` (a dry run through the table's bulk-insert process; nothing
@@ -129,17 +124,6 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
   `validatePossibleValueSourceOnWrite(false)`. SYSTEM writes are excluded.
   See [Contingent possible values](CONTINGENT-POSSIBLE-VALUES.md) for examples,
   frontend obligations, sample fixtures and the process-step validation limitation.
-- AI tool kernel data access goes through the UI API (no change to the document).
-  `AiToolKernelSettings.withDataGateway(new UiApiAiDataGateway(...))` makes every query, count,
-  get, search and widget render a `/qqq/v1` call, made as the user through the assistant channel.
-  `CoreAiDataGateway` remains the default for other kernels. The assistant wall makes `audit*`
-  write-denied only: the assistant can read a record's history, but cannot write audits.
-- Scoped credentials (no change to the document): `QSession.credentialScope` (`QCredentialScope`)
-  narrows a session to the apps, tables, processes, reports, widgets and operations it lists,
-  optionally read-only.
-  - It is intersected with the user's live permissions.
-  - The session's client channel is `token:<id>`; "token" is a new default channel.
-  - Access tokens from qbit-authentik set it.
 - `baseline.yaml` is now the RC.6 document (1.2.0). The bulk-load and contingent-field additions
   above were first listed under 1.2.0, but they merged after RC.6 was cut, so they ship in 1.3.0.
 

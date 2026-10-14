@@ -84,6 +84,7 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 
 ### 1.2.0 (QQQ 4.1.0-RC.6)
 1.1.0 was never released; its additions ship here.
+- Added JVM-local loopback-only session tokens, streamed responses and multipart uploads to `UiApiInvoker`.
 - Added the assisted bulk-load operations (tag `Bulk Load`, design spec #1171 section 3.2):
   `GET /bulkLoad/uploads/{uploadRef}/profile`, `POST /bulkLoad/{tableName}/suggestMapping` and
   `POST /bulkLoad/{tableName}/validate` (a dry run through the table's bulk-insert process; nothing

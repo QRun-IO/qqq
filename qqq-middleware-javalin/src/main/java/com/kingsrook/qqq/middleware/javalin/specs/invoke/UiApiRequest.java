@@ -21,9 +21,14 @@
 package com.kingsrook.qqq.middleware.javalin.specs.invoke;
 
 
+import java.io.InputStream;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.function.Supplier;
 import com.kingsrook.qqq.openapi.model.HttpMethod;
 
 
@@ -40,6 +45,7 @@ public class UiApiRequest
    private Map<String, String> queryParams = new LinkedHashMap<>();
    private Map<String, String> formParams;
    private Map<String, String> headers     = new LinkedHashMap<>();
+   private final List<MultipartFile> multipartFiles = new ArrayList<>();
    private Object              jsonBody;
    private UiApiCredentials    credentials;
    private String              clientDetail;
@@ -134,6 +140,37 @@ public class UiApiRequest
    public Map<String, String> getHeaders()
    {
       return (this.headers);
+   }
+
+
+
+   /*******************************************************************************
+    ** One file part. The supplier must return a fresh stream for each HTTP attempt.
+    *******************************************************************************/
+   public record MultipartFile(String fieldName, String fileName, String contentType, Supplier<InputStream> content)
+   {
+   }
+
+
+
+   /*******************************************************************************
+    ** Append a streamed file part. Form parameters become multipart text parts.
+    *******************************************************************************/
+   public UiApiRequest withMultipartFile(String fieldName, String fileName, String contentType, Supplier<InputStream> content)
+   {
+      multipartFiles.add(new MultipartFile(Objects.requireNonNull(fieldName), Objects.requireNonNull(fileName),
+         Objects.requireNonNull(contentType), Objects.requireNonNull(content)));
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** The file parts in insertion order.
+    *******************************************************************************/
+   public List<MultipartFile> getMultipartFiles()
+   {
+      return (List.copyOf(multipartFiles));
    }
 
 

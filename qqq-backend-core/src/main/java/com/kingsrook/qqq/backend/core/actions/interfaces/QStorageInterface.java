@@ -35,6 +35,16 @@ public interface QStorageInterface
 {
 
    /*******************************************************************************
+    ** Delete an object, including an incomplete report output.
+    *******************************************************************************/
+   default void deleteObject(StorageInput storageInput) throws QException
+   {
+      throw new QException("This storage backend does not support deleting objects");
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    OutputStream createOutputStream(StorageInput storageInput) throws QException;

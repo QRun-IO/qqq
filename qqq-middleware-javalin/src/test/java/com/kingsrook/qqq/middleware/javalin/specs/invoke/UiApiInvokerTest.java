@@ -41,7 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 class UiApiInvokerTest
 {
    private static final List<String> RESERVED_HEADERS = List.of("Cookie", "Authorization", "X-Api-Key", "Content-Type", "Accept",
-      "X-QQQ-Client", "X-QQQ-Invoked-By", "X-QQQ-UserTimezone");
+      "X-QQQ-Client", "X-QQQ-Invoked-By", "X-QQQ-UserTimezone", UiApiInProcessSessions.HEADER);
 
 
 

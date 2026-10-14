@@ -46,13 +46,16 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
     ***************************************************************************/
    public static final List<String> FEATURES = List.of(
       "metaData", "tables", "recordSearch", "tableVariants", "recordDeveloper", "possibleValues",
-      "widgets", "processes", "processCancel", "reports", "exports", "downloads", "version", "extensions", "preferences");
+      "widgets", "processes", "processCancel", "reports", "exports", "downloads", "version", "extensions", "recordFeatures", "realtime",
+      "preferences");
 
-   private static List<AbstractEndpointSpec<?, ?, ?>> list = new ArrayList<>();
+   private final List<AbstractEndpointSpec<?, ?, ?>> list = new ArrayList<>();
 
-   static
    {
       list.add(new VersionSpecV1());
+      RealtimeStreamSpecV1 realtime = new RealtimeStreamSpecV1();
+      list.add(realtime);
+      list.add(new RealtimeSubscriptionsSpecV1(realtime::getHub));
       list.add(new AuthenticationMetaDataSpecV1());
       list.add(new ManageSessionSpecV1());
       list.add(new LogoutSpecV1());

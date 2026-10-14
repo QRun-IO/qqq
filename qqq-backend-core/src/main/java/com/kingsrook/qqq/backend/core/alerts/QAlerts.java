@@ -35,7 +35,7 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 /*******************************************************************************
  ** The producer API for alerts ("manage by exception").  Any qbit or app can
- ** call raise, resolve and heartbeat; with no alerts implementation installed
+ ** call raise, resolve and heartbeat (and notify, for user notifications); with no alerts implementation installed
  ** these go to LoggingAlertSink, so producers need nothing beyond core.
  **
  ** Guarantees (the same promises the ESB makes for publishing):
@@ -189,6 +189,57 @@ public final class QAlerts
       catch(Exception | LinkageError e)
       {
          recordFailure("heartbeat", heartbeatKey, e);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Send a user notification ("tell these people this").  Deferred until
+    ** commit when QContext has a transaction.  title and audience are required.
+    *******************************************************************************/
+   public static void notify(NotificationSignal signal)
+   {
+      notify(signal, null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Send a user notification after the given transaction commits (or now,
+    ** when transaction is null and QContext has none).  Defaults occurredAt to
+    ** now, severity to INFO and category to SYSTEM.
+    *******************************************************************************/
+   public static void notify(NotificationSignal signal, QBackendTransaction transaction)
+   {
+      try
+      {
+         if(signal == null || signal.getTitle() == null || signal.getTitle().isBlank() || signal.getAudience() == null)
+         {
+            producerFailures.incrementAndGet();
+            LOG.warn("Ignoring a notification with no title or no audience", logPair("title", signal == null ? null : signal.getTitle()));
+            return;
+         }
+
+         if(signal.getOccurredAt() == null)
+         {
+            signal.setOccurredAt(Instant.now());
+         }
+         if(signal.getSeverity() == null)
+         {
+            signal.setSeverity(NotificationSeverity.INFO);
+         }
+         if(signal.getCategory() == null)
+         {
+            signal.setCategory(NotificationCategory.SYSTEM);
+         }
+
+         AlertSinkInterface sink = getSink(QContext.getQInstance());
+         dispatch(transaction, "notify", "notification:" + signal.getCategory(), () -> sink.notify(signal));
+      }
+      catch(Exception | LinkageError e)
+      {
+         recordFailure("notify", "notification", e);
       }
    }
 

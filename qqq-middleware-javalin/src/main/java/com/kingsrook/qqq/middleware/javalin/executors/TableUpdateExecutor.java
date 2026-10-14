@@ -23,12 +23,14 @@ package com.kingsrook.qqq.middleware.javalin.executors;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
+import com.kingsrook.qqq.backend.core.exceptions.RecordVersionConflictException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
@@ -36,6 +38,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.statusmessages.QStatusMessage;
+import com.kingsrook.qqq.backend.core.model.statusmessages.RecordVersionConflictError;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.ExceptionUtils;
 import com.kingsrook.qqq.middleware.javalin.AssociatedWritePermissions;
@@ -75,8 +78,19 @@ public class TableUpdateExecutor extends AbstractMiddlewareExecutor<TableUpdateI
          updateInput.setRecords(new ArrayList<>(List.of(record)));
          AssociatedWritePermissions.check(updateInput);
 
+         if(input.getExpectedVersion() != null)
+         {
+            updateInput.withExpectedVersions(Map.of(input.getPrimaryKey(), input.getExpectedVersion()));
+         }
          UpdateOutput updateOutput = new UpdateAction().execute(updateInput);
          QRecord      outputRecord = updateOutput.getRecords().get(0);
+         for(var error : outputRecord.getErrors())
+         {
+            if(error instanceof RecordVersionConflictError conflict)
+            {
+               throw (new RecordVersionConflictException(conflict));
+            }
+         }
          TableWriteUtils.throwIfRecordErrors("updating", input.getTableName(), outputRecord);
 
          if(CollectionUtils.nullSafeHasContents(outputRecord.getWarnings()))

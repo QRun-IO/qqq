@@ -40,6 +40,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.actions.collaboration.RecordFeaturePermissionsRegistrar;
+import com.kingsrook.qqq.backend.core.actions.collaboration.RecordFeaturesResolver;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.metadata.JoinGraph;
 import com.kingsrook.qqq.backend.core.actions.permissions.BulkTableActionProcessPermissionChecker;
@@ -115,6 +116,9 @@ import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.Bulk
 import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.BulkInsertTransformStep;
 import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwithfrontend.ExtractViaQueryStep;
 import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwithfrontend.StreamedETLWithFrontendProcess;
+import com.kingsrook.qqq.backend.core.realtime.RealtimeMetaData;
+import com.kingsrook.qqq.backend.core.realtime.RealtimeRuntimeService;
+import com.kingsrook.qqq.backend.core.realtime.RecordChangeListener;
 import com.kingsrook.qqq.backend.core.scheduler.QScheduleManager;
 import com.kingsrook.qqq.backend.core.utils.ClassPathUtils;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
@@ -202,6 +206,17 @@ public class QInstanceEnricher
          }
          protectTableBasedAuthenticationTables();
          qInstance.getTables().values().forEach(this::enrichTable);
+         if((RecordFeaturesResolver.hasAnyMetaData(qInstance)
+            || qInstance.getSupplementalMetaData(RealtimeMetaData.NAME) != null)
+            && CollectionUtils.nonNullList(qInstance.getRuntimeServices()).stream().noneMatch(reference -> RealtimeRuntimeService.class.getName().equals(reference.getName())))
+         {
+            qInstance.withRuntimeService(new QCodeReference(RealtimeRuntimeService.class));
+         }
+         if(RecordFeaturesResolver.hasAnyMetaData(qInstance)
+            && CollectionUtils.nonNullList(qInstance.getRecordChangeListeners()).stream().noneMatch(reference -> RecordChangeListener.class.getName().equals(reference.getName())))
+         {
+            qInstance.withRecordChangeListener(new QCodeReference(RecordChangeListener.class));
+         }
          defineTableBulkProcesses(qInstance);
       }
 
@@ -430,7 +445,7 @@ public class QInstanceEnricher
    /*******************************************************************************
     **
     *******************************************************************************/
-   private void enrichTable(QTableMetaData table)
+   public void enrichTable(QTableMetaData table)
    {
       if(!StringUtils.hasContent(table.getLabel()))
       {
@@ -455,6 +470,13 @@ public class QInstanceEnricher
             enrichField(field);
             enrichSystemDateField(field);
          }
+      }
+
+      if(table.getRecordVersionField() == null && table.getFields() != null)
+      {
+         table.getFields().values().stream()
+            .filter(field -> DynamicDefaultValueBehavior.MODIFY_DATE.equals(field.getBehaviorOnlyIfSet(DynamicDefaultValueBehavior.class)))
+            .findFirst().ifPresent(field -> table.setRecordVersionField(field.getName()));
       }
 
       if(table.getVirtualFields() != null)

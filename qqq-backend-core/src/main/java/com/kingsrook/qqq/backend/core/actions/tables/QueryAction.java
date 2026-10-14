@@ -47,6 +47,7 @@ import com.kingsrook.qqq.backend.core.actions.reporting.BufferedRecordPipe;
 import com.kingsrook.qqq.backend.core.actions.reporting.RecordPipeBufferedWrapper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociationJoin;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.CurrentUserFilterHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryActionCacheHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.SelectionValidationHelper;
@@ -234,6 +235,7 @@ public class QueryAction
       ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
       // apply any available field behaviors to the filter (noting that, if anything changes, a new filter is returned) //
       ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      queryInput.setFilter(CurrentUserFilterHelper.resolve(queryInput, queryInput.getFilter()));
       queryInput.setFilter(ValueBehaviorApplier.applyFieldBehaviorsToFilter(QContext.getQInstance(), table, queryInput.getFilter(), Collections.emptySet()));
 
       QueryStat queryStat = QueryStatManager.newQueryStat(backend, table, queryInput.getFilter(), QueryAction.class.getSimpleName());

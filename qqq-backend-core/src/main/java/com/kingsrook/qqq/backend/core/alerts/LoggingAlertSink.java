@@ -35,6 +35,8 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  ** rate-limited per (type, dedupKey), so a producer that raises the same alert
  ** every few seconds writes one line per window, not thousands.  Heartbeats
  ** are not logged (they are expected, frequent and not a problem).
+ ** Notifications log at INFO (WARN for ERROR and CRITICAL), rate-limited per
+ ** (category, sourceKey or title).
  **
  ** With this sink, producer code paths are identical with and without an
  ** alerts implementation - which is the point.
@@ -104,6 +106,31 @@ public class LoggingAlertSink implements AlertSinkInterface
       ////////////////////////////////////////////////////////
       // noop - a beat is "all is well", nothing to log     //
       ////////////////////////////////////////////////////////
+   }
+
+
+
+   /*******************************************************************************
+    ** Log a user notification (there is no inbox without an implementation).
+    *******************************************************************************/
+   @Override
+   public void notify(NotificationSignal signal)
+   {
+      String sourceKey = signal.getSourceKey() == null || signal.getSourceKey().isBlank() ? signal.getTitle() : signal.getSourceKey();
+      if(!shouldLog("notify|" + signal.getCategory() + "|" + sourceKey, signal.getOccurredAt()))
+      {
+         return;
+      }
+
+      NotificationSeverity severity = signal.getSeverity();
+      if(severity == NotificationSeverity.ERROR || severity == NotificationSeverity.CRITICAL)
+      {
+         LOG.warn("Notification (no alerts implementation installed; logged only)", logPair("category", signal.getCategory()), logPair("severity", severity), logPair("title", signal.getTitle()), logPair("sourceKey", signal.getSourceKey()), logPair("audience", signal.getAudience()));
+      }
+      else
+      {
+         LOG.info("Notification (no alerts implementation installed; logged only)", logPair("category", signal.getCategory()), logPair("severity", severity), logPair("title", signal.getTitle()), logPair("sourceKey", signal.getSourceKey()), logPair("audience", signal.getAudience()));
+      }
    }
 
 

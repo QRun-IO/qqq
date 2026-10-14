@@ -22,6 +22,8 @@ package com.kingsrook.qqq.backend.core.alerts;
 
 
 import java.time.Instant;
+import com.kingsrook.qqq.backend.core.logging.QLogger;
+import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
@@ -34,6 +36,10 @@ import java.time.Instant;
  ** work, don't do database writes or network calls inline.  Anything they
  ** throw is caught, logged and counted by QAlerts; it never reaches the
  ** producer.
+ **
+ ** notify (user notifications) is a default method that only debug-logs, so
+ ** sinks written before it existed still compile and work; an implementation
+ ** that delivers notifications overrides it.
  **
  ** A new instance is not loaded per call: QAlerts loads the sink once per
  ** QInstance and reuses it, so implementations must be thread-safe.
@@ -54,5 +60,15 @@ public interface AlertSinkInterface
     ** Note that a dead-man's switch beat.
     ***************************************************************************/
    void heartbeat(String heartbeatKey, Instant at);
+
+   /***************************************************************************
+    ** Deliver a user notification.  occurredAt, severity, category and
+    ** audience are always set.  The default does nothing beyond a debug log;
+    ** an implementation that has a notifications inbox overrides it.
+    ***************************************************************************/
+   default void notify(NotificationSignal signal)
+   {
+      QLogger.getLogger(AlertSinkInterface.class).debug("Notification not delivered: this alerts sink does not handle notifications", logPair("sink", getClass().getName()), logPair("title", signal == null ? null : signal.getTitle()));
+   }
 
 }

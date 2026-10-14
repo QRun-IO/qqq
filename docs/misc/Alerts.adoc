@@ -42,6 +42,35 @@ QAlerts.heartbeat("backups.job.nightly-db");
 
 `AlertSeverity` is `INFO`, `WARNING`, `ERROR`, `CRITICAL`; `AlertSeverity.fromLabel` maps other systems' labels.
 
+=== Notifying users
+
+An alert is a problem for someone to fix.  A *notification* is a message for people's bell (and, by their
+preference, email): a job that failed or finished, a share, a security notice, a release note.
+
+[source,java]
+----
+QAlerts.notify(new NotificationSignal("Your export failed")   // required, plain text
+   .withBody("**Orders export** stopped after 1,200 rows.")  // markdown
+   .withSeverity(NotificationSeverity.ERROR)                  // default INFO
+   .withCategory(NotificationCategory.JOB)                    // default SYSTEM
+   .withSourceKey("process:" + processUUID)                   // dedup: same key and audience updates one
+   .withLink(AlertLink.toUrl("/app/orders", "Orders"))
+   .withAudience(NotificationAudience.user(userId)));         // required
+----
+
+* `NotificationSeverity` is `INFO`, `SUCCESS`, `WARNING`, `ERROR`, `CRITICAL`.  `NotificationCategory` is `SYSTEM`,
+  `JOB`, `SECURITY`, `RELEASE`, `MARKETING`, `SHARE`, `ALERT` (users mute or choose email per category).
+* `NotificationAudience` is `allUsers()`, `roles(...)`, `permission(name)`, `users(...)` or `user(id)`; the
+  implementation resolves it to users when it sends.
+* Optional: `sourceName`, `sourceTableName` and `sourceRecordId` (the record it is about), `publishAt`, `expireAt`,
+  `sticky` (a banner until dismissed) and up to 20 attributes.
+* The guarantees are the same as `raise`: it never throws or blocks, it waits for the commit (`notify(signal,
+  transaction)` or the transaction in `QContext`) and is dropped on rollback, and a missing title or audience is
+  logged and counted.
+* `AlertSinkInterface.notify` is a default method that only debug-logs, so sinks written before it still work.
+  `LoggingAlertSink` logs notifications at INFO (WARN for `ERROR` and `CRITICAL`), rate-limited per category and source
+  key (or title).
+
 === Declaring alert types
 
 Declare each kind of problem a module can report, so an implementation can list and tune every type every installed

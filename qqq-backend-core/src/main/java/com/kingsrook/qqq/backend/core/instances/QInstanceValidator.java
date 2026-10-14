@@ -76,11 +76,13 @@ import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReferenceLambda;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeType;
 import com.kingsrook.qqq.backend.core.model.metadata.collaboration.RecordFeaturesMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.collaboration.RecordOwnership;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.ParentWidgetMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaDataInterface;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.AdornmentType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldAdornment;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehavior;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.JsonPathStorage;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QSupplementalFieldMetaData;
@@ -981,158 +983,202 @@ public class QInstanceValidator
       {
          qInstance.getTables().forEach((tableName, table) ->
          {
-            assertCondition(Objects.equals(tableName, table.getName()), "Inconsistent naming for table: " + tableName + "/" + table.getName() + ".");
-
-            ////////////////////////////////////////
-            // validate the backend for the table //
-            ////////////////////////////////////////
-            if(assertCondition(StringUtils.hasContent(table.getBackendName()), "Missing backend name for table " + tableName + "."))
-            {
-               if(CollectionUtils.nullSafeHasContents(qInstance.getBackends()))
-               {
-                  QBackendMetaData backendForTable = qInstance.getBackendForTable(tableName);
-                  if(assertCondition(backendForTable != null, "Unrecognized backend " + table.getBackendName() + " for table " + tableName + "."))
-                  {
-                     ////////////////////////////////////////////////////////////
-                     // if the backend requires primary keys, then validate it //
-                     ////////////////////////////////////////////////////////////
-                     if(backendForTable.requiresPrimaryKeyOnTables())
-                     {
-                        if(assertCondition(StringUtils.hasContent(table.getPrimaryKeyField()), "Missing primary key for table: " + tableName))
-                        {
-                           assertNoException(() -> table.getField(table.getPrimaryKeyField()), "Primary key for table " + tableName + " is not a recognized field on this table.");
-                        }
-                     }
-                  }
-               }
-            }
-
-            //////////////////////////////////
-            // validate fields in the table //
-            //////////////////////////////////
-            Set<String> usedFieldNames = new HashSet<>();
-            if(assertCondition(CollectionUtils.nullSafeHasContents(table.getFields()), "At least 1 field must be defined in table " + tableName + "."))
-            {
-               table.getFields().forEach((fieldName, field) ->
-               {
-                  if(usedFieldNames.contains(fieldName))
-                  {
-                     errors.add("Duplicated field name [" + fieldName + "] in table " + tableName);
-                  }
-                  usedFieldNames.add(fieldName);
-
-                  validateTableField(qInstance, tableName, fieldName, table, field);
-               });
-            }
-
-            /////////////////////////////
-            // validate virtual fields //
-            /////////////////////////////
-            Set<String> usedVirtualFieldNames = new HashSet<>();
-            for(Map.Entry<String, QVirtualFieldMetaData> entry : CollectionUtils.nonNullMap(table.getVirtualFields()).entrySet())
-            {
-               String fieldName = entry.getKey();
-               if(usedFieldNames.contains(fieldName))
-               {
-                  errors.add("Virtual field [" + fieldName + "] collides with a non-virtual field of the same name, in table " + tableName);
-               }
-               if(usedVirtualFieldNames.contains(fieldName))
-               {
-                  errors.add("Duplicated virtual field name [" + fieldName + "] in table " + tableName);
-               }
-               usedVirtualFieldNames.add(fieldName);
-
-               validateTableField(qInstance, tableName, fieldName, table, entry.getValue());
-               validateTableVirtualField(qInstance, tableName, fieldName, table, entry.getValue());
-            }
-
-            //////////////////////////////////////////
-            // validate field sections in the table //
-            //////////////////////////////////////////
-            Set<String>   fieldNamesInSections = new HashSet<>();
-            QFieldSection tier1Section         = null;
-            Set<String>   usedSectionNames     = new HashSet<>();
-            Set<String>   usedSectionLabels    = new HashSet<>();
-            if(table.getSections() != null)
-            {
-               for(QFieldSection section : table.getSections())
-               {
-                  validateTableSection(qInstance, table, section, fieldNamesInSections, false);
-                  if(assertCondition(section.getTier() != null, "Table " + tableName + " " + section.getName() + " is missing its tier"))
-                  {
-                     if(section.getTier().equals(Tier.T1))
-                     {
-                        assertCondition(tier1Section == null, "Table " + tableName + " has more than 1 section listed as Tier 1");
-                        tier1Section = section;
-                     }
-                  }
-
-                  assertCondition(!usedSectionNames.contains(section.getName()), "Table " + tableName + " has more than 1 section named " + section.getName());
-                  usedSectionNames.add(section.getName());
-
-                  assertCondition(!usedSectionLabels.contains(section.getLabel()), "Table " + tableName + " has more than 1 section labeled " + section.getLabel());
-                  usedSectionLabels.add(section.getLabel());
-               }
-            }
-
-            for(String fieldName : CollectionUtils.nonNullMap(table.getFields()).keySet())
-            {
-               if(table.getField(fieldName).getIsHidden())
-               {
-                  assertCondition(!fieldNamesInSections.contains(fieldName), "Table " + tableName + " field " + fieldName + " is listed in a field section, but it is marked as hidden.");
-               }
-               else
-               {
-                  assertCondition(fieldNamesInSections.contains(fieldName), "Table " + tableName + " field " + fieldName + " is not listed in any field sections.");
-               }
-            }
-
-            if(table.getRecordLabelFields() != null && table.getFields() != null)
-            {
-               for(String recordLabelField : table.getRecordLabelFields())
-               {
-                  assertCondition(table.getFields().containsKey(recordLabelField), "Table " + tableName + " record label field " + recordLabelField + " is not a field on this table.");
-               }
-            }
-
-            validateTableSearchFields(qInstance, table);
-
-            for(Map.Entry<String, QCodeReference> entry : CollectionUtils.nonNullMap(table.getCustomizers()).entrySet())
-            {
-               validateTableCustomizer(tableName, entry.getKey(), entry.getValue());
-            }
-
-            if(table.getBackendDetails() != null)
-            {
-               table.getBackendDetails().validate(qInstance, table, this);
-            }
-
-            validateTableAutomationDetails(qInstance, table);
-            validateTableUniqueKeys(table);
-            validateAssociatedScripts(table);
-            validateTableCacheOf(qInstance, table);
-            validateTableRecordSecurityLocks(qInstance, table);
-            validateTableAssociations(qInstance, table);
-            validateTableRelatedRecordPickers(qInstance, table);
-            validateExposedJoins(qInstance, joinGraph, table);
-
-            for(QSupplementalTableMetaData supplementalTableMetaData : CollectionUtils.nonNullMap(table.getSupplementalMetaData()).values())
-            {
-               supplementalTableMetaData.validate(qInstance, table, this);
-            }
-
-            if(table.getShareableTableMetaData() != null)
-            {
-               table.getShareableTableMetaData().validate(qInstance, table, this);
-            }
-
-            for(QMenu menu : CollectionUtils.nonNullList(table.getMenus()))
-            {
-               menu.validate(this, qInstance, table);
-            }
-
-            runPlugins(QTableMetaData.class, table, qInstance);
+            validateTable(qInstance, joinGraph, tableName, table);
          });
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Validate one table with the same rules used during instance startup.
+    *******************************************************************************/
+   private void validateTable(QInstance qInstance, JoinGraph joinGraph, String tableName, QTableMetaData table)
+   {
+      assertCondition(Objects.equals(tableName, table.getName()), "Inconsistent naming for table: " + tableName + "/" + table.getName() + ".");
+
+      ////////////////////////////////////////
+      // validate the backend for the table //
+      ////////////////////////////////////////
+      if(assertCondition(StringUtils.hasContent(table.getBackendName()), "Missing backend name for table " + tableName + "."))
+      {
+         if(CollectionUtils.nullSafeHasContents(qInstance.getBackends()))
+         {
+            QBackendMetaData backendForTable = qInstance.getBackendForTable(tableName);
+            if(assertCondition(backendForTable != null, "Unrecognized backend " + table.getBackendName() + " for table " + tableName + "."))
+            {
+               ////////////////////////////////////////////////////////////
+               // if the backend requires primary keys, then validate it //
+               ////////////////////////////////////////////////////////////
+               if(backendForTable.requiresPrimaryKeyOnTables())
+               {
+                  if(assertCondition(StringUtils.hasContent(table.getPrimaryKeyField()), "Missing primary key for table: " + tableName))
+                  {
+                     assertNoException(() -> table.getField(table.getPrimaryKeyField()), "Primary key for table " + tableName + " is not a recognized field on this table.");
+                  }
+               }
+            }
+         }
+      }
+
+      //////////////////////////////////
+      // validate fields in the table //
+      //////////////////////////////////
+      Set<String> usedFieldNames = new HashSet<>();
+      if(assertCondition(CollectionUtils.nullSafeHasContents(table.getFields()), "At least 1 field must be defined in table " + tableName + "."))
+      {
+         table.getFields().forEach((fieldName, field) ->
+         {
+            if(usedFieldNames.contains(fieldName))
+            {
+               errors.add("Duplicated field name [" + fieldName + "] in table " + tableName);
+            }
+            usedFieldNames.add(fieldName);
+
+            validateTableField(qInstance, tableName, fieldName, table, field);
+         });
+      }
+
+      /////////////////////////////
+      // validate virtual fields //
+      /////////////////////////////
+      Set<String> usedVirtualFieldNames = new HashSet<>();
+      for(Map.Entry<String, QVirtualFieldMetaData> entry : CollectionUtils.nonNullMap(table.getVirtualFields()).entrySet())
+      {
+         String fieldName = entry.getKey();
+         if(usedFieldNames.contains(fieldName))
+         {
+            errors.add("Virtual field [" + fieldName + "] collides with a non-virtual field of the same name, in table " + tableName);
+         }
+         if(usedVirtualFieldNames.contains(fieldName))
+         {
+            errors.add("Duplicated virtual field name [" + fieldName + "] in table " + tableName);
+         }
+         usedVirtualFieldNames.add(fieldName);
+
+         validateTableField(qInstance, tableName, fieldName, table, entry.getValue());
+         validateTableVirtualField(qInstance, tableName, fieldName, table, entry.getValue());
+      }
+
+      //////////////////////////////////////////
+      // validate field sections in the table //
+      //////////////////////////////////////////
+      Set<String>   fieldNamesInSections = new HashSet<>();
+      QFieldSection tier1Section         = null;
+      Set<String>   usedSectionNames     = new HashSet<>();
+      Set<String>   usedSectionLabels    = new HashSet<>();
+      if(table.getSections() != null)
+      {
+         for(QFieldSection section : table.getSections())
+         {
+            validateTableSection(qInstance, table, section, fieldNamesInSections, false);
+            if(assertCondition(section.getTier() != null, "Table " + tableName + " " + section.getName() + " is missing its tier"))
+            {
+               if(section.getTier().equals(Tier.T1))
+               {
+                  assertCondition(tier1Section == null, "Table " + tableName + " has more than 1 section listed as Tier 1");
+                  tier1Section = section;
+               }
+            }
+
+            assertCondition(!usedSectionNames.contains(section.getName()), "Table " + tableName + " has more than 1 section named " + section.getName());
+            usedSectionNames.add(section.getName());
+
+            assertCondition(!usedSectionLabels.contains(section.getLabel()), "Table " + tableName + " has more than 1 section labeled " + section.getLabel());
+            usedSectionLabels.add(section.getLabel());
+         }
+      }
+
+      for(String fieldName : CollectionUtils.nonNullMap(table.getFields()).keySet())
+      {
+         if(table.getField(fieldName).getIsHidden())
+         {
+            assertCondition(!fieldNamesInSections.contains(fieldName), "Table " + tableName + " field " + fieldName + " is listed in a field section, but it is marked as hidden.");
+         }
+         else
+         {
+            assertCondition(fieldNamesInSections.contains(fieldName), "Table " + tableName + " field " + fieldName + " is not listed in any field sections.");
+         }
+      }
+
+      if(table.getRecordLabelFields() != null && table.getFields() != null)
+      {
+         for(String recordLabelField : table.getRecordLabelFields())
+         {
+            assertCondition(table.getFields().containsKey(recordLabelField), "Table " + tableName + " record label field " + recordLabelField + " is not a field on this table.");
+         }
+      }
+
+      validateTableSearchFields(qInstance, table);
+
+      for(Map.Entry<String, QCodeReference> entry : CollectionUtils.nonNullMap(table.getCustomizers()).entrySet())
+      {
+         validateTableCustomizer(tableName, entry.getKey(), entry.getValue());
+      }
+
+      if(table.getBackendDetails() != null)
+      {
+         table.getBackendDetails().validate(qInstance, table, this);
+      }
+
+      validateTableAutomationDetails(qInstance, table);
+      validateTableUniqueKeys(table);
+      validateAssociatedScripts(table);
+      validateTableCacheOf(qInstance, table);
+      validateTableRecordSecurityLocks(qInstance, table);
+      validateTableAssociations(qInstance, table);
+      validateTableRelatedRecordPickers(qInstance, table);
+      validateRecordOwnership(qInstance, table);
+      validateExposedJoins(qInstance, joinGraph, table);
+
+      for(QSupplementalTableMetaData supplementalTableMetaData : CollectionUtils.nonNullMap(table.getSupplementalMetaData()).values())
+      {
+         supplementalTableMetaData.validate(qInstance, table, this);
+      }
+
+      if(table.getShareableTableMetaData() != null)
+      {
+         table.getShareableTableMetaData().validate(qInstance, table, this);
+      }
+
+      for(QMenu menu : CollectionUtils.nonNullList(table.getMenus()))
+      {
+         menu.validate(this, qInstance, table);
+      }
+
+      runPlugins(QTableMetaData.class, table, qInstance);
+   }
+
+
+
+   /*******************************************************************************
+    ** Validate a runtime replacement without changing instance validation state.
+    *******************************************************************************/
+   public void validateRuntimeTable(QInstance instance, QTableMetaData table) throws QInstanceValidationException
+   {
+      errors.clear();
+      this.joinGraph = instance.getJoinGraph();
+      validateTable(instance, instance.getJoinGraph(), table.getName(), table);
+      if(!errors.isEmpty())
+      {
+         throw (new QInstanceValidationException(new ArrayList<>(errors)));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Publish validated replacements as one map snapshot, preserving instance state.
+    *******************************************************************************/
+   public void replaceRuntimeTables(QInstance instance, Map<String, QTableMetaData> replacements) throws QInstanceValidationException
+   {
+      synchronized(instance)
+      {
+         for(QTableMetaData table : replacements.values())
+         {
+            validateRuntimeTable(instance, table);
+         }
+         instance.replaceTables(replacements, new QInstanceValidationKey());
       }
    }
 
@@ -1619,6 +1665,28 @@ public class QInstanceValidator
     ***************************************************************************/
    public void validateField(QInstance qInstance, String prefix, Optional<QTableMetaData> table, QFieldMetaData field)
    {
+      if(field.getBackendStorage() instanceof JsonPathStorage storage)
+      {
+         assertCondition(StringUtils.hasContent(storage.getColumnName()), prefix + " JSON storage column is required.");
+         assertCondition(storage.getKey() != null && storage.getKey().matches("[a-z][a-z0-9_]{0,40}"), prefix + " Invalid JSON storage key.");
+         assertCondition(field.getType() != null && Set.of(QFieldType.STRING, QFieldType.TEXT, QFieldType.INTEGER, QFieldType.LONG,
+            QFieldType.DECIMAL, QFieldType.BOOLEAN, QFieldType.DATE, QFieldType.DATE_TIME).contains(field.getType()), prefix + " Unsupported JSON storage field type.");
+         if(table.isPresent())
+         {
+            for(QFieldMetaData other : table.get().getFields().values())
+            {
+               if(other.getBackendStorage() == null)
+               {
+                  String column = StringUtils.hasContent(other.getBackendName()) ? other.getBackendName() : other.getName();
+                  assertCondition(!Objects.equals(storage.getColumnName(), column) && !Objects.equals(storage.getColumnName(), other.getName()), prefix + " JSON column must not be a normal field.");
+               }
+               else if(other != field && other.getBackendStorage() instanceof JsonPathStorage otherStorage)
+               {
+                  assertCondition(!Objects.equals(storage.getColumnName(), otherStorage.getColumnName()) || !Objects.equals(storage.getKey(), otherStorage.getKey()), prefix + " Duplicate JSON storage key.");
+               }
+            }
+         }
+      }
       validateFieldPossibleValueSourceAttributes(qInstance, field, prefix);
 
       assertCondition(StringUtils.hasContent(field.getName()), prefix + "is missing a name");
@@ -3215,5 +3283,51 @@ public class QInstanceValidator
    public List<String> getErrors()
    {
       return errors;
+   }
+
+
+   /*******************************************************************************
+    ** Validate the effective declaration, including inherited ownership field names.
+    *******************************************************************************/
+   private void validateRecordOwnership(QInstance instance, QTableMetaData table)
+   {
+      RecordFeaturesMetaData instanceFeatures = RecordFeaturesMetaData.of(instance);
+      RecordOwnership ownership = instanceFeatures == null ? null : instanceFeatures.getOwnership();
+      for(QAppMetaData app : CollectionUtils.nonNullMap(instance.getApps()).values())
+      {
+         RecordFeaturesMetaData appFeatures = RecordFeaturesMetaData.of(app);
+         if(appFeatures != null && appFeatures.getOwnership() != null)
+         {
+            for(QAppSection section : CollectionUtils.nonNullList(app.getSections()))
+            {
+               if(CollectionUtils.nonNullList(section.getTables()).contains(table.getName()))
+               {
+                  ownership = appFeatures.getOwnership();
+               }
+            }
+         }
+      }
+      RecordFeaturesMetaData tableFeatures = RecordFeaturesMetaData.of(table);
+      if(tableFeatures != null && tableFeatures.getOwnership() != null)
+      {
+         ownership = tableFeatures.getOwnership();
+      }
+      if(ownership == null)
+      {
+         return;
+      }
+      for(String fieldName : new String[] { ownership.getOwnerFieldName(), ownership.getAssigneeFieldName() })
+      {
+         if(fieldName == null)
+         {
+            continue;
+         }
+         QFieldMetaData field = table.getFields().get(fieldName);
+         String prefix = "Table [" + table.getName() + "] ownership field [" + fieldName + "] ";
+         if(assertCondition(field != null, prefix + "does not exist."))
+         {
+            assertCondition(field.getType() == QFieldType.STRING || field.getType() == QFieldType.INTEGER, prefix + "must be STRING or INTEGER.");
+         }
+      }
    }
 }

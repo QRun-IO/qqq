@@ -65,6 +65,7 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.DisplayFormat;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.JsonPathStorage;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
@@ -144,12 +145,35 @@ public abstract class AbstractRDBMSAction
 
 
    /*******************************************************************************
+    ** The shared read expression for select, predicates, joins, ordering and aggregation.
+    *******************************************************************************/
+   protected String fieldExpression(String tableNameOrAlias, QFieldMetaData field)
+   {
+      String column = (tableNameOrAlias == null ? "" : escapeIdentifier(tableNameOrAlias) + ".") + escapeIdentifier(getColumnName(field));
+      if(field.getBackendStorage() instanceof JsonPathStorage storage)
+      {
+         return (getActionStrategy().jsonPathExpression(column, storage, field.getType()));
+      }
+      return (column);
+   }
+
+
+
+   /*******************************************************************************
     ** Get the column name to use for a field in the RDBMS, from the fieldMetaData.
     **
     ** That is, field.backendName if set -- else, field.name
     *******************************************************************************/
    public static String getColumnName(QFieldMetaData field)
    {
+      if(field.getBackendStorage() instanceof JsonPathStorage storage)
+      {
+         return (storage.getColumnName());
+      }
+      if(field.getBackendStorage() != null)
+      {
+         throw (new UnsupportedOperationException("Unsupported field storage: " + field.getBackendStorage().getClass().getName()));
+      }
       if(field.getBackendName() != null)
       {
          return (field.getBackendName());
@@ -678,7 +702,7 @@ public abstract class AbstractRDBMSAction
          // figure out the column name for the table/alias + field name. //
          // wrap that string in a function if we have a function adapter //
          //////////////////////////////////////////////////////////////////
-         String column = escapeIdentifier(fieldAndTableNameOrAlias.tableNameOrAlias()) + "." + escapeIdentifier(getColumnName(field));
+         String column = fieldExpression(fieldAndTableNameOrAlias.tableNameOrAlias(), field);
          if(fieldFunctionAdapter != null)
          {
             String         tableNameOrAlias = fieldAndTableNameOrAlias.tableNameOrAlias();
@@ -761,7 +785,7 @@ public abstract class AbstractRDBMSAction
             {
                JoinsContext.FieldAndTableNameOrAlias otherFieldAndTableNameOrAlias = joinsContext.getFieldAndTableNameOrAlias(criterion.getOtherFieldName());
 
-               String otherColumn = escapeIdentifier(otherFieldAndTableNameOrAlias.tableNameOrAlias()) + "." + escapeIdentifier(getColumnName(otherFieldAndTableNameOrAlias.field()));
+               String otherColumn = fieldExpression(otherFieldAndTableNameOrAlias.tableNameOrAlias(), otherFieldAndTableNameOrAlias.field());
                clause = new StringBuilder(clause.toString().replace("?", otherColumn));
 
                /////////////////////////////////////////////////////////////////////
@@ -813,6 +837,16 @@ public abstract class AbstractRDBMSAction
          /////////////////////////////////////////////////////////////////////////////////
          // finally, wrap the whole clause in ()'s and append it to the list of clauses //
          /////////////////////////////////////////////////////////////////////////////////
+         if(field.getBackendStorage() instanceof JsonPathStorage && fieldFunction == null && !usesFieldActionStrategy
+            && !criterion.hasOption(CriteriaOption.CASE_INSENSITIVE) && !StringUtils.hasContent(criterion.getOtherFieldName()))
+         {
+            String jsonColumn = escapeIdentifier(fieldAndTableNameOrAlias.tableNameOrAlias()) + "." + escapeIdentifier(getColumnName(field));
+            String jsonPredicate = actionStrategy.jsonPathPredicate(jsonColumn, field, criterion, values);
+            if(jsonPredicate != null)
+            {
+               clause = new StringBuilder(jsonPredicate);
+            }
+         }
          clauses.add("(" + clause + ")");
 
          params.addAll(values);
@@ -854,7 +888,7 @@ public abstract class AbstractRDBMSAction
     ***************************************************************************/
    protected Function<String, String> makeFieldNameToColumnReferenceFunction(String tableNameOrAlias, QTableMetaData table)
    {
-      return fieldName -> escapeIdentifier(tableNameOrAlias) + "." + escapeIdentifier(getColumnName(table.getField(fieldName)));
+      return fieldName -> fieldExpression(tableNameOrAlias, table.getField(fieldName));
    }
 
 
@@ -984,7 +1018,7 @@ public abstract class AbstractRDBMSAction
          if(orderBy instanceof QFilterOrderByAggregate orderByAggregate)
          {
             Aggregate aggregate = orderByAggregate.getAggregate();
-            String    clause    = (aggregate.getOperator() + "(" + escapeIdentifier(getColumnName(table.getField(aggregate.getFieldName()))) + ")");
+            String    clause    = (aggregate.getOperator() + "(" + fieldExpression(null, table.getField(aggregate.getFieldName())) + ")");
             clauses.add(clause + " " + ascOrDesc);
          }
          else if(orderBy instanceof QFilterOrderByGroupBy orderByGroupBy)
@@ -996,15 +1030,14 @@ public abstract class AbstractRDBMSAction
             JoinsContext.FieldAndTableNameOrAlias fieldAndTableNameOrAlias = joinsContext.getFieldAndTableNameOrAlias(orderBy.getFieldName(), true);
             QFieldMetaData                        field                    = fieldAndTableNameOrAlias.field();
 
-            String column         = getColumnName(field);
-            String tableDotColumn = escapeIdentifier(fieldAndTableNameOrAlias.tableNameOrAlias()) + "." + escapeIdentifier(column);
+            String tableDotColumn = fieldExpression(fieldAndTableNameOrAlias.tableNameOrAlias(), field);
 
             if(field instanceof QVirtualFieldMetaData virtualField && virtualField.getFieldFunction() != null)
             {
                String         fieldTableName = joinsContext.resolveTableNameOrAliasToTableName(fieldAndTableNameOrAlias.tableNameOrAlias());
                String         realFieldName  = virtualField.getFieldFunction().getFieldName();
                QFieldMetaData realField      = joinsContext.getTable(fieldTableName).getField(realFieldName);
-               tableDotColumn = escapeIdentifier(fieldAndTableNameOrAlias.tableNameOrAlias()) + "." + escapeIdentifier(getColumnName(realField));
+               tableDotColumn = fieldExpression(fieldAndTableNameOrAlias.tableNameOrAlias(), realField);
 
                QTableMetaData                     fieldTable           = joinsContext.getTable(fieldTableName);
                FieldFunction                      fieldFunction        = virtualField.getFieldFunction();
@@ -1050,7 +1083,7 @@ public abstract class AbstractRDBMSAction
          String         fieldTableName = joinsContext.resolveTableNameOrAliasToTableName(fieldAndTableNameOrAlias.tableNameOrAlias());
          String         realFieldName  = virtualField.getFieldFunction().getFieldName();
          QFieldMetaData realField      = joinsContext.getTable(fieldTableName).getField(realFieldName);
-         String         columnName     = escapeIdentifier(fieldAndTableNameOrAlias.tableNameOrAlias()) + "." + escapeIdentifier(getColumnName(realField));
+         String         columnName     = fieldExpression(fieldAndTableNameOrAlias.tableNameOrAlias(), realField);
 
          FieldFunction                      fieldFunction              = virtualField.getFieldFunction();
          RDBMSFieldFunctionAdapterInterface fieldFunctionAdapter       = backendMetaData.getFieldFunctionAdapter(fieldFunction.getFunctionTypeIdentifier());
@@ -1066,7 +1099,7 @@ public abstract class AbstractRDBMSAction
       }
       else
       {
-         fullFieldName = escapeIdentifier(fieldAndTableNameOrAlias.tableNameOrAlias()) + "." + escapeIdentifier(getColumnName(field));
+         fullFieldName = fieldExpression(fieldAndTableNameOrAlias.tableNameOrAlias(), field);
       }
 
       if(groupBy.getBucket() != null)

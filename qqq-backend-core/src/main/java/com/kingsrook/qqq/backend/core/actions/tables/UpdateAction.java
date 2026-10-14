@@ -45,8 +45,8 @@ import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.actions.interfaces.UpdateInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
 import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
-import com.kingsrook.qqq.backend.core.actions.permissions.FieldSecurityLockHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordDiscovery;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociationJoin;
@@ -153,11 +153,15 @@ public class UpdateAction
       boolean enforce = false;
       if(StringUtils.hasContent(updateInput.getTableName()) && updateInput.getTable() != null)
       {
-         enforce = CorePermissionEnforcer.checkTablePermissions(updateInput, TablePermissionSubType.EDIT);
+         CorePermissionEnforcer.checkTablePermissions(updateInput, TablePermissionSubType.EDIT);
+         enforce = CorePermissionEnforcer.shouldEnforceFieldAccess(updateInput);
          if(enforce)
          {
-            FieldSecurityLockHelper.assertWritesAccessible(updateInput.getTable(), updateInput.getRecords());
-            CorePermissionEnforcer.checkAssociatedWrites(updateInput);
+            FieldAccessHelper.assertWritesAllowed(updateInput.getTable(), updateInput.getRecords());
+            if(CorePermissionEnforcer.shouldEnforce(updateInput))
+            {
+               CorePermissionEnforcer.checkAssociatedWrites(updateInput);
+            }
          }
       }
 
@@ -167,7 +171,7 @@ public class UpdateAction
          UpdateOutput updateOutput = executeInternal(updateInput, failOnRecordErrors);
          if(enforce)
          {
-            FieldSecurityLockHelper.removeDeniedValues(updateInput.getTableName(), null, updateOutput.getRecords());
+            FieldAccessHelper.applyToRecords(updateInput.getTableName(), null, updateOutput.getRecords(), "update");
          }
          return (updateOutput);
       }

@@ -74,6 +74,8 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 
 ## Versions
 
+### Unreleased (after 1.2.0; no change to the document)
+- Added `UiApiRequest.withHeader(name, value)` for custom invocation headers; null values remove headers, and the invoker drops reserved credential, client-channel and request-metadata headers case-insensitively.
 ### 1.3.0 (unreleased)
 - Extended preferences with `POST /preferences/{sectionName}/actions/{actionName}` and
   `PreferenceActionRequestV1`, `PreferenceActionResponseV1`, `PreferenceActionV1`, and
@@ -129,6 +131,15 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
   ASSIGNMENT-enabled tables. The "My records" filter preserves `CurrentUser`
   expression objects (`type: CurrentUser`, displayed as "Me"). Core also resolves
   `${currentUser}` filter values per session; a missing user matches no records.
+- Secured data (field access tiers, docs/SECURED-DATA.md):
+  - Field policy enforcement is independent of table-permission opt-in, and the assistant uses the same field decision with its default channel policy.
+  - Field metadata adds `accessTier` (FULL, REVEALABLE, MASKED, HIDDEN),
+    `allowedFilterOperators`, and `isSortable`; table metadata adds `hasRestrictedFields`.
+    HIDDEN fields are omitted and restricted fields are not editable.
+  - Disallowed filters and sorting return 403 using the standard error body; exact-match
+    policy refusals preserve the resolver's user-facing message.
+  - Masked values and display values are strings, regardless of the underlying field type;
+    masking applies to records, process results, structured widgets, exports, and audit details.
 - Added `GET /version` (unsecured): the API semver, base path, supported majors, core features
   and registered extensions.
 - Added the extension point: modules and qbits register endpoint specs

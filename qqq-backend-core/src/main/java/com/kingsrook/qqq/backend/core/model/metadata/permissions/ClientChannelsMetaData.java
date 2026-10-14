@@ -25,13 +25,19 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
+import com.kingsrook.qqq.backend.core.actions.ai.exposure.AiExposureChannelPolicy;
+import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessChannelPolicyInterface;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 
@@ -116,6 +122,10 @@ public class ClientChannelsMetaData implements QSupplementalInstanceMetaData
    public static final List<String> ASSISTANT_DEFAULT_WRITE_DENIED_PATTERNS = List.of("audit*");
 
    private static final Pattern CHANNEL_PATTERN = Pattern.compile("[a-z0-9][a-z0-9-]*");
+
+   private Map<String, QCodeReference> fieldAccessPolicies = new LinkedHashMap<>();
+   private transient Map<String, FieldAccessChannelPolicyInterface> fieldAccessPolicyInstances = new LinkedHashMap<>();
+   private static final FieldAccessChannelPolicyInterface ASSISTANT_FIELD_POLICY = new AiExposureChannelPolicy();
 
    private Map<String, String>       channels       = new LinkedHashMap<>();
    private Map<String, Set<String>>  deniedObjects  = new LinkedHashMap<>();
@@ -439,6 +449,63 @@ public class ClientChannelsMetaData implements QSupplementalInstanceMetaData
 
 
    /*******************************************************************************
+    ** Register a channel policy by code reference. Invalid policies fail closed.
+    *******************************************************************************/
+   public ClientChannelsMetaData withFieldAccessPolicy(String channelName, QCodeReference policy)
+   {
+      String channel = channelName.toLowerCase(Locale.ROOT);
+      fieldAccessPolicies.put(channel, Objects.requireNonNull(policy));
+      if(fieldAccessPolicyInstances != null)
+      {
+         fieldAccessPolicyInstances.remove(channel);
+      }
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Register a channel policy instance.
+    *******************************************************************************/
+   public ClientChannelsMetaData withFieldAccessPolicy(String channelName, FieldAccessChannelPolicyInterface policy)
+   {
+      String channel = channelName.toLowerCase(Locale.ROOT);
+      if(fieldAccessPolicyInstances == null)
+      {
+         fieldAccessPolicyInstances = new LinkedHashMap<>();
+      }
+      fieldAccessPolicyInstances.put(channel, Objects.requireNonNull(policy));
+      fieldAccessPolicies.remove(channel);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Resolve a policy once, never its per-session decisions. The assistant has
+    ** a default even when the instance has registered no channel metadata.
+    *******************************************************************************/
+   public synchronized FieldAccessChannelPolicyInterface getFieldAccessPolicy(String channelName)
+   {
+      if(channelName == null)
+      {
+         return (null);
+      }
+      String channel = channelName.toLowerCase(Locale.ROOT);
+      if(fieldAccessPolicyInstances == null)
+      {
+         fieldAccessPolicyInstances = new LinkedHashMap<>();
+      }
+      if(fieldAccessPolicies.containsKey(channel) && !fieldAccessPolicyInstances.containsKey(channel))
+      {
+         fieldAccessPolicyInstances.put(channel, Objects.requireNonNull(QCodeLoader.getAdHoc(FieldAccessChannelPolicyInterface.class, fieldAccessPolicies.get(channel))));
+      }
+      return (fieldAccessPolicyInstances.getOrDefault(channel, CHANNEL_ASSISTANT.equals(channel) ? ASSISTANT_FIELD_POLICY : null));
+   }
+
+
+
+   /*******************************************************************************
     ** Getter for channels (name to description)
     *******************************************************************************/
    public Map<String, String> getChannels()
@@ -475,6 +542,15 @@ public class ClientChannelsMetaData implements QSupplementalInstanceMetaData
    @Override
    public void validate(QInstance qInstance, QInstanceValidator validator)
    {
+      for(Map.Entry<String, QCodeReference> entry : fieldAccessPolicies.entrySet())
+      {
+         validator.assertCondition(channels.containsKey(entry.getKey()), "Field access policy names an unknown channel [" + entry.getKey() + "]");
+         validator.validateSimpleCodeReference("Client channel field access policy: ", entry.getValue(), FieldAccessChannelPolicyInterface.class);
+      }
+      for(String channel : fieldAccessPolicyInstances == null ? Set.<String>of() : fieldAccessPolicyInstances.keySet())
+      {
+         validator.assertCondition(channels.containsKey(channel), "Field access policy names an unknown channel [" + channel + "]");
+      }
       for(String channel : channels.keySet())
       {
          validator.assertCondition(CHANNEL_PATTERN.matcher(channel).matches(), "Client channel [" + channel + "] must match " + CHANNEL_PATTERN.pattern());

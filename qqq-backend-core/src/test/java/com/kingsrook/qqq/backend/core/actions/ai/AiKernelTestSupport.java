@@ -53,6 +53,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.ClientChannelsMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.DenyBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
@@ -127,6 +128,11 @@ public class AiKernelTestSupport
    public static QInstance defineInstance() throws QException
    {
       QInstance qInstance = new QInstance();
+      // These fixtures exercise explicitly permitted history and secretThing tools.
+      // The kernel now acts as assistant, so opt these fixture tables into that channel.
+      ClientChannelsMetaData channels = ClientChannelsMetaData.defaults();
+      channels.getDeniedPatterns().get(ClientChannelsMetaData.CHANNEL_ASSISTANT).removeAll(List.of("audit*", "*secret*"));
+      qInstance.withSupplementalMetaData(channels);
       qInstance.registerAuthenticationProvider(AuthScope.instanceDefault(), new QAuthenticationMetaData().withType(QAuthenticationType.MOCK).withName("mock"));
       qInstance.addBackend(new QBackendMetaData().withName(BACKEND).withBackendType(MemoryBackendModule.class));
       qInstance.setDefaultPermissionRules(new QPermissionRules().withLevel(PermissionLevel.READ_INSERT_EDIT_DELETE_PERMISSIONS).withDenyBehavior(DenyBehavior.HIDDEN));

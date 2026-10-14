@@ -21,6 +21,7 @@
 package com.kingsrook.qqq.backend.core.model.metadata.qbits;
 
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.kingsrook.qqq.backend.core.context.QContext;
 
 
@@ -49,8 +50,9 @@ public interface SourceQBitAware
 
 
    /***************************************************************************
-    **
+    ** Derived lookup into the QInstance, not JSON data.
     ***************************************************************************/
+   @JsonIgnore
    default QBitMetaData getSourceQBit()
    {
       String qbitName = getSourceQBitName();
@@ -59,8 +61,10 @@ public interface SourceQBitAware
 
 
    /***************************************************************************
-    **
+    ** Derived lookup into the QInstance. Server-side config may hold runtime
+    ** objects or secrets, so it must never go into JSON.
     ***************************************************************************/
+   @JsonIgnore
    default QBitConfig getSourceQBitConfig()
    {
       QBitMetaData sourceQBit = getSourceQBit();

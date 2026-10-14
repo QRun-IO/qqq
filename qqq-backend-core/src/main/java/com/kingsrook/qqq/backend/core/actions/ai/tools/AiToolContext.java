@@ -37,8 +37,8 @@ import com.kingsrook.qqq.backend.core.actions.ai.AiToolKernelSettings;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolOutcome;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolResult;
 import com.kingsrook.qqq.backend.core.actions.ai.CoreAiDataGateway;
+import com.kingsrook.qqq.backend.core.actions.ai.exposure.AiExposureChannelPolicy;
 import com.kingsrook.qqq.backend.core.actions.ai.exposure.AiExposurePolicy;
-import com.kingsrook.qqq.backend.core.actions.ai.exposure.AiValueMasker;
 import com.kingsrook.qqq.backend.core.actions.ai.output.AiLinkBuilder;
 import com.kingsrook.qqq.backend.core.actions.ai.output.AiRedactor;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
@@ -48,6 +48,12 @@ import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMeta
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionCheckResult;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessChannelPolicyInterface;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessDecision;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessTier;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldValueMasker;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
@@ -66,6 +72,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaDataIn
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.ClientChannelsMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.MetaDataWithPermissionRules;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.reporting.QReportMetaData;
@@ -294,11 +301,38 @@ public class AiToolContext
 
 
    /*******************************************************************************
-    ** The effective exposure of a field.
+    ** Compatibility projection of the core decision. Metadata-only still omits
+    ** values from model output, so retain that channel policy reason.
+    ** @deprecated use FieldAccessHelper.getDecision for access decisions.
     *******************************************************************************/
+   @Deprecated
    public AiExposure getFieldExposure(QTableMetaData table, QFieldMetaData field)
    {
-      return (exposurePolicy.getFieldExposure(table, field));
+      FieldAccessDecision decision = FieldAccessHelper.getDecision(table, field);
+      if(decision.tier() == FieldAccessTier.MASKED)
+      {
+         FieldAccessChannelPolicyInterface policy = ClientChannelsMetaData.of(qInstance).getFieldAccessPolicy(QContext.getQSession().getClientChannelName());
+         if(policy != null && AiExposureChannelPolicy.METADATA_ONLY_REASON.equals(policy.resolve(table, field).reason()))
+         {
+            return (AiExposure.METADATA_ONLY);
+         }
+      }
+      return (switch(decision.tier())
+      {
+         case FULL -> AiExposure.VALUES;
+         case MASKED, REVEALABLE -> AiExposure.MASKED;
+         case HIDDEN -> AiExposure.NONE;
+      });
+   }
+
+
+
+   /*******************************************************************************
+    ** The reason from the single core decision, used by access reports.
+    *******************************************************************************/
+   public String getFieldAccessReason(QTableMetaData table, QFieldMetaData field)
+   {
+      return (FieldAccessHelper.getDecision(table, field).reason());
    }
 
 
@@ -411,7 +445,7 @@ public class AiToolContext
    public String mask(QTableMetaData table, QFieldMetaData field, String value)
    {
       redactions.add("field:" + table.getName() + "." + field.getName() + ":MASKED");
-      return (AiValueMasker.mask(value, field.getType()));
+      return (FieldValueMasker.mask(value, field.getType(), FieldAccessHelper.getDecision(table, field).maskStyle()));
    }
 
 

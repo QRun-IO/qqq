@@ -240,4 +240,15 @@ public class TableMetaData extends TableMetaDataLight implements ToSchema
    {
       return (wrapped.getBuiltInViews() == null ? null : wrapped.getBuiltInViews().stream().map(BuiltInViewV1::new).toList());
    }
+
+
+
+   /*******************************************************************************
+    ** Whether the current session has any restricted fields on this table.
+    *******************************************************************************/
+   @OpenAPIDescription("True when any field has REVEALABLE, MASKED, or HIDDEN access for the current session.")
+   public Boolean getHasRestrictedFields()
+   {
+      return (wrapped.getHasRestrictedFields());
+   }
 }

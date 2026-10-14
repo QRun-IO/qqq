@@ -41,8 +41,8 @@ import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.actions.interfaces.InsertInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
 import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
-import com.kingsrook.qqq.backend.core.actions.permissions.FieldSecurityLockHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociationJoin;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.RestoreWriteHelper;
@@ -163,11 +163,12 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
       boolean enforce = false;
       if(StringUtils.hasContent(insertInput.getTableName()) && insertInput.getTable() != null)
       {
-         enforce = CorePermissionEnforcer.checkTablePermissions(insertInput, TablePermissionSubType.INSERT);
+         CorePermissionEnforcer.checkTablePermissions(insertInput, TablePermissionSubType.INSERT);
+         enforce = CorePermissionEnforcer.shouldEnforceFieldAccess(insertInput);
          if(enforce)
          {
-            FieldSecurityLockHelper.assertWritesAccessible(insertInput.getTable(), insertInput.getRecords());
-            if(nativeRecords == null)
+            FieldAccessHelper.assertWritesAllowed(insertInput.getTable(), insertInput.getRecords());
+            if(nativeRecords == null && CorePermissionEnforcer.shouldEnforce(insertInput))
             {
                CorePermissionEnforcer.checkAssociatedWrites(insertInput);
             }
@@ -179,7 +180,7 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
          InsertOutput insertOutput = executeInAuthorizedScope(insertInput, nativeRecords, originalIdentities, failOnRecordErrors);
          if(enforce)
          {
-            FieldSecurityLockHelper.removeDeniedValues(insertInput.getTableName(), null, insertOutput.getRecords());
+            FieldAccessHelper.applyToRecords(insertInput.getTableName(), null, insertOutput.getRecords(), "insert");
          }
          return (insertOutput);
       }

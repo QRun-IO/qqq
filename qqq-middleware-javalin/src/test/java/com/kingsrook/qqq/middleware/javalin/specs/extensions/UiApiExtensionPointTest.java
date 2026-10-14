@@ -304,6 +304,45 @@ class UiApiExtensionPointTest
 
 
    /***************************************************************************
+    ** strict is the default (#1159); only "false" (property or env) or the
+    ** fluent setter turns it off.
+    ***************************************************************************/
+   @Test
+   void testStrictRoutesIsTheDefault()
+   {
+      String saved = System.getProperty("qqq.uiApi.strictRoutes");
+      try
+      {
+         System.clearProperty("qqq.uiApi.strictRoutes");
+         if(!"false".equalsIgnoreCase(System.getenv("QQQ_UI_API_STRICT_ROUTES")))
+         {
+            assertTrue(new QApplicationJavalinServer(new ExtensionApplication()).isStrictUiApiRoutes());
+         }
+
+         System.setProperty("qqq.uiApi.strictRoutes", "false");
+         assertFalse(new QApplicationJavalinServer(new ExtensionApplication()).isStrictUiApiRoutes());
+         assertTrue(new QApplicationJavalinServer(new ExtensionApplication()).withStrictUiApiRoutes(true).isStrictUiApiRoutes());
+
+         System.setProperty("qqq.uiApi.strictRoutes", "true");
+         assertTrue(new QApplicationJavalinServer(new ExtensionApplication()).isStrictUiApiRoutes());
+         assertFalse(new QApplicationJavalinServer(new ExtensionApplication()).withStrictUiApiRoutes(false).isStrictUiApiRoutes());
+      }
+      finally
+      {
+         if(saved == null)
+         {
+            System.clearProperty("qqq.uiApi.strictRoutes");
+         }
+         else
+         {
+            System.setProperty("qqq.uiApi.strictRoutes", saved);
+         }
+      }
+   }
+
+
+
+   /***************************************************************************
     **
     ***************************************************************************/
    @Test

@@ -46,10 +46,9 @@ When cutting an RC or GA, the release captain refreshes the baseline with
 `PublishAPI -r <repo root> --baseline`. Several additive PRs between releases can share one MINOR
 bump.
 
-Raw routes under `/qqq/v1` that have no spec are logged at startup (`UiApiRouteAuditor`).
-Strict mode (`withStrictUiApiRoutes(true)` or `QQQ_UI_API_STRICT_ROUTES=true`) fails startup
-instead. Strict becomes the default once the alerts, assistant and sql-workbench qbits ship their
-spec'd routes.
+Raw routes under `/qqq/v1` that have no spec are detected at startup (`UiApiRouteAuditor`).
+Since 1.3.0 (#1159) such routes fail startup by default (strict mode). `withStrictUiApiRoutes(false)`
+or `QQQ_UI_API_STRICT_ROUTES=false` only logs them, as a temporary opt-out.
 
 ## Extensions
 
@@ -75,6 +74,10 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 ## Versions
 
 ### Unreleased (after 1.2.0; no change to the document)
+- Strict UI API routes are the default (#1159): startup fails when a route under `/qqq/v1` has no
+  spec (core or extension). `QQQ_UI_API_STRICT_ROUTES=false` (or `withStrictUiApiRoutes(false)`)
+  opts out temporarily. Applications must run the spec'd alerts, assistant and sql-workbench qbit
+  releases.
 - AI tool kernel data access goes through the UI API. `AiToolKernelSettings.withDataGateway(new UiApiAiDataGateway(...))` makes every query, count, get, search and widget render a `/qqq/v1` call, made as the user through the assistant channel. `CoreAiDataGateway` remains the default for other kernels. The assistant wall makes `audit*` write-denied only: the assistant can read a record's history, but cannot write audits.
 - Scoped credentials: `QSession.credentialScope` (`QCredentialScope`) narrows a session to the apps, tables, processes, reports, widgets and operations it lists, optionally read-only.
   - It is intersected with the user's live permissions.

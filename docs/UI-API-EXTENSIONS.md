@@ -85,7 +85,7 @@ For each extension:
    its path starts with the prefix;
 5. no two specs (core or extension) define the same method + path.
 
-## 2. Raw routes under `/qqq/v1`: warning, strict mode opt-in
+## 2. Raw routes under `/qqq/v1`: strict by default
 
 Raw Javalin handlers are registered in code by route providers, so `QInstanceValidator` cannot see
 them. The check therefore runs where the routes exist: when `QApplicationJavalinServer` has built
@@ -93,16 +93,17 @@ the Javalin service, `UiApiRouteAuditor` lists every HTTP endpoint (Javalin's in
 under each middleware version's base path and compares it with the spec'd operations plus the
 documentation routes (`/qqq/v1/`, `/openapi.yaml|json|html`).
 
-- **Default: one WARN per unspec'd route at startup**, naming method, path and a pointer to this
-  document.
-- **Strict mode** (`QApplicationJavalinServer.withStrictUiApiRoutes(true)`, or system property /
-  env `qqq.uiApi.strictRoutes` / `QQQ_UI_API_STRICT_ROUTES=true`) fails startup instead.
+- **Default (strict): startup fails** when any route under a version's base path has no spec,
+  naming each method and path and pointing to this document.
+- **Opt out, temporarily** (`QApplicationJavalinServer.withStrictUiApiRoutes(false)`, or system
+  property / env `qqq.uiApi.strictRoutes` / `QQQ_UI_API_STRICT_ROUTES=false`): one WARN per
+  unspec'd route instead. Use it only while a qbit or module moves its routes onto specs.
 
-Why warn rather than fail by default: the alerts, assistant and sql-workbench qbits, and kof22,
-ship raw routes today. Failing would break every deployment that upgrades core before those qbits
-release their spec'd versions. Once the qbits move (phase 4) the default flips to strict in the
-next minor release (tracked in `UI-API-CHANGELOG.md`), and Next's CI runs its server tests in
-strict mode from now on.
+Strict became the default in UI API 1.3.0 (QRun-IO/qqq#1159), once the alerts, assistant and
+sql-workbench qbits moved their routes onto extension specs. Before that the default was to warn,
+so that upgrading core could not break a deployment whose qbits still served raw routes. An
+application on an older alerts, assistant or sql-workbench qbit release must upgrade it, or opt
+out, when it upgrades core.
 
 ## 3. Versioning
 - The URL major (`v1`) only changes for breaking changes (`/qqq/v2`).

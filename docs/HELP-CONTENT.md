@@ -162,3 +162,116 @@ see each slot's key in place.
 Inserts, edits and deletes apply immediately on the node that makes them. Other nodes pick them up
 within 30 seconds. After a bulk import straight into the database, run "Apply help changes now"
 from `qbit-help`, or call `QInstanceHelpContentManager.reloadHelpContent`.
+
+## 5. Keeping help current (owner decision 2026-10-14)
+
+Seeding with insert-if-missing SQL leaves the text frozen at whatever it said when it was first
+written. Instead, help ships with the code that it describes, and a sync keeps the database in step
+with it without overwriting anything a person has edited.
+
+### 5.1 Bundles
+
+- A **help bundle** is a classpath resource at `help/{bundleId}.yaml` (it is read from the jar,
+  never from disk):
+
+  ```yaml
+  bundle: qbit-alerts          # unique id
+  version: 0.3.0               # the owning artifact's version
+  layer: QBIT                  # CORE | QBIT | HOST
+  entries:
+    - key: table:alerts_alert;slot:help
+      role: ALL_SCREENS        # optional, defaults to ALL_SCREENS
+      summary: One problem that needs attention, with its status and owner.
+      content: |
+        An alert is raised by a monitor ... default {{default:alerts_alert.severity}} ...
+    - key: table:alerts_alert;field:legacyCode
+      retired: true            # explicit removal
+  ```
+- Core, each qbit and the host register their bundles with `HelpBundles.register(qInstance, "help/x.yaml")`.
+  Qbits register theirs from their producer.
+- Layering: **CORE < QBIT < HOST < USER**. For a given `(key, role)` the highest bundle layer
+  supplies the text the sync seeds. An edit made in the UI (USER) always wins over any bundle.
+
+### 5.2 Provenance on each row
+
+`helpContent` gains these columns:
+- `source`: CORE, QBIT, HOST or USER.
+- `bundleId` and `bundleVersion`.
+- `lastSeededHash`: a SHA-256 of the summary, content and format the sync last wrote.
+- `upstreamStatus`: CURRENT, UPSTREAM_CHANGED or RETIRED.
+- `upstreamSummary` and `upstreamContent`: the bundle's newer text, kept while the status is UPSTREAM_CHANGED.
+- `modifiedBy`.
+
+A row with no `bundleId` is USER-created.
+
+### 5.3 Sync (startup, and on demand)
+
+The sync runs at startup, in the background. It runs as a durable job once the durable job kernel
+(qqq#1178) is in the instance, and as an async process otherwise. Admins can also run it from the
+Help app as "Sync help from bundles". For each winning bundle entry:
+
+| Database row | Action |
+|---|---|
+| none | insert: source is the entry's layer, hash is set, status CURRENT |
+| hash of the current text equals `lastSeededHash` (nobody edited it) | update to the bundle text and refresh the hash; source stays as is |
+| hash differs (someone edited it) and the bundle text changed since `lastSeededHash` | keep the edited text, set `UPSTREAM_CHANGED`, store the upstream text, and raise one alert, `help.upstream.changed` (deduplicated per run) |
+| hash differs and the bundle text is unchanged | nothing |
+
+For keys that are no longer in any bundle (or are marked `retired`):
+- a row nobody edited is deleted;
+- an edited row is marked RETIRED, never deleted.
+
+The run writes a summary (inserted, updated, upstream-changed, retired) to the process result and to
+the log. In the Help app, admins accept the upstream text or keep theirs. Either way the status
+goes back to CURRENT and the hash is set to the new upstream text.
+
+### 5.4 Live values instead of copied ones
+
+Help text may reference metadata. The references are rendered when the text is read (frontend
+metadata, search, assistant), so help never repeats a default or label that might later change:
+
+| Reference | Renders |
+|---|---|
+| `{{label:table}}`, `{{label:table.field}}`, `{{label:process}}`, `{{label:app}}` | the current label |
+| `{{default:table.field}}` | the field's default value |
+| `{{maxLength:table.field}}` | the field's maximum length |
+| `{{values:possibleValueSource}}` | the enum's labels, comma-separated |
+| `{{setting:name}}` | a value from a registered `HelpValueProvider` (hosts and qbits register them; for example `alerts.digestHour.default`) |
+
+An unknown reference renders as an empty string and is logged once. The coverage gate (5.5)
+fails on references that cannot be resolved.
+
+### 5.5 Coverage gate
+
+Core ships `HelpBundleAssertions` (in `qqq-backend-core`, under `testing`), which every qbit and
+the host call from one test:
+
+```java
+HelpBundleAssertions.forInstance(qInstance)
+   .bundles("help/qbit-alerts.yaml")
+   .owning(t -> t.getName().startsWith("alerts_"))   // the objects this bundle must cover
+   .excluding("table:alerts_alert;field:id", ...)    // explicit exclusions
+   .assertComplete();
+```
+
+It fails when any of these is true:
+- an owned app, table, process, record action or non-trivial field has no entry. Non-trivial means every field except the primary key, `createDate`/`modifyDate` and hidden fields, unless the field is excluded.
+- an entry's key does not resolve.
+- a summary is longer than 120 characters, or contains markup.
+- a `{{...}}` reference does not resolve.
+
+As a result, new metadata cannot merge without help.
+
+### 5.6 Review surface (`qbit-help`)
+
+The Help app home shows coverage, the "Upstream changed" rows (with a side-by-side diff and
+Accept upstream / Keep mine actions), retired rows and keys that no longer resolve.
+
+### 5.7 Migration
+
+KofTwentyTwo/Website-Backend#196's 3,394 seeded rows become:
+- `help/kof22.yaml` (HOST), which keeps the kof22-specific text;
+- the generic parts, moved into each qbit's `help/{qbit}.yaml`.
+
+Quoted defaults and labels become `{{...}}` references. The SQL seed changesets are dropped
+before #196 deploys; only the provenance columns migration remains.

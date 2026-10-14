@@ -318,8 +318,11 @@ The kernel picks a **plan** for the process, generically:
   - *As built:* bulk insert into a table with a unique key defaults to `NATURAL`. Bulk insert
     already skips rows whose unique key exists (`UniqueKeyHelper`), so a rerun chunk counts those
     rows as loaded. Without a unique key, and without a shared transactional backend, it stays
-    `NONE`, so a reclaimed chunk goes to `NEEDS_REVIEW`. The `jobRowKeyField` dedupe column is
-    not built yet.
+    `NONE`, so a reclaimed chunk goes to `NEEDS_REVIEW`. `DurableTableMetaData.jobRowKeyField`
+    declares a STRING dedupe column for file-sourced bulk insert (including ROW_SET retries),
+    keyed as `jobId:fileRow` using the record's first file row. A unique key on exactly that
+    field is required. Rerun rows count as "already loaded" without row errors, and the
+    declaration defaults bulk insert to `NATURAL` when there is no shared transaction.
 
 ### 2.6 Leases, heartbeats and reclaim (R2)
 - **Claiming.** `JobWorker` claims chunks through the store's **atomic** conditional update (a new

@@ -517,8 +517,10 @@ public final class DurableJobs
       // unique key already exists (UniqueKeyHelper), so a rerun chunk does not      //
       // duplicate rows it already loaded - they count as loaded, not as failures    //
       /////////////////////////////////////////////////////////////////////////////////
-      QTableMetaData destinationTable = instance.getTable(destination);
-      if(name.endsWith(".bulkInsert") && destinationTable != null && destinationTable.getUniqueKeys() != null && !destinationTable.getUniqueKeys().isEmpty())
+      QTableMetaData       destinationTable = instance.getTable(destination);
+      DurableTableMetaData durableTable     = DurableTableMetaData.of(destinationTable);
+      if(name.endsWith(".bulkInsert") && destinationTable != null
+         && ((durableTable != null && durableTable.getJobRowKeyField() != null) || (destinationTable.getUniqueKeys() != null && !destinationTable.getUniqueKeys().isEmpty())))
       {
          return (JobIdempotency.NATURAL);
       }

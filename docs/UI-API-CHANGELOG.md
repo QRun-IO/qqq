@@ -89,6 +89,7 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
   read the table.
 - Added JVM-local loopback-only session tokens, streamed responses and multipart uploads to
   `UiApiInvoker` (in-process invocation; no change to the document).
+- Added `UiApiRequest.withHeader(name, value)` (no change to the document) for custom invocation headers; null values remove headers, and the invoker drops reserved credential, client-channel and request-metadata headers case-insensitively.
 - Extended preferences with `POST /preferences/{sectionName}/actions/{actionName}` and
   `PreferenceActionRequestV1`, `PreferenceActionResponseV1`, `PreferenceActionV1`, and
   `PreferenceSecretV1`. Section actions support SECTION/LIST/ROW scopes, typed inputs,

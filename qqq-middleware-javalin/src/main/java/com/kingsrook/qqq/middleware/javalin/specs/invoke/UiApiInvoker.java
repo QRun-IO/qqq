@@ -290,7 +290,14 @@ public class UiApiInvoker
       {
          throw (new QException("JSON and multipart bodies are mutually exclusive"));
       }
-      if(!request.getMultipartFiles().isEmpty())
+      ///////////////////////////////////////////////////////////////////////////
+      // form fields go as multipart when the operation declares only a        //
+      // multipart body (e.g. process step): specs read params only from a     //
+      // content type they declare                                             //
+      ///////////////////////////////////////////////////////////////////////////
+      boolean formAsMultipart = request.getFormParams() != null && request.getJsonBody() == null
+         && declaresMultipartBody(operation) && !declaresBodyType(operation, "application/x-www-form-urlencoded");
+      if(!request.getMultipartFiles().isEmpty() || formAsMultipart)
       {
          String boundary = "qqq-" + UUID.randomUUID();
          body = multipartBody(request, boundary);
@@ -367,11 +374,21 @@ public class UiApiInvoker
     *******************************************************************************/
    static boolean declaresMultipartBody(UiApiOperation operation)
    {
+      return (declaresBodyType(operation, "multipart/form-data"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether the operation's spec declares a request body of the given type.
+    *******************************************************************************/
+   static boolean declaresBodyType(UiApiOperation operation, String mimeType)
+   {
       if(operation.openApi() == null || operation.openApi().getRequestBody() == null || operation.openApi().getRequestBody().getContent() == null)
       {
          return (false);
       }
-      return (operation.openApi().getRequestBody().getContent().keySet().stream().anyMatch(type -> type != null && type.toLowerCase().startsWith("multipart/form-data")));
+      return (operation.openApi().getRequestBody().getContent().keySet().stream().anyMatch(type -> type != null && type.toLowerCase().startsWith(mimeType)));
    }
 
 

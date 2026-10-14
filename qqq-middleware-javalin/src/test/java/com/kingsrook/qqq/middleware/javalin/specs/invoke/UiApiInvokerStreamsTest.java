@@ -254,6 +254,31 @@ class UiApiInvokerStreamsTest
 
 
    /*******************************************************************************
+    ** Form fields go as multipart to multipart-only operations (process step),
+    ** and stay URL-encoded otherwise.
+    *******************************************************************************/
+   @Test
+   void testFormFieldsFollowDeclaredBody() throws Exception
+   {
+      UiApiInvoker invoker = invoker();
+      UiApiRequest step = new UiApiRequest().withMethod(HttpMethod.POST).withPath("/processes/{processName}/{processUUID}/step/{stepName}")
+         .withPathParam("processName", "person.bulkInsert").withPathParam("processUUID", "u").withPathParam("stepName", "receiveFileMapping")
+         .withSessionUUID("test").withFormParam("values", "{\"savedBulkLoadProfileId\":1}");
+      HttpRequest stepHttp = invoker.buildHttpRequest(invoker.findOperation(step.getMethod(), step.getPath()).orElseThrow(), step);
+      assertThat(stepHttp.headers().firstValue("Content-Type").orElseThrow()).startsWith("multipart/form-data; boundary=");
+
+      UiApiRequest logout = new UiApiRequest().withMethod(HttpMethod.POST).withPath("/logout").withSessionUUID("test").withFormParam("a", "b");
+      UiApiOperation logoutOperation = invoker.findOperation(logout.getMethod(), logout.getPath()).orElse(null);
+      if(logoutOperation != null && !UiApiInvoker.declaresMultipartBody(logoutOperation))
+      {
+         HttpRequest logoutHttp = invoker.buildHttpRequest(logoutOperation, logout);
+         assertEquals("application/x-www-form-urlencoded", logoutHttp.headers().firstValue("Content-Type").orElseThrow());
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** In-process credentials take precedence and no other credential is forwarded.
     *******************************************************************************/
    @Test

@@ -27,8 +27,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.actions.processes.QProcessCallbackFactory;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
@@ -74,6 +79,19 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  *******************************************************************************/
 class RenderSavedReportProcessTest extends BaseTest
 {
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private Set<String> temporaryReports() throws IOException
+   {
+      try(Stream<Path> files = Files.list(Path.of(System.getProperty("java.io.tmpdir"))))
+      {
+         return files.map(path -> path.getFileName().toString()).filter(name -> name.startsWith("qqq-saved-report-") || name.startsWith("Test Report")).collect(Collectors.toSet());
+      }
+   }
+
+
+
    /*******************************************************************************
     **
     *******************************************************************************/
@@ -137,7 +155,9 @@ class RenderSavedReportProcessTest extends BaseTest
          .withQueryFilterJson(JsonUtils.toJson(new QQueryFilter()))
       )).getRecords().get(0);
 
+      Set<String> before = temporaryReports();
       RunProcessOutput runProcessOutput = runRenderReportProcess(savedReport, ReportFormatPossibleValueEnum.CSV);
+      assertThat(temporaryReports()).isEqualTo(before);
 
       String downloadFileName = runProcessOutput.getValueString("downloadFileName");
       assertThat(downloadFileName)

@@ -117,6 +117,10 @@ public class SFTPStorageActionTest extends BaseSFTPTest
 
       assertEquals(data.length(), byteArrayOutputStream.toString(StandardCharsets.UTF_8).length());
       assertEquals(data, byteArrayOutputStream.toString(StandardCharsets.UTF_8));
+      inputStream.close();
+      storageAction.deleteObject(storageInput);
+      storageAction.deleteObject(storageInput);
+      assertThrows(QException.class, () -> storageAction.getInputStream(storageInput));
    }
 
 }

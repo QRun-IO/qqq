@@ -82,8 +82,8 @@ class ClassifiedValueCanaryTest extends BaseTest
    @Test
    void noClassifiedSubstringEscapes() throws Exception
    {
-      String marker = "CANARY-PHI-" + UUID.randomUUID();
-      String updatedMarker = "CANARY-PHI-" + UUID.randomUUID();
+      String marker = "CANARY-PHI-" + canaryToken();
+      String updatedMarker = "CANARY-PHI-" + canaryToken();
       QTableMetaData table = QContext.getQInstance().getTable(TestUtils.TABLE_NAME_PERSON_MEMORY);
       String name = table.getName();
       table.getField("firstName").withSupplementalMetaData(new AiFieldMetaData().withClassification(DataClassification.PII));
@@ -171,5 +171,20 @@ class ClassifiedValueCanaryTest extends BaseTest
       {
          assertFalse(output.contains(marker.substring(start, start + 5)), "Classified fragment escaped into captured output");
       }
+   }
+
+
+   /*******************************************************************************
+    ** A random marker body made only of the letters g-v, so that no 5-character
+    ** window of it can coincide with hex ids, UUIDs or timestamps in a payload.
+    *******************************************************************************/
+   private static String canaryToken()
+   {
+      StringBuilder token = new StringBuilder();
+      for(char c : UUID.randomUUID().toString().replace("-", "").toCharArray())
+      {
+         token.append((char) ('g' + Character.digit(c, 16)));
+      }
+      return (token.toString());
    }
 }

@@ -38,7 +38,6 @@ import java.util.Objects;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.ClassifiedValues;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
@@ -300,7 +299,7 @@ public class QRecord implements Serializable
    @Override
    public String toString()
    {
-      return "QRecord{tableName='" + tableName + "',values=" + ClassifiedValues.recordForLog(this) + "}";
+      return "QRecord{tableName='" + tableName + "',id='" + getValue("id") + "'}";
    }
 
 

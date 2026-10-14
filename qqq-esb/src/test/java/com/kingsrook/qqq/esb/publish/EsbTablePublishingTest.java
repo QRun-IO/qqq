@@ -113,7 +113,7 @@ class EsbTablePublishingTest extends EsbTestBase
       QContext.getQInstance().getTable(TABLE_NAME_ORDER).getField("status").withSupplementalMetaData(new AiFieldMetaData().withClassification(DataClassification.PII));
       MessageConsumer queue = openQueueConsumer();
       MessageConsumer topic = openTopicConsumer();
-      String marker = "CANARY-PHI-" + UUID.randomUUID();
+      String marker = "CANARY-PHI-" + canaryToken();
       QRecord record = new InsertAction().execute(new InsertInput(TABLE_NAME_ORDER).withRecord(new QRecord().withValue("orderNo", marker).withValue("status", marker))).getRecords().get(0);
       new UpdateAction().execute(new UpdateInput(TABLE_NAME_ORDER).withRecord(new QRecord().withValue("id", record.getValue("id")).withValue("status", marker + "updated")));
       new DeleteAction().execute(new DeleteInput(TABLE_NAME_ORDER).withPrimaryKey(record.getValue("id")));
@@ -718,4 +718,18 @@ class EsbTablePublishingTest extends EsbTestBase
       }
    }
 
+
+   /*******************************************************************************
+    ** A random marker body made only of the letters g-v, so that no 5-character
+    ** window of it can coincide with hex ids, UUIDs or timestamps in a payload.
+    *******************************************************************************/
+   private static String canaryToken()
+   {
+      StringBuilder token = new StringBuilder();
+      for(char c : UUID.randomUUID().toString().replace("-", "").toCharArray())
+      {
+         token.append((char) ('g' + Character.digit(c, 16)));
+      }
+      return (token.toString());
+   }
 }

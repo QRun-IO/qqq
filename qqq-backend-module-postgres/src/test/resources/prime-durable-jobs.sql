@@ -235,3 +235,12 @@ CREATE TABLE kill_test_signal
    detail      TEXT,
    create_date TIMESTAMPTZ DEFAULT now()
 );
+
+DROP TABLE IF EXISTS kill_test_load CASCADE;
+CREATE TABLE kill_test_load
+(
+   id     SERIAL PRIMARY KEY,
+   code   VARCHAR(50) NOT NULL UNIQUE,
+   name   VARCHAR(250) NOT NULL,
+   amount INTEGER
+);

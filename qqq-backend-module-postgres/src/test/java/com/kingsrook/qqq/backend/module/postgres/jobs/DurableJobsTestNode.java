@@ -48,6 +48,28 @@ public class DurableJobsTestNode
       QInstance instance = KillTestInstance.define(args[0], Integer.parseInt(args[1]), args[2], args[3], args[4], podId, 1, args.length > 6 ? args[6] : null);
       QContext.init(instance, new QSystemUserSession());
       DurableJobsRuntime.start(instance);
+      ////////////////////////////////////////////////////////////////////
+      // report heap use (after a GC hint) so load tests can check that   //
+      // memory stays flat - bounded buffers, no whole-file reads         //
+      ////////////////////////////////////////////////////////////////////
+      Thread heap = new Thread(() ->
+      {
+         while(true)
+         {
+            Runtime runtime = Runtime.getRuntime();
+            System.out.println("HEAP " + podId + " usedMb=" + ((runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024)));
+            try
+            {
+               Thread.sleep(2000);
+            }
+            catch(InterruptedException e)
+            {
+               return;
+            }
+         }
+      }, "heap-" + podId);
+      heap.setDaemon(true);
+      heap.start();
       System.out.println("READY " + podId);
       System.out.flush();
 

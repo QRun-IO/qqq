@@ -69,6 +69,7 @@ public class BulkLoadKillTestParts
    public static final String TABLE_STORAGE = "jobs_storage_fs";
    public static final String TABLE_TARGET  = "kill_test_target";
    public static final String TABLE_SIGNAL  = "kill_test_signal";
+   public static final String TABLE_LOAD    = "kill_test_load";
    public static final String BACKEND_FS    = "jobsfs";
 
    public static final int INSERT_MILLIS_PER_ROW = 3;
@@ -104,6 +105,19 @@ public class BulkLoadKillTestParts
          .withField(new QFieldMetaData("name", QFieldType.STRING).withIsRequired(true))
          .withField(new QFieldMetaData("amount", QFieldType.INTEGER))
          .withCustomizer(TableCustomizers.PRE_INSERT_RECORD, new QCodeReference(SlowInsert.class)));
+
+      ////////////////////////////////////////////////////////////////
+      // the 1M-row load target: plain inserts, no customizer, no audits //
+      ////////////////////////////////////////////////////////////////
+      instance.addTable(new QTableMetaData()
+         .withName(TABLE_LOAD)
+         .withBackendName(backendName)
+         .withPrimaryKeyField("id")
+         .withUniqueKey(new UniqueKey("code"))
+         .withField(new QFieldMetaData("id", QFieldType.INTEGER).withIsEditable(false))
+         .withField(new QFieldMetaData("code", QFieldType.STRING).withIsRequired(true))
+         .withField(new QFieldMetaData("name", QFieldType.STRING).withIsRequired(true))
+         .withField(new QFieldMetaData("amount", QFieldType.INTEGER)));
 
       instance.addTable(new QTableMetaData()
          .withName(TABLE_SIGNAL)

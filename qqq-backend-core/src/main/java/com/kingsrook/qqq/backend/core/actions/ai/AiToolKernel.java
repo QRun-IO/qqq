@@ -61,6 +61,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaDataInterface;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.ClientChannelsMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.MetaDataWithPermissionRules;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
@@ -125,7 +126,7 @@ public class AiToolKernel
    public AiToolKernel(QInstance qInstance, AiToolKernelSettings settings)
    {
       this.qInstance = qInstance;
-      this.settings = settings == null ? new AiToolKernelSettings() : settings;
+      this.settings = settings == null ? AiToolKernelSettings.of(qInstance) : settings;
       this.exposurePolicy = new AiExposurePolicy(this.settings);
       this.redactor = new AiRedactor(this.settings.getCustomRedactionPatterns());
 
@@ -522,7 +523,7 @@ public class AiToolKernel
             .withFieldName(field.getName())
             .withLabel(field.getLabel())
             .withExposure(exposure)
-            .withReason(exposurePolicy.getFieldExposureReason(personalized, field))
+            .withReason(context.getFieldAccessReason(personalized, field))
             .withCanPropose(canEdit && exposure != AiExposure.NONE));
       }
 
@@ -684,7 +685,8 @@ public class AiToolKernel
       CapturedContext previous = QContext.capture();
       try
       {
-         QContext.init(qInstance, session);
+         QContext.init(qInstance, session.clone().withClientChannel(ClientChannelsMetaData.CHANNEL_ASSISTANT));
+         QContext.setObject(AiToolKernelSettings.NAME, settings);
          return (body.run());
       }
       finally

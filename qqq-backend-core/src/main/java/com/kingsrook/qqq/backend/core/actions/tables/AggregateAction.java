@@ -79,7 +79,8 @@ public class AggregateAction
       boolean enforce = false;
       if(aggregateInput.getTableName() != null && aggregateInput.getTable() != null)
       {
-         enforce = CorePermissionEnforcer.checkTablePermissions(aggregateInput, TablePermissionSubType.READ);
+         CorePermissionEnforcer.checkTablePermissions(aggregateInput, TablePermissionSubType.READ);
+         enforce = CorePermissionEnforcer.shouldEnforceFieldAccess(aggregateInput);
          if(enforce)
          {
             CorePermissionEnforcer.checkReadCriteria(aggregateInput, aggregateInput.getQueryJoins(), aggregateInput.getFilter(), getAggregateAndGroupByFieldNames(aggregateInput));

@@ -38,6 +38,7 @@ import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.DateTimeGroupBy;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.actions.tables.AggregateAction;
 import com.kingsrook.qqq.backend.core.actions.tables.CountAction;
@@ -178,6 +179,8 @@ public class ColumnStatsStep implements BackendStep
          permissionInput.setFilter(filter);
          permissionInput.setQueryJoins(queryJoin == null ? null : List.of(queryJoin));
          PermissionsHelper.checkJoinedTableReadPermissions(permissionInput, permissionInput.getQueryJoins(), filter);
+         FieldAccessHelper.PendingExactMatch exactMatch = runBackendStepInput.isFieldAccessEnforced()
+            ? FieldAccessHelper.assertCriteriaAllowed(tableName, permissionInput.getQueryJoins(), filter, List.of(fieldName)) : null;
 
          ///////////////////////////////////////////////////////////////////////////////////////////
          // get the config for this table, if there is one -                                      //
@@ -259,6 +262,10 @@ public class ColumnStatsStep implements BackendStep
          aggregateInput.withQueryHint(QueryHint.MAY_USE_READ_ONLY_BACKEND);
 
          AggregateOutput aggregateOutput = new AggregateAction().execute(aggregateInput);
+         if(exactMatch != null)
+         {
+            exactMatch.complete(aggregateOutput.getResults().size(), "process");
+         }
 
          ArrayList<QRecord> valueCounts = new ArrayList<>();
          for(AggregateResult result : aggregateOutput.getResults())

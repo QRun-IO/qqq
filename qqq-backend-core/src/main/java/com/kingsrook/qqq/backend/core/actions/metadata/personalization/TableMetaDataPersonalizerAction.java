@@ -23,7 +23,7 @@ package com.kingsrook.qqq.backend.core.actions.metadata.personalization;
 
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
-import com.kingsrook.qqq.backend.core.actions.permissions.FieldSecurityLockHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
@@ -89,7 +89,7 @@ public class TableMetaDataPersonalizerAction
       QTableMetaData table = executePersonalizer(tableActionInput);
       if(applyFieldSecurityLocks && table != null)
       {
-         table = FieldSecurityLockHelper.removeDeniedFields(table);
+         table = FieldAccessHelper.applyToTable(table);
       }
       return (table);
    }
@@ -100,7 +100,7 @@ public class TableMetaDataPersonalizerAction
     * Field security locks are applied to the personalized table for read-style
     * inputs (query, get, count, aggregate, export, table meta data) that are
     * having permissions enforced.  Write inputs instead reject writes to denied
-    * fields (see FieldSecurityLockHelper.assertWritesAccessible), so that
+    * fields (see FieldAccessHelper.assertWritesAllowed), so that
     * removing fields from the table can't change insert/update semantics.
     ***************************************************************************/
    private static boolean shouldApplyFieldSecurityLocks(AbstractTableActionInput tableActionInput)
@@ -109,7 +109,7 @@ public class TableMetaDataPersonalizerAction
       {
          return (false);
       }
-      return (CorePermissionEnforcer.shouldEnforce(tableActionInput));
+      return (CorePermissionEnforcer.shouldEnforceFieldAccess(tableActionInput));
    }
 
 

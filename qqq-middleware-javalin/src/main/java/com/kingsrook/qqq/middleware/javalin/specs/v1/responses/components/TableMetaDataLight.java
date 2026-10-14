@@ -25,12 +25,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendTableMetaData;
-import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIExclude;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIListItems;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIMapKnownEntries;
+import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIMapValueType;
 
 
 /***************************************************************************
@@ -192,9 +192,10 @@ public class TableMetaDataLight implements ToSchema
     **
     ***************************************************************************/
    @OpenAPIDescription("Help Contents for this table.") // todo describe more
-   public Map<String, List<QHelpContent>> getHelpContents()
+   @OpenAPIMapValueType(value = HelpContentV1.class, useRef = true, array = true)
+   public Map<String, List<HelpContentV1>> getHelpContents()
    {
-      return (this.wrapped.getHelpContents());
+      return (HelpContentV1.of(this.wrapped.getHelpContents()));
    }
 
 

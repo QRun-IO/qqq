@@ -654,7 +654,7 @@ public class UniqueKeyHelper
          {
             QFieldMetaData field      = table.getField(fieldName);
             Serializable   value      = record.getValue(fieldName);
-            Serializable   typedValue = ValueUtils.getValueAsFieldType(field.getType(), value);
+            Serializable   typedValue = ValueUtils.getValueAsFieldType(table, field, value);
 
             ///////////////////////////////////////////////////////////////////////////////////
             // if null value, look at flag to determine if a null should be used (which will //

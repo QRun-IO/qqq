@@ -73,7 +73,7 @@ the UI API. Register them outside `/qqq/v1`, e.g. `/qqq/hooks/{qbit}/...`, throu
   `/qqq/v2`.
 - Reserved by core (never available to extensions): `/metaData`, `/table`, `/processes`,
   `/possibleValues`, `/widget`, `/reports`, `/download`, `/manageSession`, `/logout`, `/oidc`,
-  `/search`, `/version`, `/openapi.*`.
+  `/search`, `/help`, `/version`, `/preferences`, `/openapi.*`.
 
 ### QInstance validation (fails the instance)
 For each extension:

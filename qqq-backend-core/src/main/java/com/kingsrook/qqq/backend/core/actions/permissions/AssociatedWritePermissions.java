@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordDiscovery;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociationJoin;
@@ -267,7 +268,7 @@ public final class AssociatedWritePermissions
       List<Serializable> keys = new ArrayList<>();
       for(Serializable key : CollectionUtils.nonNullList(input.getPrimaryKeys()))
       {
-         Serializable typedKey = ValueUtils.getValueAsFieldType(table.getField(table.getPrimaryKeyField()).getType(), key);
+         Serializable typedKey = ValueUtils.getValueAsFieldType(table, table.getField(table.getPrimaryKeyField()), key);
          if(visited.add(AssociatedRecordUpdate.primaryKey(table, new QRecord().withValue(table.getPrimaryKeyField(), typedKey))))
          {
             keys.add(typedKey);
@@ -391,7 +392,7 @@ public final class AssociatedWritePermissions
    {
       if(includeFieldSecurityLocks && !children.isEmpty())
       {
-         FieldSecurityLockHelper.assertWritesAccessible(QContext.getQInstance().getTable(tableName), children);
+         FieldAccessHelper.assertWritesAllowed(QContext.getQInstance().getTable(tableName), children);
       }
    }
 

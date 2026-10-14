@@ -90,7 +90,7 @@ action menus, a long-help panel, and help search.
 - Markdown is the default format, rendered to a safe subset: raw HTML is escaped and unsafe URLs
   are dropped. `HTML` stays for compatibility; it is sanitized by clients.
 
-## 3. Plan
+## 3. Plan (built: core QRun-IO/qqq#1177, Next QRun-IO/qqq-frontend-next#127, authoring QRun-IO/qbit-help#1)
 
 ### Core
 
@@ -122,3 +122,43 @@ help; help results in the command palette; "Add help" on hover for authors.
 ### Authoring (`qbit-help`)
 
 Help app home with the coverage dashboard, in-context editing and preview.
+
+## 4. Writing help
+
+### Keys
+
+| Target | Key | Notes |
+|---|---|---|
+| App | `app:{app};slot:help` | Shown on the app home header (`APP_SCREEN`). |
+| Table | `table:{table};slot:help` | Query, view, edit and create headers. |
+| Table section | `table:{table};section:{section}` | |
+| Table field | `table:{table};field:{field}` | Labels on edit and view, list column headers. |
+| Process | `process:{process};slot:help` | Process header (`PROCESS_SCREEN`); its action-menu item (`TABLE_ACTION_MENU`). `*suffix` matches every process ending in `suffix`. |
+| Process step | `process:{process};step:{step}` | |
+| Process field | `process:{process};field:{field}` | |
+| Report | `report:{report};slot:help` | |
+| Widget | `widget:{widget};slot:label` | Column help uses the column name as the slot. |
+| Possible-value source | `possibleValueSource:{pvs};slot:help` | Search and coverage. |
+| Instance | `instanceLevel:true;slot:{slot}` | |
+
+### Rows
+
+- `summary`: one plain sentence, at most about 120 characters. It is the tooltip.
+- `content`: the long help, in Markdown (`format` = `MARKDOWN`). Raw HTML is escaped and unsafe links are dropped.
+- `role`: usually `ALL_SCREENS`. Use a more specific role only when one screen needs different words.
+- `permissionName` and `clientChannel`: leave both empty unless the help is for a narrower audience.
+
+### Coverage report
+
+`GET /qqq/v1/help/coverage?missingOnly=true` lists every helpable object that has no help yet.
+You can narrow it with `kind=` (`app`, `table`, `section`, `field`, `process`, `step`,
+`processField`, `report`, `widget`, `possibleValueSource`, `instance`) and `parentKey=` (for example
+`table:person`). It needs insert or edit permission on `helpContent`. The Help app home in
+`qbit-help` shows the same report with "Add help" links. In Next, add `?helpHelp` to any URL to
+see each slot's key in place.
+
+### Applying changes
+
+Inserts, edits and deletes apply immediately on the node that makes them. Other nodes pick them up
+within 30 seconds. After a bulk import straight into the database, run "Apply help changes now"
+from `qbit-help`, or call `QInstanceHelpContentManager.reloadHelpContent`.

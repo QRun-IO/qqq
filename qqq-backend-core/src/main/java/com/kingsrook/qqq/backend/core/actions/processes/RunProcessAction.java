@@ -34,6 +34,7 @@ import com.kingsrook.qqq.backend.core.actions.ActionHelper;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.NoCodeWidgetRenderer;
 import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.processes.listeners.ProcessLifecycleListenerHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
@@ -41,6 +42,7 @@ import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.processes.ProcessState;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
@@ -66,6 +68,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.processes.QFrontendStepMeta
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QStateMachineStep;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QStepMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.processes.implementations.basepull.BasepullConfiguration;
 import com.kingsrook.qqq.backend.core.processes.tracing.ProcessTracerInterface;
@@ -74,6 +77,7 @@ import com.kingsrook.qqq.backend.core.state.StateProviderInterface;
 import com.kingsrook.qqq.backend.core.state.StateType;
 import com.kingsrook.qqq.backend.core.state.UUIDAndTypeStateKey;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
+import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import org.apache.commons.lang3.BooleanUtils;
@@ -94,6 +98,8 @@ public class RunProcessAction
    public static final String BASEPULL_TIMESTAMP_FIELD  = "basepullTimestampField";
    public static final String BASEPULL_CONFIGURATION    = "basepullConfiguration";
 
+   public static final String ONE_TIME_SECRETS_MASKED = "oneTimeSecretsMasked";
+
    public static final String PROCESS_TRACER_CODE_REFERENCE_FIELD = "processTracerCodeReference";
 
    ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -111,6 +117,7 @@ public class RunProcessAction
     *******************************************************************************/
    public RunProcessOutput execute(RunProcessInput runProcessInput) throws QException
    {
+      runProcessInput.setFieldAccessEnforced(CorePermissionEnforcer.shouldEnforceFieldAccess(runProcessInput));
       if(runProcessInput.getProcessName() != null && QContext.getQInstance() != null && QContext.getQInstance().getProcess(runProcessInput.getProcessName()) != null)
       {
          CorePermissionEnforcer.checkProcessPermission(runProcessInput, runProcessInput.getProcessName(), runProcessInput.getValues());
@@ -155,6 +162,10 @@ public class RunProcessAction
 
       UUIDAndTypeStateKey stateKey     = new UUIDAndTypeStateKey(UUID.fromString(runProcessInput.getProcessUUID()), StateType.PROCESS_STATUS);
       ProcessState        processState = primeProcessState(runProcessInput, stateKey, process);
+      if(runProcessInput.isFieldAccessEnforced())
+      {
+         validateFieldAccessInput(runProcessInput, process);
+      }
 
       /////////////////////////////////////////////////////////////////////////////////////////////////////////////
       // these should always be clear when we're starting a run - so make sure they haven't leaked from previous //
@@ -720,6 +731,7 @@ public class RunProcessAction
    {
       RunBackendStepInput runBackendStepInput = new RunBackendStepInput(processState);
       runBackendStepInput.setInputSource(runProcessInput.getInputSource());
+      runBackendStepInput.setFieldAccessEnforced(runProcessInput.isFieldAccessEnforced());
       runBackendStepInput.setProcessName(process.getName());
       runBackendStepInput.setStepName(backendStep.getName());
       runBackendStepInput.setCallback(runProcessInput.getCallback());
@@ -750,6 +762,20 @@ public class RunProcessAction
       traceStepStart(runBackendStepInput);
 
       RunBackendStepOutput runBackendStepOutput = new RunBackendStepAction().execute(runBackendStepInput);
+      if(!runBackendStepOutput.getOneTimeSecrets().isEmpty())
+      {
+         runProcessOutput.getOneTimeSecrets().addAll(runBackendStepOutput.getOneTimeSecrets());
+         ArrayList<String> masked = new ArrayList<>();
+         if(processState.getValues().get(ONE_TIME_SECRETS_MASKED) instanceof List<?> previousMasks)
+         {
+            for(Object previousMask : previousMasks)
+            {
+               masked.add((String) previousMask);
+            }
+         }
+         runBackendStepOutput.getOneTimeSecrets().forEach(secret -> masked.add(secret.getMasked()));
+         runBackendStepOutput.addValue(ONE_TIME_SECRETS_MASKED, masked);
+      }
       storeState(stateKey, runBackendStepOutput.getProcessState());
 
       traceStepFinish(runBackendStepInput, runBackendStepOutput);
@@ -1204,6 +1230,67 @@ public class RunProcessAction
          {
             throw new QBadRequestException("Process input [" + field.getName() + "] is configured by the server and cannot be supplied by a user.");
          }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Validate restored and newly supplied caller values before any process step.
+    ** Final customized extraction filters are checked again at the query boundary.
+    *******************************************************************************/
+   private void validateFieldAccessInput(RunProcessInput input, QProcessMetaData process) throws QException
+   {
+      String tableName = input.getValueString("sourceTable");
+      if(tableName == null)
+      {
+         tableName = process.getTableName();
+      }
+      if(tableName == null)
+      {
+         tableName = input.getValueString("tableName");
+      }
+      if(tableName == null)
+      {
+         tableName = process.getInputFields().stream().filter(field -> "sourceTable".equals(field.getName()))
+            .map(QFieldMetaData::getDefaultValue).filter(Objects::nonNull).map(String::valueOf).findFirst().orElse(null);
+      }
+      QTableMetaData table = QContext.getQInstance().getTable(tableName);
+      for(String name : List.of("queryFilterJson", "filterJSON", "defaultQueryFilter"))
+      {
+         Serializable supplied = input.getValue(name);
+         if(supplied == null || supplied instanceof String string && string.isBlank())
+         {
+            continue;
+         }
+         if(table == null)
+         {
+            throw (new QPermissionDeniedException("Permission denied: unknown process query table."));
+         }
+         try
+         {
+            QQueryFilter filter = supplied instanceof QQueryFilter queryFilter ? queryFilter : JsonUtils.toObject(String.valueOf(supplied), QQueryFilter.class);
+            FieldAccessHelper.assertCriteriaAllowed(tableName, null, filter, null, false);
+         }
+         catch(java.io.IOException e)
+         {
+            throw (new QBadRequestException("Invalid process query filter."));
+         }
+      }
+      String enabled = input.getValueString("bulkEditEnabledFields");
+      if(enabled != null)
+      {
+         QTableMetaData writeTable = QContext.getQInstance().getTable(process.getTableName());
+         if(writeTable == null)
+         {
+            throw (new QPermissionDeniedException("Permission denied: unknown process write table."));
+         }
+         QRecord values = new QRecord();
+         for(String name : enabled.split(","))
+         {
+            values.setValue(name, input.getValue(name));
+         }
+         FieldAccessHelper.assertWritesAllowed(writeTable, List.of(values));
       }
    }
 }

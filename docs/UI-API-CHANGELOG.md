@@ -74,6 +74,10 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 ## Versions
 
 ### 1.4.0 (unreleased)
+- Added the core extension `health` 1.0.0 (central health monitoring, `docs/specs/HEALTH.md`):
+  `GET /health/summary`, `GET /health/components/{name}`, `GET /health/checks/{name}/history` and
+  `POST /health/checks/{name}/run`, with `Health...V1` schemas. It is registered when an app adds
+  `HealthMonitoringMetaData`; `/health` joins `ESTABLISHED_PREFIXES`. The core document is unchanged.
 - Output delivery:
   - Added `GET /delivery/destinations`, `POST /delivery/destinations/{name}/targets`
     (`{chosen: {...}}`), and `GET /delivery/output/{logId}`. Discovery and target
@@ -86,12 +90,6 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 - `baseline.yaml` is now the RC.7 document (1.3.0).
 
 ### 1.3.0 (QQQ 4.1.0-RC.7)
-- Added the core extension `health` 1.0.0 (central health monitoring, `docs/specs/HEALTH.md`):
-  `GET /health/summary`, `GET /health/components/{name}`, `GET /health/checks/{name}/history` and
-  `POST /health/checks/{name}/run`, with `Health...V1` schemas. It is registered when an app adds
-  `HealthMonitoringMetaData`; `/health` joins `ESTABLISHED_PREFIXES`. The core document is unchanged.
-
-### 1.3.0 (unreleased)
 - Added `UiApiRequest.withHeader(name, value)` for custom invocation headers; null values remove headers, and the invoker drops reserved credential, client-channel and request-metadata headers case-insensitively.
 - Strict UI API routes are the default (#1159): startup fails when a route under `/qqq/v1` has no
   spec (core or extension). `QQQ_UI_API_STRICT_ROUTES=false` (or `withStrictUiApiRoutes(false)`)
@@ -146,9 +144,6 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
   - It is intersected with the user's live permissions.
   - The session's client channel is `token:<id>`; "token" is a new default channel.
   - Access tokens from qbit-authentik set it.
-
-### 1.2.0 (QQQ 4.1.0-RC.6)
-1.1.0 was never released; its additions ship here.
 - In-app help (docs/HELP-CONTENT.md):
   - Typed `HelpContentV1` entries and slot maps across all existing help properties; new `helpContents` maps on apps, processes and reports. Targeting fields remain server-only.
   - Added secured `GET /help/search?q=&limit=` with ranked results, canonical keys, summaries, long help and application-relative links (default 20, maximum 50).
@@ -172,6 +167,11 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
   `validatePossibleValueSourceOnWrite(false)`. SYSTEM writes are excluded.
   See [Contingent possible values](CONTINGENT-POSSIBLE-VALUES.md) for examples,
   frontend obligations, sample fixtures and the process-step validation limitation.
+- `baseline.yaml` was the RC.6 document (1.2.0) for this release; the in-app help, invoker, bulk-load
+  and contingent-field additions above were first listed under 1.2.0 but merged after RC.6 was cut.
+
+### 1.2.0 (QQQ 4.1.0-RC.6)
+1.1.0 was never released; its additions ship here.
 - Added typed `recordFeatures.ownership` and `builtInViews` to table metadata for
   ASSIGNMENT-enabled tables. The "My records" filter preserves `CurrentUser`
   expression objects (`type: CurrentUser`, displayed as "Me"). Core also resolves

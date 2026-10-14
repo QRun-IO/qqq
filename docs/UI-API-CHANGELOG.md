@@ -74,6 +74,8 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 
 ## Versions
 
+### Unreleased (after 1.2.0; no change to the document)
+- Added `UiApiRequest.withHeader(name, value)` for custom invocation headers; null values remove headers, and the invoker drops reserved credential, client-channel and request-metadata headers case-insensitively.
 ### 1.3.0 (unreleased)
 - Extended preferences with `POST /preferences/{sectionName}/actions/{actionName}` and
   `PreferenceActionRequestV1`, `PreferenceActionResponseV1`, `PreferenceActionV1`, and

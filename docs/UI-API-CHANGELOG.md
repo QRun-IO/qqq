@@ -87,6 +87,8 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
   `{api}/versions.json` for v1 clients. Modules contribute through `TableApisProviderInterface`
   (found with `ServiceLoader`); `qqq-middleware-api` provides one. The caller must be allowed to
   read the table.
+- Added JVM-local loopback-only session tokens, streamed responses and multipart uploads to
+  `UiApiInvoker` (in-process invocation; no change to the document).
 - Added the assisted bulk-load operations (tag `Bulk Load`, design spec #1171 section 3.2):
   `GET /bulkLoad/uploads/{uploadRef}/profile`, `POST /bulkLoad/{tableName}/suggestMapping` and
   `POST /bulkLoad/{tableName}/validate` (a dry run through the table's bulk-insert process; nothing

@@ -34,6 +34,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.module.filesystem.sftp.model.metadata.SFTPBackendMetaData;
 import com.kingsrook.qqq.backend.module.filesystem.sftp.utils.SFTPOutputStream;
 import org.apache.sshd.sftp.client.SftpClient;
+import org.apache.sshd.sftp.common.SftpConstants;
+import org.apache.sshd.sftp.common.SftpException;
 
 
 /*******************************************************************************
@@ -41,6 +43,33 @@ import org.apache.sshd.sftp.client.SftpClient;
  *******************************************************************************/
 public class SFTPStorageAction extends AbstractSFTPAction implements QStorageInterface
 {
+
+   /*******************************************************************************
+    ** Delete an object, including an incomplete report output.
+    *******************************************************************************/
+   @Override
+   public void deleteObject(StorageInput storageInput) throws QException
+   {
+      try
+      {
+         SFTPBackendMetaData backend = (SFTPBackendMetaData) storageInput.getBackend();
+         preAction(backend);
+         getSftpClient(backend).remove(getFullPath(storageInput));
+      }
+      catch(SftpException e)
+      {
+         if(e.getStatus() != SftpConstants.SSH_FX_NO_SUCH_FILE)
+         {
+            throw new QException("Exception deleting SFTP storage object", e);
+         }
+      }
+      catch(Exception e)
+      {
+         throw new QException("Exception deleting SFTP storage object", e);
+      }
+   }
+
+
 
    /*******************************************************************************
     ** create an output stream in the storage backend - that can be written to,

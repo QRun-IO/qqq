@@ -83,8 +83,6 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 - Added JVM-local loopback-only session tokens, streamed responses and multipart uploads to
   `UiApiInvoker` (in-process invocation; no change to the document).
 - Added `UiApiRequest.withHeader(name, value)` (no change to the document) for custom invocation headers; null values remove headers, and the invoker drops reserved credential, client-channel and request-metadata headers case-insensitively.
-### 1.3.0 (unreleased)
-- Added `UiApiRequest.withHeader(name, value)` for custom invocation headers; null values remove headers, and the invoker drops reserved credential, client-channel and request-metadata headers case-insensitively.
 - Strict UI API routes are the default (#1159): startup fails when a route under `/qqq/v1` has no
   spec (core or extension). `QQQ_UI_API_STRICT_ROUTES=false` (or `withStrictUiApiRoutes(false)`)
   opts out temporarily. Applications must run the spec'd alerts, assistant and sql-workbench qbit

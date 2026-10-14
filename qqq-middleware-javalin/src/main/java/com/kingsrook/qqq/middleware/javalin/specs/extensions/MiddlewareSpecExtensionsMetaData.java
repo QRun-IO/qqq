@@ -63,7 +63,7 @@ public class MiddlewareSpecExtensionsMetaData implements QSupplementalInstanceMe
     ***************************************************************************/
    public static final Set<String> CORE_RESERVED_ROOTS = Set.of(
       "metaData", "table", "processes", "possibleValues", "widget", "reports", "download",
-      "manageSession", "logout", "oidc", "search", "help", "version", "preferences", "delivery", "openapi.yaml", "openapi.json", "openapi.html");
+      "manageSession", "logout", "oidc", "search", "help", "version", "preferences", "durableJobs", "delivery", "openapi.yaml", "openapi.json", "openapi.html");
 
    private static final Pattern NAME_PATTERN    = Pattern.compile("[a-z0-9][a-z0-9-]*");
    private static final Pattern SEMVER_PATTERN  = Pattern.compile("(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)");

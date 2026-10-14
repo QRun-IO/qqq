@@ -46,10 +46,9 @@ When cutting an RC or GA, the release captain refreshes the baseline with
 `PublishAPI -r <repo root> --baseline`. Several additive PRs between releases can share one MINOR
 bump.
 
-Raw routes under `/qqq/v1` that have no spec are logged at startup (`UiApiRouteAuditor`).
-Strict mode (`withStrictUiApiRoutes(true)` or `QQQ_UI_API_STRICT_ROUTES=true`) fails startup
-instead. Strict becomes the default once the alerts, assistant and sql-workbench qbits ship their
-spec'd routes.
+Raw routes under `/qqq/v1` that have no spec are detected at startup (`UiApiRouteAuditor`).
+Since 1.3.0 (#1159) such routes fail startup by default (strict mode). `withStrictUiApiRoutes(false)`
+or `QQQ_UI_API_STRICT_ROUTES=false` only logs them, as a temporary opt-out.
 
 ## Extensions
 
@@ -72,22 +71,43 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 - **Sunset:** they are removed together with the Material Dashboard. No date is set yet; it will be
   announced here.
 
-## 1.4.0 — Output delivery (unreleased)
-
-- Added `GET /delivery/destinations`, `POST /delivery/destinations/{name}/targets`
-  (`{chosen: {...}}`), and `GET /delivery/output/{logId}`. Discovery and target
-  selection use the authenticated user's permissions; hidden and unknown names
-  both return 404.
-- Stored output is available only to its owner or `output_delivery.admin`.
-  Responses stream directly from storage, with multiple files streamed as ZIP.
-- Added the `delivery` feature and reserved core route prefix. Published complete
-  request, destination, target-step and binary-response schemas.
-
 ## Versions
 
-### Unreleased (after 1.2.0; no change to the document)
-- Added `UiApiRequest.withHeader(name, value)` for custom invocation headers; null values remove headers, and the invoker drops reserved credential, client-channel and request-metadata headers case-insensitively.
 ### 1.3.0 (unreleased)
+- Output delivery:
+  - Added `GET /delivery/destinations`, `POST /delivery/destinations/{name}/targets`
+    (`{chosen: {...}}`), and `GET /delivery/output/{logId}`. Discovery and target
+    selection use the authenticated user's permissions; hidden and unknown names
+    both return 404.
+  - Stored output is available only to its owner or `output_delivery.admin`.
+    Responses stream directly from storage, with multiple files streamed as ZIP.
+  - Added the `delivery` feature and reserved core route prefix. Published complete
+    request, destination, target-step and binary-response schemas.
+- Added `UiApiRequest.withHeader(name, value)` for custom invocation headers; null values remove headers, and the invoker drops reserved credential, client-channel and request-metadata headers case-insensitively.
+- Strict UI API routes are the default (#1159): startup fails when a route under `/qqq/v1` has no
+  spec (core or extension). `QQQ_UI_API_STRICT_ROUTES=false` (or `withStrictUiApiRoutes(false)`)
+  opts out temporarily. Applications must run the spec'd alerts, assistant and sql-workbench qbit
+  releases.
+- The assistant wall denies `audit*` (reads and writes) by default again; `withAssistantAuditReads()`
+  is the host opt-in for reads. See the security record in UI-API-CLIENT-CHANNELS.md.
+- Durable jobs (docs/specs/DURABLE-JOBS-AND-ASSISTED-BULK-LOAD.md):
+  - Added `POST /processes/{processName}/jobs`: launch an eligible process as a durable background
+    job (`ProcessJobLaunchResponseV1 {jobId, status}`). Over the per-user queue cap it returns
+    429. From the `assistant` client channel the job is created `AWAITING_CONFIRMATION`.
+  - Jobs are the standard tables `jobs_job`, `jobs_chunk`, `jobs_row_error`, `jobs_event` and
+    `jobs_worker`, read with the table operations. Control actions are the record-action processes
+    `jobsStart`, `jobsPause`, `jobsResume`, `jobsCancel`, `jobsRetryFailed`, `jobsRestart` and
+    `jobsRunAgain`, run with the process operations.
+  - The core feature `durableJobs` is listed by `GET /version`.
+  - Added `POST /uploads` (multipart with one file, or the raw body plus a `fileName` query
+    parameter): streams the file into the uploads storage table and returns `UploadRefResponseV1
+    {ref, fileName, sizeBytes, contentType, expiresAt}`. The ref is opaque, bound to the caller, and
+    expires (default 7 days); pass it in `uploadRefs` when launching a job.
+  - Process metadata gains `durableJobEligible` and `durableJobAlways`, so clients can offer
+    "Run in background".
+  - A process run over `durableThresholdRows` (or `alwaysDurable`) no longer runs its execute step
+    inline: the step returns at once with the value `durableJobId` and a summary line, and the job
+    does the work.
 - Process init/step responses now optionally include `oneTimeSecrets` using the shared
   `PreferenceSecretV1` schema, with `Cache-Control: no-store`. A synchronous step returns them
   in its own response; a step that went async hands them, once, to the first status poll that
@@ -112,7 +132,7 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
   and `PreferenceSectionPatchRequestV1` describe typed fields, fixed rows, inline ENUM
   choices and partial updates scoped to the signed-in user. `preferences` is a core
   feature and `/preferences` is reserved by core.
-- AI tool kernel data access goes through the UI API. `AiToolKernelSettings.withDataGateway(new UiApiAiDataGateway(...))` makes every query, count, get, search and widget render a `/qqq/v1` call, made as the user through the assistant channel. `CoreAiDataGateway` remains the default for other kernels. The assistant wall makes `audit*` write-denied only: the assistant can read a record's history, but cannot write audits.
+- AI tool kernel data access goes through the UI API. `AiToolKernelSettings.withDataGateway(new UiApiAiDataGateway(...))` makes every query, count, get, search and widget render a `/qqq/v1` call, made as the user through the assistant channel. `CoreAiDataGateway` remains the default for other kernels. The assistant wall keeps `audit*` hidden by default; a host opts in to reads with `withAssistantAuditReads()`, and audits are never writable by the assistant (see UI-API-CLIENT-CHANNELS.md, security record).
 - Scoped credentials: `QSession.credentialScope` (`QCredentialScope`) narrows a session to the apps, tables, processes, reports, widgets and operations it lists, optionally read-only.
   - It is intersected with the user's live permissions.
   - The session's client channel is `token:<id>`; "token" is a new default channel.

@@ -31,6 +31,7 @@ import java.util.Optional;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.interfaces.AggregateInterface;
+import com.kingsrook.qqq.backend.core.actions.interfaces.ConditionalUpdateInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.CountInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.DeleteInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.InsertInterface;
@@ -41,6 +42,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistentReadInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryLockMode;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
@@ -51,6 +53,7 @@ import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleInterface;
 import com.kingsrook.qqq.backend.core.modules.backend.SequenceResyncResult;
 import com.kingsrook.qqq.backend.module.rdbms.actions.AbstractRDBMSAction;
 import com.kingsrook.qqq.backend.module.rdbms.actions.RDBMSAggregateAction;
+import com.kingsrook.qqq.backend.module.rdbms.actions.RDBMSConditionalUpdateAction;
 import com.kingsrook.qqq.backend.module.rdbms.actions.RDBMSConsistentReadTransaction;
 import com.kingsrook.qqq.backend.module.rdbms.actions.RDBMSCountAction;
 import com.kingsrook.qqq.backend.module.rdbms.actions.RDBMSDeleteAction;
@@ -360,4 +363,29 @@ public class RDBMSBackendModule implements QBackendModuleInterface
       return (String.join(".", parts));
    }
 
+
+
+
+   /*******************************************************************************
+    ** Atomic conditional updates (CONDITIONAL_UPDATE), plus the database clock.
+    *******************************************************************************/
+   @Override
+   public ConditionalUpdateInterface getConditionalUpdateInterface()
+   {
+      return (new RDBMSConditionalUpdateAction());
+   }
+
+
+
+
+   /*******************************************************************************
+    ** Row locks, as the backend's SQL dialect (action strategy) supports them.
+    *******************************************************************************/
+   @Override
+   public boolean supportsQueryLockMode(QBackendMetaData backendMetaData, QueryLockMode lockMode)
+   {
+      return (lockMode == QueryLockMode.FOR_UPDATE_SKIP_LOCKED
+         && backendMetaData instanceof RDBMSBackendMetaData rdbmsBackend
+         && rdbmsBackend.getActionStrategy().supportsForUpdateSkipLocked());
+   }
 }

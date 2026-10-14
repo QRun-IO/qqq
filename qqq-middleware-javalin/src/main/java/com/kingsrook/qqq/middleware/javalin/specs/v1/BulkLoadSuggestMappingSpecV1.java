@@ -140,8 +140,14 @@ public class BulkLoadSuggestMappingSpecV1 extends AbstractEndpointSpec<BulkLoadS
    public BasicResponse defineBasicSuccessResponse()
    {
       Map<String, Example> examples = new LinkedHashMap<>();
-      examples.put("suggestion", new Example().withValue(new BulkLoadSuggestMappingResponseV1()
-         .withProfile(Map.of("version", "v1", "layout", "FLAT", "hasHeaderRow", true))));
+      ////////////////////////////////////////////////////////////////
+      // ordered, so the published document is stable between runs //
+      ////////////////////////////////////////////////////////////////
+      Map<String, Object> profile = new LinkedHashMap<>();
+      profile.put("version", "v1");
+      profile.put("layout", "FLAT");
+      profile.put("hasHeaderRow", true);
+      examples.put("suggestion", new Example().withValue(new BulkLoadSuggestMappingResponseV1().withProfile(profile)));
 
       return new BasicResponse("""
          The suggested profile and what it leaves unmapped""",

@@ -283,6 +283,15 @@ public class QFrontendTableMetaData
       if(readPermission && CollectionUtils.nullSafeHasContents(tableMetaData.getSearchFields()))
       {
          this.searchFields = new ArrayList<>(tableMetaData.getSearchFields());
+
+         ////////////////////////////////////////////////////////////////////////
+         // record search never matches restricted fields, so don't offer them //
+         ////////////////////////////////////////////////////////////////////////
+         if(enforceFieldAccess)
+         {
+            QTableMetaData searchAccessTable = accessTable == null ? tableMetaData : accessTable;
+            this.searchFields.removeIf(fieldName -> !FieldAccessHelper.getTier(searchAccessTable, fieldName).canQuickSearch());
+         }
       }
 
       QBackendMetaData backend = QContext.getQInstance().getBackend(tableMetaData.getBackendName());

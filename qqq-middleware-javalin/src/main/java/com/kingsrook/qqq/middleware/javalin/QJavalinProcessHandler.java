@@ -48,6 +48,7 @@ import com.kingsrook.qqq.backend.core.actions.async.AsyncJobStatus;
 import com.kingsrook.qqq.backend.core.actions.async.JobGoingAsyncException;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.processes.CancelProcessAction;
+import com.kingsrook.qqq.backend.core.actions.processes.OneTimeSecretHandoff;
 import com.kingsrook.qqq.backend.core.actions.processes.ProcessFileDownload;
 import com.kingsrook.qqq.backend.core.actions.processes.QProcessCallback;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
@@ -421,11 +422,19 @@ public class QJavalinProcessHandler
          // run the process as an async action //
          ////////////////////////////////////////
          Integer timeout = getTimeoutMillis(context);
+         final String handoffKey = processUUID;
          RunProcessOutput runProcessOutput = new AsyncJobManager().withProcessUUID(processUUID).startJob(processName, timeout, TimeUnit.MILLISECONDS, (callback) ->
          {
             runProcessInput.setAsyncJobCallback(callback);
-            return (new RunProcessAction().execute(runProcessInput));
+            RunProcessOutput jobOutput = new RunProcessAction().execute(runProcessInput);
+            ////////////////////////////////////////////////////////////////////
+            // park one-time secrets for a status poll, in case the step went //
+            // async; taken right back below when it finished synchronously   //
+            ////////////////////////////////////////////////////////////////////
+            OneTimeSecretHandoff.offer(handoffKey, jobOutput.getOneTimeSecrets());
+            return (jobOutput);
          });
+         OneTimeSecretHandoff.take(handoffKey);
 
          LOG.debug("Process result error? " + runProcessOutput.getException());
          for(QFieldMetaData outputField : QJavalinImplementation.qInstance.getProcess(runProcessInput.getProcessName()).getOutputFields())
@@ -816,6 +825,12 @@ public class QJavalinProcessHandler
                {
                   RunProcessOutput runProcessOutput = new RunProcessOutput(processState.get());
                   serializeRunProcessResultForCaller(resultForCaller, runProcessOutput);
+                  java.util.List<com.kingsrook.qqq.backend.core.model.secrets.OneTimeSecret> secrets = OneTimeSecretHandoff.take(processUUID);
+                  if(!secrets.isEmpty())
+                  {
+                     resultForCaller.put("oneTimeSecrets", secrets);
+                     context.header("Cache-Control", "no-store");
+                  }
                   QJavalinAccessLogger.logProcessSummary(processName, processUUID, runProcessOutput);
                }
                else

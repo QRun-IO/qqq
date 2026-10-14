@@ -44,7 +44,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 
 /*******************************************************************************
- ** HTTP contract for synchronous secrets and state-only asynchronous status.
+ ** HTTP contract for synchronous secrets and the once-only asynchronous hand-off.
  *******************************************************************************/
 class ProcessOneTimeSecretsSpecV1Test extends SpecTestBase
 {
@@ -154,10 +154,11 @@ class ProcessOneTimeSecretsSpecV1Test extends SpecTestBase
 
 
    /*******************************************************************************
-    ** Force the producing step async: the raw secret is deliberately unrecoverable.
+    ** Force the producing step async: the first status poll that sees the job
+    ** complete gets the secret once (OneTimeSecretHandoff); later polls do not.
     *******************************************************************************/
    @Test
-   void testAsyncSecretIsLost() throws Exception
+   void testAsyncSecretHandedOffOnce() throws Exception
    {
       String cookie = "sessionId=" + UUID.randomUUID();
       String base = getBaseUrlAndPath() + "/processes/secretProcess";
@@ -169,7 +170,20 @@ class ProcessOneTimeSecretsSpecV1Test extends SpecTestBase
       assertThat(response.getBody()).doesNotContain(SECRET, "oneTimeSecrets");
       JSONObject job = new JSONObject(response.getBody());
       assertThat(job.getString("type")).isEqualTo("JOB_STARTED");
-      assertStatusHasOnlyMasks(processPath, job.getString("jobUUID"), cookie);
+
+      HttpResponse<String> status = null;
+      for(int attempt = 0; attempt < 100; attempt++)
+      {
+         status = Unirest.get(processPath + "/status/" + job.getString("jobUUID")).header("Cookie", cookie).asString();
+         if(!"RUNNING".equals(new JSONObject(status.getBody()).getString("type")))
+         {
+            break;
+         }
+         Thread.sleep(20);
+      }
+      assertSecretResponse(status);
+      assertThat(Unirest.get(processPath + "/status/" + job.getString("jobUUID")).header("Cookie", cookie).asString().getBody())
+         .doesNotContain(SECRET, "\"oneTimeSecrets\"");
    }
 
 

@@ -201,11 +201,14 @@ records, summaries, exception messages, progress messages, or logs.
 Synchronous v1 init/step and legacy process responses include an optional
 `oneTimeSecrets: [{label, value, masked, usageText}]` array and `Cache-Control: no-store`.
 The v1 API reuses the preferences `PreferenceSecretV1` schema.
-Status responses never include this array. If execution exceeds `stepTimeoutMillis`
-(or a zero timeout forces an async job), the response contains a `jobUUID` and the
-secret is lost by design: polling retrieves only stored state, including masked forms.
-Applications that require token delivery must arrange for synchronous completion;
-a timed-out token cannot be recovered through status polling.
+If execution exceeds `stepTimeoutMillis` (3 seconds by default, or a zero timeout
+forces an async job), the response contains a `jobUUID`. The finished job's secrets are
+then parked in memory (`OneTimeSecretHandoff`, keyed by process UUID, 5-minute time to
+live, never in process state) and returned, with `Cache-Control: no-store`, by the
+**first** status poll that sees the job complete; later polls never include them.
+A poll that reaches a different server instance, or arrives after the time to live,
+finds nothing: the secret is lost by design and only the masked state placeholders
+remain (rotate to get a new one).
 
 Clients should display each value once, offer a copy action, and show `usageText`.
 Never cache, persist, log, or send the response to analytics. After dismissal, use the

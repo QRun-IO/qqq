@@ -648,7 +648,7 @@ public class UpdateAction
             .withType(RecordChangeType.UPDATE)
             .withRecords(Collections.unmodifiableList(successfulRecords))
             .withOldRecords(Collections.unmodifiableList(pairedOldRecords))
-            .withTransaction(updateInput.getTransaction()), restoreWriteFlag != null && !restoreWriteFlag.getPublishEvents());
+            .withTransaction(updateInput.getTransaction()), updateInput.getOmitRecordChangeEvents() || (restoreWriteFlag != null && !restoreWriteFlag.getPublishEvents()));
       }
       catch(Exception e)
       {

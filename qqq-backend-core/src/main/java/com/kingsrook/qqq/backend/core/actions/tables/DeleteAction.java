@@ -856,7 +856,7 @@ public class DeleteAction
             .withType(RecordChangeType.DELETE)
             .withRecords(deletedRecords)
             .withOldRecords(deletedRecords)
-            .withTransaction(deleteInput.getTransaction()));
+            .withTransaction(deleteInput.getTransaction()), deleteInput.getOmitRecordChangeEvents());
       }
       catch(Exception e)
       {

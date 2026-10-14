@@ -28,8 +28,14 @@ import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.interfaces.DeleteInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.QueryInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.UpdateInterface;
+import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
+import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
+import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.actions.tables.RestoreWriteFlag;
+import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
@@ -51,6 +57,9 @@ import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.Mem
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -87,6 +96,7 @@ public class RecordChangeListenerHelperTest extends BaseTest
    public static void resetListeners()
    {
       CapturingListener.events.clear();
+      RequiredCapturingListener.events.clear();
       CapturingListener.appliesToTableName = null;
       CapturingListener.appliesToType = null;
       ThrowingListener.events.clear();
@@ -120,6 +130,134 @@ public class RecordChangeListenerHelperTest extends BaseTest
    public static Integer getMemoryQueryCount()
    {
       return (MemoryRecordStore.getStatistics().getOrDefault(MemoryRecordStore.STAT_QUERIES_RAN, 0));
+   }
+
+
+
+   /*******************************************************************************
+    ** New inputs publish events by default; both setter forms control the flag.
+    *******************************************************************************/
+   @Test
+   void testOmitRecordChangeEventsAccessors()
+   {
+      InsertInput insertInput = new InsertInput();
+      assertFalse(insertInput.getOmitRecordChangeEvents());
+      assertThat(insertInput.withOmitRecordChangeEvents(true)).isSameAs(insertInput);
+      assertThat(insertInput.getOmitRecordChangeEvents()).isTrue();
+      insertInput.setOmitRecordChangeEvents(false);
+      assertFalse(insertInput.getOmitRecordChangeEvents());
+
+      UpdateInput updateInput = new UpdateInput();
+      assertFalse(updateInput.getOmitRecordChangeEvents());
+      assertThat(updateInput.withOmitRecordChangeEvents(true)).isSameAs(updateInput);
+      assertThat(updateInput.getOmitRecordChangeEvents()).isTrue();
+      updateInput.setOmitRecordChangeEvents(false);
+      assertFalse(updateInput.getOmitRecordChangeEvents());
+
+      DeleteInput deleteInput = new DeleteInput();
+      assertFalse(deleteInput.getOmitRecordChangeEvents());
+      assertThat(deleteInput.withOmitRecordChangeEvents(true)).isSameAs(deleteInput);
+      assertThat(deleteInput.getOmitRecordChangeEvents()).isTrue();
+      deleteInput.setOmitRecordChangeEvents(false);
+      assertFalse(deleteInput.getOmitRecordChangeEvents());
+   }
+
+
+
+   /*******************************************************************************
+    ** Insert suppresses optional notifications but always runs integrity listeners.
+    *******************************************************************************/
+   @ParameterizedTest
+   @ValueSource(booleans = { false, true })
+   void testInsertOmitRecordChangeEvents(boolean omitEvents) throws QException
+   {
+      QContext.getQInstance()
+         .withRecordChangeListener(new QCodeReference(CapturingListener.class))
+         .withRecordChangeListener(new QCodeReference(RequiredCapturingListener.class));
+      assertThat(new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withOmitRecordChangeEvents(omitEvents)
+         .withRecord(new QRecord().withValue("firstName", "After").withValue("lastName", "Test")))
+         .getRecords().get(0).getErrors()).isNullOrEmpty();
+      assertThat(CapturingListener.events).hasSize(omitEvents ? 0 : 1);
+      assertThat(RequiredCapturingListener.events).hasSize(1);
+      assertThat(RequiredCapturingListener.events.get(0).getType()).isEqualTo(RecordChangeType.INSERT);
+      assertThat(RequiredCapturingListener.events.get(0).getRecords()).hasSize(1);
+   }
+
+
+
+   /*******************************************************************************
+    ** Update suppresses optional notifications but always runs integrity listeners.
+    *******************************************************************************/
+   @ParameterizedTest
+   @ValueSource(booleans = { false, true })
+   void testUpdateOmitRecordChangeEvents(boolean omitEvents) throws QException
+   {
+      QRecord record = new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withRecord(new QRecord().withValue("firstName", "Before").withValue("lastName", "Test"))).getRecords().get(0);
+      QContext.getQInstance()
+         .withRecordChangeListener(new QCodeReference(CapturingListener.class))
+         .withRecordChangeListener(new QCodeReference(RequiredCapturingListener.class));
+      assertThat(new UpdateAction().execute(new UpdateInput(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withOmitRecordChangeEvents(omitEvents)
+         .withRecord(new QRecord().withValue("id", record.getValueInteger("id")).withValue("firstName", "After")))
+         .getRecords().get(0).getErrors()).isNullOrEmpty();
+      assertThat(CapturingListener.events).hasSize(omitEvents ? 0 : 1);
+      assertThat(RequiredCapturingListener.events).hasSize(1);
+      assertThat(RequiredCapturingListener.events.get(0).getType()).isEqualTo(RecordChangeType.UPDATE);
+      assertThat(RequiredCapturingListener.events.get(0).getRecords()).hasSize(1);
+   }
+
+
+
+   /*******************************************************************************
+    ** Delete suppresses optional notifications but always runs integrity listeners.
+    *******************************************************************************/
+   @ParameterizedTest
+   @ValueSource(booleans = { false, true })
+   void testDeleteOmitRecordChangeEvents(boolean omitEvents) throws QException
+   {
+      QRecord record = new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withRecord(new QRecord().withValue("firstName", "Before").withValue("lastName", "Test"))).getRecords().get(0);
+      QContext.getQInstance()
+         .withRecordChangeListener(new QCodeReference(CapturingListener.class))
+         .withRecordChangeListener(new QCodeReference(RequiredCapturingListener.class));
+      new DeleteAction().execute(new DeleteInput(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withOmitRecordChangeEvents(omitEvents).withPrimaryKeys(List.of(record.getValueInteger("id"))));
+      assertThat(CapturingListener.events).hasSize(omitEvents ? 0 : 1);
+      assertThat(RequiredCapturingListener.events).hasSize(1);
+      assertThat(RequiredCapturingListener.events.get(0).getType()).isEqualTo(RecordChangeType.DELETE);
+      assertThat(RequiredCapturingListener.events.get(0).getRecords()).hasSize(1);
+   }
+
+
+
+   /*******************************************************************************
+    ** Either suppression control keeps only required listeners for restore writes.
+    *******************************************************************************/
+   @ParameterizedTest
+   @CsvSource({ "false, false", "false, true", "true, false", "true, true" })
+   void testOmitRecordChangeEventsCombinedWithRestore(boolean omitEvents, boolean publishEvents) throws QException
+   {
+      QContext.getQSession().withPermission(RestoreWriteFlag.REQUIRED_PERMISSION);
+      QContext.getQInstance()
+         .withRecordChangeListener(new QCodeReference(CapturingListener.class))
+         .withRecordChangeListener(new QCodeReference(RequiredCapturingListener.class));
+      RestoreWriteFlag restoreFlag = new RestoreWriteFlag().withPublishEvents(publishEvents);
+      QRecord record = new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withFlag(restoreFlag).withOmitRecordChangeEvents(omitEvents)
+         .withRecord(new QRecord().withValue("firstName", "Before").withValue("lastName", "Test"))).getRecords().get(0);
+      assertThat(record.getErrors()).isNullOrEmpty();
+      assertThat(CapturingListener.events).hasSize(omitEvents || !publishEvents ? 0 : 1);
+      assertThat(RequiredCapturingListener.events).hasSize(1);
+
+      assertThat(new UpdateAction().execute(new UpdateInput(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withFlag(restoreFlag).withOmitRecordChangeEvents(omitEvents)
+         .withRecord(new QRecord().withValue("id", record.getValueInteger("id")).withValue("firstName", "After")))
+         .getRecords().get(0).getErrors()).isNullOrEmpty();
+      assertThat(CapturingListener.events).hasSize(omitEvents || !publishEvents ? 0 : 2);
+      assertThat(RequiredCapturingListener.events).extracting(RecordChangeEvent::getType)
+         .containsExactly(RecordChangeType.INSERT, RecordChangeType.UPDATE);
    }
 
 
@@ -299,6 +437,38 @@ public class RecordChangeListenerHelperTest extends BaseTest
 
       /*******************************************************************************
        **
+       *******************************************************************************/
+      @Override
+      public void onRecordsChanged(RecordChangeEvent event)
+      {
+         events.add(event);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Captures integrity events independently of optional notifications.
+    *******************************************************************************/
+   public static class RequiredCapturingListener extends CapturingListener
+   {
+      public static final List<RecordChangeEvent> events = new ArrayList<>();
+
+
+
+      /*******************************************************************************
+       ** Integrity listeners must run even when notifications are suppressed.
+       *******************************************************************************/
+      @Override
+      public boolean isRequired()
+      {
+         return (true);
+      }
+
+
+
+      /*******************************************************************************
+       ** Capture the event received by the integrity listener.
        *******************************************************************************/
       @Override
       public void onRecordsChanged(RecordChangeEvent event)

@@ -326,10 +326,7 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
             .withRecordList(insertOutput.getRecords()));
       }
 
-      if(restoreWriteFlag == null || restoreWriteFlag.getPublishEvents())
-      {
-         fireRecordChangeListeners(insertInput, insertOutput.getRecords());
-      }
+      fireRecordChangeListeners(insertInput, insertOutput.getRecords());
 
       ////////////////////////////////////////////////////////////////
       // finally, run the post-insert customizers, if there are any //
@@ -386,11 +383,12 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
          .filter(r -> r != null && CollectionUtils.nullSafeIsEmpty(r.getErrors()))
          .toList();
 
+      RestoreWriteFlag restoreWriteFlag = RestoreWriteFlag.from(insertInput.getFlags());
       RecordChangeListenerHelper.fire(qInstance, new RecordChangeEvent()
          .withTableName(insertInput.getTableName())
          .withType(RecordChangeType.INSERT)
          .withRecords(successfulRecords)
-         .withTransaction(insertInput.getTransaction()));
+         .withTransaction(insertInput.getTransaction()), insertInput.getOmitRecordChangeEvents() || (restoreWriteFlag != null && !restoreWriteFlag.getPublishEvents()));
    }
 
 

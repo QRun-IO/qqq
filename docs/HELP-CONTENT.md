@@ -176,7 +176,7 @@ with it without overwriting anything a person has edited.
 
   ```yaml
   bundle: qbit-alerts          # unique id
-  version: 0.3.0               # the owning artifact's version
+  version: ${project.version}  # the owning artifact's version, filled in by the build
   layer: QBIT                  # CORE | QBIT | HOST
   entries:
     - key: table:alerts_alert;slot:help
@@ -199,6 +199,29 @@ with it without overwriting anything a person has edited.
   those providers are installed.
 - Layering: **CORE < QBIT < HOST < USER**. For a given `(key, role)` the highest bundle layer
   supplies the text the sync seeds. An edit made in the UI (USER) always wins over any bundle.
+
+**Bundle version.** Never hardcode the version (a `-SNAPSHOT` left in the file ships as the
+released bundle's provenance and breaks tests that compare it with the artifact version on release
+branches). Write `version: ${project.version}` and let Maven filter the bundle:
+
+```xml
+<resources>
+   <resource>
+      <directory>src/main/resources</directory>
+      <filtering>true</filtering>
+      <includes><include>help/*.yaml</include></includes>
+   </resource>
+   <resource>
+      <directory>src/main/resources</directory>
+      <filtering>false</filtering>
+      <excludes><exclude>help/*.yaml</exclude></excludes>
+   </resource>
+</resources>
+```
+
+Filtering replaces `${...}` and `@...@` tokens, so keep those out of help text (live references use
+`{{...}}`, which filtering leaves alone). A test should assert that the loaded bundle's version equals
+the artifact's version.
 
 ### 5.2 Provenance on each row
 

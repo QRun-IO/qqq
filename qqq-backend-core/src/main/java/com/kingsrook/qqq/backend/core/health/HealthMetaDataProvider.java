@@ -246,7 +246,7 @@ public class HealthMetaDataProvider
          HealthCheck check = new QBackendModuleDispatcher().getQBackendModule(backend).getHealthCheck(backend);
          if(check != null)
          {
-            registry.withCheck(new HealthCheckMetaData().withName("core.database." + backend.getName()).withLabel("Database " + backend.getName())
+            registry.withCheck(new HealthCheckMetaData().withName("core.database." + HealthChecksMetaData.toNamePart(backend.getName())).withLabel("Database " + backend.getName())
                .withComponent("database").withCategory(HealthCategory.DATABASE).withKind(HealthCheckKind.READINESS)
                .withSeverity(AlertSeverity.CRITICAL).withIncludeInReadiness(true).withIntervalSeconds(30).withTimeoutMs(3000)
                .withFailureThreshold(1).withCheckInstance(check));

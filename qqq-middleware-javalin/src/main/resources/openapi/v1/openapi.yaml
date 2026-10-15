@@ -7728,6 +7728,60 @@ paths:
       summary: "Get authentication metaData"
       tags:
       - "Authentication"
+  /qqq/v1/branding/{role}:
+    get:
+      description: "The image the app declares for a branding role (`logo` or `icon`),\
+        \ from the application's\nstatic overlay, available before sign-in. 404 when\
+        \ the app declares none for the role, or\ndeclares a data: URI or an external\
+        \ URL (those are in `branding` of GET /metaData/authentication).\nSince 1.6.0."
+      operationId: "getBrandingAsset"
+      parameters:
+      - description: "logo or icon."
+        in: "path"
+        name: "role"
+        required: true
+        schema:
+          enum:
+          - "logo"
+          - "icon"
+          type: "string"
+      responses:
+        200:
+          content:
+            image/*:
+              schema:
+                format: "binary"
+                type: "string"
+          description: "The image (png, jpeg, gif, webp, avif, ico or svg)."
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
+      summary: "Get a branding image"
+      tags:
+      - "Authentication"
   /qqq/v1/manageSession:
     post:
       description: "After a frontend authenticates the user as per the requirements\

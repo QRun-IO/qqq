@@ -477,6 +477,18 @@ public abstract class AbstractMiddlewareVersion
 
 
    /***************************************************************************
+    ** The package whose components sub-package holds this version's component
+    ** schemas (a subclass in another package, e.g. the API-aware version, keeps
+    ** its parent's components).
+    ***************************************************************************/
+   protected String getComponentsBasePackage()
+   {
+      return (getClass().getPackageName());
+   }
+
+
+
+   /***************************************************************************
     **
     ***************************************************************************/
    private void buildComponentSchemasFromComponentsPackage(Map<String, Schema> componentSchemas, Set<Class<?>> componentClasses) throws QException
@@ -486,7 +498,7 @@ public abstract class AbstractMiddlewareVersion
          ////////////////////////////////////////////////////
          // find all classes in the components sub-package //
          ////////////////////////////////////////////////////
-         String         packageName      = getClass().getPackageName();
+         String         packageName      = getComponentsBasePackage();
          List<Class<?>> classesInPackage = ClassPathUtils.getClassesInPackage(packageName);
          for(Class<?> c : classesInPackage)
          {

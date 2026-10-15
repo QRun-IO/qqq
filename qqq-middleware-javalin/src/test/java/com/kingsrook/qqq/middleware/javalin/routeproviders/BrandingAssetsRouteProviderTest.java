@@ -106,6 +106,33 @@ class BrandingAssetsRouteProviderTest
 
 
    /***************************************************************************
+    ** The UI API operation (GET /qqq/v1/branding/{role}) serves the same images.
+    ***************************************************************************/
+   @Test
+   void testUiApiOperation() throws Exception
+   {
+      com.kingsrook.qqq.middleware.javalin.specs.v1.BrandingAssetSpecV1 spec = new com.kingsrook.qqq.middleware.javalin.specs.v1.BrandingAssetSpecV1();
+      spec.setQInstance(instance("/branding1009/logo.png", null));
+      Javalin service = Javalin.create(config -> config.routes.get("/qqq/v1/branding/{role}", context -> spec.serveRequest(null, context))).start(0);
+      try
+      {
+         HttpClient client = HttpClient.newHttpClient();
+         String     base   = "http://127.0.0.1:" + service.port();
+         HttpResponse<byte[]> image = client.send(HttpRequest.newBuilder(URI.create(base + "/qqq/v1/branding/logo")).build(), HttpResponse.BodyHandlers.ofByteArray());
+         assertEquals(200, image.statusCode());
+         assertEquals("image/png", image.headers().firstValue("content-type").orElseThrow().split(";")[0]);
+         assertEquals(404, client.send(HttpRequest.newBuilder(URI.create(base + "/qqq/v1/branding/icon")).build(), HttpResponse.BodyHandlers.discarding()).statusCode());
+         assertEquals(404, client.send(HttpRequest.newBuilder(URI.create(base + "/qqq/v1/branding/other")).build(), HttpResponse.BodyHandlers.discarding()).statusCode());
+      }
+      finally
+      {
+         service.stop();
+      }
+   }
+
+
+
+   /***************************************************************************
     ** Declared branding is owned by the current instance.
     ***************************************************************************/
    private static QInstance instance(String logo, String icon)

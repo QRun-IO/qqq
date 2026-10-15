@@ -104,6 +104,10 @@ Ready for CLI, TUI and native clients (see `UI-API-CLIENTS.md`).
   `traceId` (also the `X-QQQ-Trace-Id` response header; a safe client `X-Request-Id` is reused).
   Every operation declares 400, 404, 409 and 429, and secured operations 401 and 403, with this
   schema. Every extension document carries the schema.
+- Added `GET /branding/{role}` (`logo`, `icon`; no session): the app's declared branding image, so a
+  login screen or a standalone frontend server needs no route outside `/qqq/v1` (#1035).
+- The contract check also fails on a dangling `$ref`; this fixed the API-aware document, whose
+  bulk-load schemas were missing, and the `$ref: null` that content-less responses (204) had.
 - Extensions esb and health 1.1.0: operationIds, tags and the standard error responses.
 - **Typed table capabilities.** `GET /metaData/table/{tableName}` adds `clientCapabilities`
   (`TableCapabilitiesV1`): `savedViews` (query/store/delete process names), `audits` (level, and the

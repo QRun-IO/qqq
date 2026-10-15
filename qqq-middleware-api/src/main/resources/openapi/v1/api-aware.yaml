@@ -1,5 +1,163 @@
 components:
   schemas:
+    AppMetaData:
+      properties:
+        childMap:
+          additionalProperties:
+            $ref: "#/components/schemas/AppTreeNode"
+          description: "Map of other apps, tables, process, and reports, which are\
+            \ contained within this app.  Same contents as the children list, just\
+            \ structured as a map."
+          type: "object"
+        children:
+          description: "List of other apps, tables, process, and reports, which are\
+            \ contained within this app."
+          items:
+            $ref: "#/components/schemas/AppTreeNode"
+          type: "array"
+        helpContents:
+          additionalProperties:
+            items:
+              $ref: "#/components/schemas/HelpContentV1"
+            type: "array"
+          description: "Help entries by slot, filtered for the current session."
+          type: "object"
+        icon:
+          $ref: "#/components/schemas/Icon"
+          description: "Icon to display for the app."
+        label:
+          description: "User-facing name for this app"
+          type: "string"
+        name:
+          description: "Unique name for this app within the QQQ Instance"
+          type: "string"
+        sections:
+          description: "List of sections - sub-divisions of the app, to further organize\
+            \ its children."
+          items:
+            $ref: "#/components/schemas/AppSection"
+          type: "array"
+        supplementalAppMetaData:
+          description: "Additional meta-data describing the app, which may not be\
+            \ known to the QQQ backend core module."
+          type: "object"
+        widgets:
+          description: "List of widgets names that are part of this app.  These strings\
+            \ should be keys to the widgets map in the QQQ Instance."
+          items:
+            type: "string"
+          type: "array"
+      type: "object"
+    AppSection:
+      properties:
+        icon:
+          $ref: "#/components/schemas/Icon"
+          description: "Icon to display for the section."
+        label:
+          description: "User-facing name of the section."
+          type: "string"
+        name:
+          description: "Unique (within the app) name for this section."
+          type: "string"
+        processes:
+          description: "List of process names for the section"
+          items:
+            type: "string"
+          type: "array"
+        reports:
+          description: "List of report names for the section"
+          items:
+            type: "string"
+          type: "array"
+        tables:
+          description: "List of table names for the section"
+          items:
+            type: "string"
+          type: "array"
+      type: "object"
+    AppTreeNode:
+      properties:
+        children:
+          description: "Child elements.  Only applies for type='app', which contains\
+            \ additional apps under it"
+          items:
+            $ref: "#/components/schemas/AppTreeNode"
+          type: "array"
+        icon:
+          $ref: "#/components/schemas/Icon"
+          description: "Icon to display for the item."
+        label:
+          description: "User-facing name of the element."
+          type: "string"
+        name:
+          description: "Unique (within its type) name for this element.  e.g., for\
+            \ type = 'table', the table's name."
+          type: "string"
+        type:
+          description: "The type of node (table, process, report, app)"
+          type: "string"
+      type: "object"
+    AssociatedScriptMetaData:
+      properties:
+        fieldName:
+          description: "Name of the field, in the record's table, that references\
+            \ the script."
+          type: "string"
+        scriptTypeId:
+          description: "Id of the script type (a scriptType record) of the scripts\
+            \ this field references."
+          type: "object"
+      type: "object"
+    Association:
+      properties:
+        associatedTableName:
+          description: "Name of the associated table; its permissions remain independent"
+          type: "string"
+        join:
+          description: "The named join and field pairs defining this association"
+          properties:
+            joinOns:
+              type: "array"
+            leftTable:
+              type: "string"
+            name:
+              type: "string"
+            orderBys:
+              type: "array"
+            rightTable:
+              type: "string"
+            type:
+              enum:
+              - "ONE_TO_ONE"
+              - "ONE_TO_MANY"
+              - "MANY_TO_ONE"
+              - "MANY_TO_MANY"
+              type: "string"
+          type: "object"
+        name:
+          description: "Exact name used for this group in associatedRecords"
+          type: "string"
+      type: "object"
+    AuditsCapabilityV1:
+      properties:
+        available:
+          description: "True when the table is audited and the user can read its audits\
+            \ one of the two ways."
+          type: "boolean"
+        detailTableName:
+          description: "The audit detail table (field changes), joined to tableName."
+          type: "string"
+        level:
+          description: "The table's audit level: NONE, RECORD or FIELD."
+          type: "string"
+        processName:
+          description: "The process that returns a record's audits (inputs tableName,\
+            \ recordId); absent when the user may not run it."
+          type: "string"
+        tableName:
+          description: "The audit table, when the user may query it directly."
+          type: "string"
+      type: "object"
     AuthenticationMetaDataResponseV1:
       properties:
         branding:
@@ -155,6 +313,181 @@ components:
             \ response header); quote it when reporting a problem. Since 1.6.0."
           type: "string"
       type: "object"
+    Branding:
+      properties:
+        accentColor:
+          description: "Primary accent color, as a CSS color value."
+          type: "string"
+        accentColorLight:
+          description: "Light variant of the accent color, as a CSS color value."
+          type: "string"
+        appName:
+          description: "Name of this application, for display to users."
+          type: "string"
+        banners:
+          additionalProperties:
+            $ref: "#/components/schemas/BrandingBanner"
+          description: "Banners to display, keyed by the slot where each is shown."
+          type: "object"
+        companyName:
+          description: "Name of the company that operates this application."
+          type: "string"
+        companyUrl:
+          description: "URL for the company's web site."
+          type: "string"
+        icon:
+          description: "Path or URL of the application's small icon image."
+          type: "string"
+        logo:
+          description: "Path or URL of the application's logo image."
+          type: "string"
+      type: "object"
+    BrandingBanner:
+      properties:
+        additionalStyles:
+          description: "Additional CSS style properties for the banner."
+          type: "object"
+        backgroundColor:
+          description: "Background color, as a CSS color value."
+          type: "string"
+        messageHTML:
+          description: "HTML message, used instead of the plain-text message when\
+            \ set."
+          type: "string"
+        messageText:
+          description: "Plain-text message."
+          type: "string"
+        severity:
+          description: "Severity of the message: INFO, WARNING, ERROR or SUCCESS."
+          type: "string"
+        textColor:
+          description: "Text color, as a CSS color value."
+          type: "string"
+      type: "object"
+    BuiltInViewV1:
+      properties:
+        filter:
+          properties:
+            booleanOperator:
+              enum:
+              - "OR"
+              type: "string"
+            criteria:
+              items:
+                properties:
+                  fieldName:
+                    type: "string"
+                  operator:
+                    enum:
+                    - "EQUALS"
+                    type: "string"
+                  values:
+                    items:
+                      description: "The executing session's user id. Display as Me.\
+                        \ A missing user matches nothing."
+                      properties:
+                        type:
+                          enum:
+                          - "CurrentUser"
+                          type: "string"
+                      type: "object"
+                    type: "array"
+                type: "object"
+              type: "array"
+          type: "object"
+        label:
+          type: "string"
+        name:
+          type: "string"
+      type: "object"
+    BulkLoadColumnProfile:
+      properties:
+        classification:
+          description: "Data classification of the mapped field (PUBLIC, CONFIDENTIAL,\
+            \ PII, PHI), or null."
+          type: "string"
+        columnIndex:
+          description: "Zero-based column index in the file."
+          type: "number"
+        columnLetter:
+          description: "Spreadsheet-style column letter (A, B, ... AA)."
+          type: "string"
+        distinctCount:
+          description: "Distinct non-blank values counted (capped at 1000)."
+          type: "number"
+        distinctCountCapped:
+          description: "Whether more distinct values exist than were counted."
+          type: "boolean"
+        header:
+          description: "Header text (or Column A, Column B ... when the file has no\
+            \ header row)."
+          type: "string"
+        inferredType:
+          description: "INTEGER, DECIMAL, BOOLEAN, DATE, DATE_TIME or STRING, from\
+            \ the profiled values."
+          type: "string"
+        mappedFieldName:
+          description: "The table field the suggested mapping assigns this column\
+            \ to, or null."
+          type: "string"
+        maxLength:
+          description: "Longest value length."
+          type: "number"
+        patternClass:
+          description: "DATE_LIKE, EMAIL_LIKE, NUMERIC, CODE_LIKE, TEXT or EMPTY."
+          type: "string"
+        percentBlank:
+          description: "Percent of profiled rows where the column is blank."
+          type: "number"
+        sampleValues:
+          description: "Up to sampleCount distinct values, only when samplesAllowed;\
+            \ otherwise empty."
+          items:
+            type: "string"
+          type: "array"
+        samplesAllowed:
+          description: "Whether sample values may be shown: an AI route of hipaa,\
+            \ or a mapped field that is unclassified or PUBLIC. Unmapped columns are\
+            \ treated as classified."
+          type: "boolean"
+      type: "object"
+    BulkLoadColumnRef:
+      properties:
+        columnIndex:
+          description: "Zero-based column index in the file."
+          type: "number"
+        header:
+          description: "Header text."
+          type: "string"
+      type: "object"
+    BulkLoadFieldRef:
+      properties:
+        fieldName:
+          description: "Field name."
+          type: "string"
+        label:
+          description: "Field label."
+          type: "string"
+        possibleValueSourceName:
+          description: "Possible value source of the field, if any (its file values\
+            \ need mapping)."
+          type: "string"
+      type: "object"
+    BulkLoadRowError:
+      properties:
+        errorCode:
+          description: "VALUE_TYPE, POSSIBLE_VALUE, DUPLICATE, REQUIRED or OTHER."
+          type: "string"
+        fieldName:
+          description: "The field the error is about, when known."
+          type: "string"
+        message:
+          description: "The error message (value-free)."
+          type: "string"
+        rowNumbers:
+          description: "File rows with the error, e.g. Row 3; Rows 7-9 (no values)."
+          type: "string"
+      type: "object"
     BulkLoadSuggestMappingResponseV1:
       properties:
         profile:
@@ -178,6 +511,24 @@ components:
           items:
             $ref: "#/components/schemas/BulkLoadFieldRef"
           type: "array"
+      type: "object"
+    BulkLoadSummaryLine:
+      properties:
+        bulletsOfText:
+          description: "Example rows (and their values, unless masked for a classified\
+            \ field)."
+          items:
+            type: "string"
+          type: "array"
+        count:
+          description: "Number of records the line describes."
+          type: "number"
+        message:
+          description: "The standard process summary message."
+          type: "string"
+        status:
+          description: "OK, INFO, WARNING or ERROR."
+          type: "string"
       type: "object"
     BulkLoadUploadProfileResponseV1:
       properties:
@@ -293,6 +644,486 @@ components:
           additionalProperties: true
           type: "object"
       type: "object"
+    ExposedJoin:
+      properties:
+        isMany:
+          description: "Whether or not this join is 'to many' in nature"
+          type: "boolean"
+        joinPath:
+          description: "A list of joins that travel from the base table to the exposed\
+            \ join table"
+          items:
+            properties:
+              joinOns:
+                type: "array"
+              leftTable:
+                type: "string"
+              name:
+                type: "string"
+              orderBys:
+                type: "array"
+              rightTable:
+                type: "string"
+              type:
+                enum:
+                - "ONE_TO_ONE"
+                - "ONE_TO_MANY"
+                - "MANY_TO_ONE"
+                - "MANY_TO_MANY"
+                type: "string"
+            type: "object"
+          type: "array"
+        joinTable:
+          $ref: "#/components/schemas/TableMetaData"
+          description: "The meta-data for the joined table"
+        label:
+          description: "User-facing label to display for this join"
+          type: "string"
+      type: "object"
+    FieldAdornment:
+      properties:
+        type:
+          description: "Type of this adornment"
+          enum:
+          - "LINK"
+          - "CHIP"
+          - "SIZE"
+          - "CODE_EDITOR"
+          - "RENDER_HTML"
+          - "REVEAL"
+          - "FILE_DOWNLOAD"
+          - "FILE_UPLOAD"
+          - "TOOLTIP"
+          - "WIDGET"
+          - "ERROR"
+          - "FILE_PREVIEW"
+          type: "string"
+        values:
+          description: "Values associated with this adornment.  Keys and the meanings\
+            \ of their values differ by type; the known\nkeys are listed (each names\
+            \ the type(s) it applies to).  CHIP also uses pattern keys: `color.{fieldValue}`\n\
+            (one of default, info, primary, secondary, success, warning, error) and\
+            \ `icon.{fieldValue}` (an icon name),\ngiving the chip colour and icon\
+            \ for a field value.  Clients ignore keys they do not know."
+          properties:
+            target:
+              description: "LINK: where to open the link: _blank for a new window/tab;\
+                \ otherwise the same view."
+              type: "string"
+            toRecordFromTable:
+              description: "LINK: the field value is a primary key of this table;\
+                \ link to that record (a client navigates to the record view)."
+              type: "string"
+            toRecordFromTableDynamic:
+              description: "LINK: the target table is per record - read it from the\
+                \ record displayValue `{fieldName}:toRecordFromTableDynamic`."
+              type: "boolean"
+            fileNameField:
+              description: "FILE_DOWNLOAD, FILE_PREVIEW: the field holding the file\
+                \ name to save or show."
+              type: "string"
+            defaultExtension:
+              description: "FILE_DOWNLOAD: extension for the saved file when the name\
+                \ has none."
+              type: "string"
+            defaultMimeType:
+              description: "FILE_DOWNLOAD, FILE_PREVIEW: MIME type to assume when\
+                \ none is known."
+              type: "string"
+            supplementalProcessName:
+              description: "FILE_DOWNLOAD: process the server runs to produce the\
+                \ file (the client just downloads)."
+              type: "string"
+            supplementalCodeReference:
+              additionalProperties: true
+              description: "FILE_DOWNLOAD: code the server runs to produce the file\
+                \ (the client just downloads)."
+              type: "object"
+            downloadUrlDynamic:
+              description: "FILE_DOWNLOAD: the download URL is per record - read it\
+                \ from the record displayValue `{fieldName}:downloadUrlDynamic`."
+              type: "boolean"
+            fileNameFormat:
+              description: "FILE_DOWNLOAD: format (with %s placeholders) for the saved\
+                \ file name."
+              type: "string"
+            fileNameFormatFields:
+              description: "FILE_DOWNLOAD: fields whose values fill fileNameFormat,\
+                \ in order."
+              items:
+                type: "string"
+              type: "array"
+            width:
+              description: "SIZE: display width of the field - one of xsmall, small,\
+                \ medium, medlarge, large, xlarge (semantic widths; each client maps\
+                \ them to its own columns or characters). FILE_UPLOAD: width of the\
+                \ upload control."
+              enum:
+              - "xsmall"
+              - "small"
+              - "medium"
+              - "medlarge"
+              - "large"
+              - "xlarge"
+              type: "string"
+            format:
+              description: "FILE_UPLOAD: accepted file formats (e.g. .csv,.xlsx)."
+              type: "string"
+            languageMode:
+              description: "CODE_EDITOR: language of the code (e.g. javascript, sql,\
+                \ json, velocity) - for highlighting; a client without an editor shows\
+                \ it monospaced."
+              type: "string"
+            staticText:
+              description: "TOOLTIP: the tooltip text."
+              type: "string"
+            tooltipDynamic:
+              description: "TOOLTIP: the text is per record - read it from the record\
+                \ displayValue `{fieldName}:tooltipDynamic`."
+              type: "boolean"
+            thumbnailUrlField:
+              description: "FILE_PREVIEW: field holding a thumbnail image URL."
+              type: "string"
+            fullSizeUrlField:
+              description: "FILE_PREVIEW: field holding the full-size file URL."
+              type: "string"
+            mimeTypeField:
+              description: "FILE_PREVIEW: field holding the MIME type (decides image,\
+                \ video, PDF or download-only)."
+              type: "string"
+            altTextField:
+              description: "FILE_PREVIEW: field holding alternative text."
+              type: "string"
+            captionField:
+              description: "FILE_PREVIEW: field holding a caption."
+              type: "string"
+            widthField:
+              description: "FILE_PREVIEW: field holding the pixel width."
+              type: "string"
+            heightField:
+              description: "FILE_PREVIEW: field holding the pixel height."
+              type: "string"
+            sizeBytesField:
+              description: "FILE_PREVIEW: field holding the size in bytes."
+              type: "string"
+            thumbnailMaxSize:
+              description: "FILE_PREVIEW: largest thumbnail edge in pixels."
+              type: "integer"
+            previewable:
+              description: "FILE_PREVIEW: whether the file may be previewed (false:\
+                \ download only)."
+              type: "boolean"
+            widgetName:
+              description: "WIDGET: the widget that renders this field."
+              type: "string"
+          type: "object"
+      type: "object"
+    FieldMetaData:
+      properties:
+        accessTier:
+          description: "Effective field access: FULL, REVEALABLE, MASKED, or HIDDEN.\
+            \ Omitted means FULL. Restricted values are strings, regardless of field\
+            \ type."
+          enum:
+          - "FULL"
+          - "REVEALABLE"
+          - "MASKED"
+          - "HIDDEN"
+          type: "string"
+        adornments:
+          description: "Special UI dressings to add to the field."
+          items:
+            $ref: "#/components/schemas/FieldAdornment"
+          type: "array"
+        allowedFilterOperators:
+          description: "Allowed filter operators when restricted: EQUALS and IN for\
+            \ REVEALABLE when exact match is enabled, otherwise empty. Omitted means\
+            \ unrestricted."
+          items:
+            type: "string"
+          type: "array"
+        behaviors:
+          description: "Names of the field's behaviors that a frontend applies while\
+            \ editing, e.g., TO_UPPER_CASE, TO_LOWER_CASE or TRIM.  Absent when the\
+            \ field has none."
+          items:
+            type: "string"
+          type: "array"
+        defaultValue:
+          description: "Default value to use in this field."
+          type: "string"
+        displayFormat:
+          description: "C-style format specifier for displaying values in this field."
+          type: "string"
+        gridColumns:
+          description: "Width of this field in a 12-column record form or view grid\
+            \ (e.g., 12 for the full width, 6 for half).  Absent when the frontend's\
+            \ default applies."
+          type: "number"
+        helpContents:
+          description: "Help Contents for this field."
+          items:
+            $ref: "#/components/schemas/HelpContentV1"
+          type: "array"
+        inlinePossibleValueSource:
+          description: "Inline possible-value source for this field; enumValues supply\
+            \ choices without a separate lookup."
+          properties:
+            customCodeReference:
+              properties:
+                codeType:
+                  enum:
+                  - "JAVA"
+                  - "JAVA_SCRIPT"
+                  type: "string"
+                inlineCode:
+                  type: "string"
+                name:
+                  type: "string"
+              type: "object"
+            enumValues:
+              type: "array"
+            helpContent:
+              type: "object"
+            idType:
+              enum:
+              - "STRING"
+              - "INTEGER"
+              - "LONG"
+              - "DECIMAL"
+              - "BOOLEAN"
+              - "DATE"
+              - "TIME"
+              - "DATE_TIME"
+              - "TEXT"
+              - "HTML"
+              - "PASSWORD"
+              - "BLOB"
+              type: "string"
+            label:
+              type: "string"
+            name:
+              type: "string"
+            orderByFields:
+              type: "array"
+            overrideIdField:
+              type: "string"
+            picker:
+              properties:
+                detailFields:
+                  type: "array"
+                filterFields:
+                  type: "array"
+                pageSize:
+                  type: "number"
+                previewField:
+                  type: "string"
+                searchFields:
+                  type: "array"
+                sorts:
+                  type: "array"
+                subtitleFields:
+                  type: "array"
+                thumbnailField:
+                  type: "string"
+                uploadProcessName:
+                  type: "string"
+                uploadResultIdField:
+                  type: "string"
+              type: "object"
+            searchFields:
+              type: "array"
+            tableName:
+              type: "string"
+            type:
+              enum:
+              - "ENUM"
+              - "TABLE"
+              - "CUSTOM"
+              type: "string"
+            valueFields:
+              type: "array"
+            valueFieldsIfNotFound:
+              type: "array"
+            valueFormat:
+              type: "string"
+            valueFormatIfNotFound:
+              type: "string"
+          type: "object"
+        isEditable:
+          description: "Indicate if user may edit the value in this field."
+          type: "boolean"
+        isHeavy:
+          description: "Indicator of 'heavy' fields, which are not loaded by default.\
+            \  e.g., some blobs or long-texts"
+          type: "boolean"
+        isHidden:
+          description: "Indicate if this field should be hidden from users"
+          type: "boolean"
+        isRequired:
+          description: "Indicate if a value in this field is required."
+          type: "boolean"
+        isSortable:
+          description: "False for restricted fields; omitted means sortable."
+          type: "boolean"
+        label:
+          description: "User-facing name for this field"
+          type: "string"
+        maxLength:
+          description: "For String fields, the max length the field supports."
+          type: "number"
+        maxValue:
+          description: "For number fields, the largest value the field accepts (inclusive).\
+            \  Absent when there is no such limit."
+          type: "string"
+        minValue:
+          description: "For number fields, the smallest value the field accepts (inclusive).\
+            \  Absent when there is no such limit."
+          type: "string"
+        name:
+          description: "Unique name for this field within its container (table or\
+            \ process)"
+          type: "string"
+        picker:
+          description: "When this field's possible value source declares a record\
+            \ picker (for sources over large tables), its configuration: thumbnail,\
+            \ preview, subtitle and detail fields, filter fields, search fields, sorts\
+            \ and page size.  Frontends offer a searchable, paged picker dialog."
+          properties:
+            detailFields:
+              type: "array"
+            filterFields:
+              type: "array"
+            pageSize:
+              type: "number"
+            previewField:
+              type: "string"
+            searchFields:
+              type: "array"
+            sorts:
+              type: "array"
+            subtitleFields:
+              type: "array"
+            thumbnailField:
+              type: "string"
+            uploadProcessName:
+              type: "string"
+            uploadResultIdField:
+              type: "string"
+          type: "object"
+        pickerTableName:
+          description: "When this field has a picker, the table its possible value\
+            \ source reads, whose metadata describes the picker's fields."
+          type: "string"
+        possibleValueSourceDependencyBehavior:
+          description: "DISABLE_UNTIL_SET disables a contingent field until its dependencies\
+            \ are set (default). SHOW_ALL_UNTIL_SET keeps it enabled and omits criteria\
+            \ with missing inputs in form searches. Absent for non-contingent fields."
+          enum:
+          - "DISABLE_UNTIL_SET"
+          - "SHOW_ALL_UNTIL_SET"
+          type: "string"
+        possibleValueSourceDependsOn:
+          description: "Names of fields controlling this field's choices, including\
+            \ explicit and filter dependencies. Absent for non-contingent fields."
+          items:
+            type: "string"
+          type: "array"
+        possibleValueSourceName:
+          description: "If this field's values should come from a possible value source,\
+            \ then that PVS is named here."
+          type: "string"
+        supplementalMetaData:
+          description: "Additional frontend-visible metadata for this field, keyed\
+            \ by supplemental type."
+          type: "object"
+        type:
+          description: "Data-type for this field"
+          type: "string"
+        validation:
+          $ref: "#/components/schemas/FieldValidationV1"
+          description: "The field's validation rules, as the server enforces them\
+            \ on insert and update (required, maxLength and tooLongBehavior, min/max\
+            \ value, pattern).  Absent when the field has none.  Since 1.6.0."
+      type: "object"
+    FieldValidationV1:
+      properties:
+        maxInclusive:
+          description: "Whether maxValue itself is accepted (false: the value must\
+            \ be less)."
+          type: "boolean"
+        maxLength:
+          description: "For string fields, the most characters the field stores. \
+            \ What happens to a longer value is tooLongBehavior."
+          type: "number"
+        maxValue:
+          description: "For number fields, the largest value accepted (plain digits,\
+            \ exact).  See maxInclusive."
+          type: "string"
+        minInclusive:
+          description: "Whether minValue itself is accepted (false: the value must\
+            \ be greater)."
+          type: "boolean"
+        minValue:
+          description: "For number fields, the smallest value accepted (plain digits,\
+            \ exact).  See minInclusive."
+          type: "string"
+        pattern:
+          description: "A regular expression a non-empty value must match as a whole\
+            \ (written to mean the same in Java and ECMAScript)."
+          type: "string"
+        patternMessage:
+          description: "The message the server gives for a value that does not match\
+            \ pattern."
+          type: "string"
+        required:
+          description: "True when a value is required."
+          type: "boolean"
+        tooLongBehavior:
+          description: "With maxLength: ERROR (a longer value is refused), TRUNCATE\
+            \ or TRUNCATE_ELLIPSIS (it is trimmed on save), PASS_THROUGH (neither)."
+          type: "string"
+      type: "object"
+    FilterCriteria:
+      properties:
+        fieldName:
+          description: "Field name that this criteria applies to"
+          type: "string"
+        operator:
+          description: "Logical operator that applies to this criteria"
+          enum:
+          - "EQUALS"
+          - "NOT_EQUALS"
+          - "NOT_EQUALS_OR_IS_NULL"
+          - "IN"
+          - "NOT_IN"
+          - "IS_NULL_OR_IN"
+          - "LIKE"
+          - "NOT_LIKE"
+          - "STARTS_WITH"
+          - "ENDS_WITH"
+          - "CONTAINS"
+          - "CONTAINS_ALL"
+          - "NOT_STARTS_WITH"
+          - "NOT_ENDS_WITH"
+          - "NOT_CONTAINS"
+          - "LESS_THAN"
+          - "LESS_THAN_OR_EQUALS"
+          - "GREATER_THAN"
+          - "GREATER_THAN_OR_EQUALS"
+          - "IS_BLANK"
+          - "IS_NOT_BLANK"
+          - "BETWEEN"
+          - "NOT_BETWEEN"
+          - "TRUE"
+          - "FALSE"
+          type: "string"
+        values:
+          description: "Values to apply via the operator to the field"
+          items:
+            type: "string"
+          type: "array"
+      type: "object"
     FormAdjusterOutputV1:
       description: "Changes a form adjuster asks the form to apply.  Absent or null\
         \ properties mean no change."
@@ -329,6 +1160,175 @@ components:
           description: "Why the form is disabled."
           type: "string"
       type: "object"
+    FrontendComponent:
+      properties:
+        type:
+          description: "The type of this component.  e.g., what kind of UI element(s)\
+            \ should be presented to the user."
+          enum:
+          - "HELP_TEXT"
+          - "BULK_EDIT_FORM"
+          - "BULK_LOAD_FILE_MAPPING_FORM"
+          - "BULK_LOAD_VALUE_MAPPING_FORM"
+          - "BULK_LOAD_PROFILE_FORM"
+          - "VALIDATION_REVIEW_SCREEN"
+          - "EDIT_FORM"
+          - "VIEW_FORM"
+          - "DOWNLOAD_FORM"
+          - "RECORD_LIST"
+          - "PROCESS_SUMMARY_RESULTS"
+          - "GOOGLE_DRIVE_SELECT_FOLDER"
+          - "WIDGET"
+          - "HTML"
+          type: "string"
+        values:
+          $ref: "#/components/schemas/FrontendComponentValues"
+          description: "Name-value pairs specific to the type of component."
+          type: "object"
+      type: "object"
+    FrontendComponentValues:
+      additionalProperties: true
+      description: "These are the known values that can appear in the values map under\
+        \ a FrontendComponent, to control\nhow that component should be presented\
+        \ to the user.\n\nNote that additional properties may appear as well.\n\n\
+        In addition, components are expected to use values from an active process's\
+        \ `values` map (e.g., as included in\na `ProcessStepComplete` object), with\
+        \ the following contract between component-types and expected values:\n\n\
+        - For component type=`HTML`, there will be a process value with key=`${stepName}.html`\
+        \ (e.g., `resultScreen.html`),\nwhose value is the HTML to display on that\
+        \ screen.\n- For component type=`HELP_TEXT`:  There will be a process value\
+        \ with key=`text`, whose value is the text to display on that screen.\nThere\
+        \ may also be a process value with key=`previewText`, which, if present, can\
+        \ be shown before the full text is shown,\ne.g., with a toggle control to\
+        \ hide/show the `text` value.\n"
+      properties:
+        blocks:
+          description: "Components of type=`WIDGET`, which are set as `isAdHocWidget=true`,\
+            \ should include a list of WidgetBlocks in this value."
+          items:
+            $ref: "#/components/schemas/WidgetBlock"
+          type: "array"
+        includeFieldNames:
+          description: "Components of type=`EDIT_FORM` can specify a subset of field\
+            \ names to include.  This can be used to break a form up into\nsections,\
+            \ by including multiple EDIT_FORM components, with different lists of\
+            \ `includeFieldNames`.\n"
+          items:
+            type: "string"
+          type: "array"
+        isAdHocWidget:
+          description: "Components of type=`WIDGET`, which do not reference a widget\
+            \ defined in the QQQ Instance, but instead,\nare defined as a list of\
+            \ blocks within a frontend step component, will have a this value set\
+            \ to true."
+          type: "boolean"
+        sectionLabel:
+          description: "Components of type=`EDIT_FORM` can specify a user-facing text\
+            \ label to show on screen.\n"
+          type: "string"
+        widgetName:
+          description: "Components of type=`WIDGET`, which should render a widget\
+            \ defined in the QQQ instance, this value specifies\nthe name of that\
+            \ widget.  Contrast with ad-hoc widgets.\n"
+          type: "string"
+      type: "object"
+    FrontendStep:
+      properties:
+        backStepName:
+          description: "Name of the step a user can go back to from this step (step\
+            \ with isStepBack=true), when there is one."
+          type: "string"
+        components:
+          description: "The components that make up this screen"
+          items:
+            $ref: "#/components/schemas/FrontendComponent"
+          type: "array"
+        formFields:
+          description: "Fields used as form fields (inputs) on this step/screen"
+          items:
+            $ref: "#/components/schemas/FieldMetaData"
+          type: "array"
+        format:
+          description: "An optional indicator of the screen format preferred by the\
+            \ application to be used for this screen.  Different frontends may support\
+            \ different formats, and implement them differently."
+          type: "string"
+        helpContents:
+          description: "Help content shown on the step/screen."
+          items:
+            $ref: "#/components/schemas/HelpContentV1"
+          type: "array"
+        label:
+          description: "The user-facing name for this step"
+          type: "string"
+        name:
+          description: "The unique name for this step within its process"
+          type: "string"
+        recordListFields:
+          description: "Fields used in record-lists shown on the step/screen."
+          items:
+            $ref: "#/components/schemas/FieldMetaData"
+          type: "array"
+        viewFields:
+          description: "Fields used as view-only fields on this step/screen"
+          items:
+            $ref: "#/components/schemas/FieldMetaData"
+          type: "array"
+      type: "object"
+    HelpContentV1:
+      properties:
+        content:
+          description: "Long help in the declared format."
+          type: "string"
+        contentAsHtml:
+          description: "Rendered Markdown (raw HTML escaped, unsafe links removed).\
+            \ Explicit HTML is unchanged and clients must sanitize it."
+          type: "string"
+        format:
+          description: "Format of the long help."
+          enum:
+          - "TEXT"
+          - "HTML"
+          - "MARKDOWN"
+          type: "string"
+        roles:
+          description: "Screen roles covered by this entry."
+          items:
+            type: "string"
+          type: "array"
+        summary:
+          description: "Optional short plain-text tooltip."
+          type: "string"
+      type: "object"
+    HelpCoverageEntryV1:
+      properties:
+        hasContent:
+          description: "Whether visible help has long content."
+          type: "boolean"
+        hasSummary:
+          description: "Whether visible help has an explicit summary."
+          type: "boolean"
+        hidden:
+          description: "Whether the target is hidden in metadata."
+          type: "boolean"
+        key:
+          description: "Canonical helpContent address."
+          type: "string"
+        kind:
+          description: "Help target kind."
+          type: "string"
+        label:
+          description: "User-facing target label."
+          type: "string"
+        parentKey:
+          description: "Canonical parent address."
+          type: "string"
+        roles:
+          description: "Screen roles covered by this entry."
+          items:
+            type: "string"
+          type: "array"
+      type: "object"
     HelpCoverageResponseV1:
       properties:
         entries:
@@ -340,12 +1340,71 @@ components:
             $ref: "#/components/schemas/HelpCoverageTotalV1"
           type: "array"
       type: "object"
+    HelpCoverageTotalV1:
+      properties:
+        kind:
+          description: "Help target kind."
+          type: "string"
+        total:
+          description: "Number of targets in the selected kind and parent scope."
+          type: "number"
+        withHelp:
+          description: "Targets with a visible summary or long content."
+          type: "number"
+      type: "object"
     HelpSearchResponseV1:
       properties:
         results:
           items:
             $ref: "#/components/schemas/HelpSearchResultV1"
           type: "array"
+      type: "object"
+    HelpSearchResultV1:
+      properties:
+        contentAsHtml:
+          description: "Rendered Markdown (raw HTML escaped, unsafe links removed).\
+            \ Explicit HTML is unchanged and clients must sanitize it."
+          type: "string"
+        href:
+          description: "Application-relative navigation link, when available."
+          type: "string"
+        key:
+          description: "Canonical helpContent address."
+          type: "string"
+        kind:
+          description: "Help target kind."
+          type: "string"
+        label:
+          description: "User-facing target label."
+          type: "string"
+        name:
+          description: "Target metadata name."
+          type: "string"
+        process:
+          description: "Related process name, when applicable."
+          type: "string"
+        summary:
+          description: "Optional short plain-text tooltip."
+          type: "string"
+        table:
+          description: "Related table name, when applicable."
+          type: "string"
+        text:
+          description: "Plain-text help excerpt, at most 600 characters."
+          type: "string"
+      type: "object"
+    Icon:
+      properties:
+        color:
+          description: "A color code to use for displaying the icon"
+          type: "string"
+        name:
+          description: "A material UI icon name."
+          type: "string"
+        path:
+          description: "A path to an image file that can be requested from the server,\
+            \ to serve as the icon image instead of a material UI icon."
+          type: "string"
       type: "object"
     JobActionResponseV1:
       properties:
@@ -652,6 +1711,39 @@ components:
           description: "Optional object with application-defined values."
           type: "object"
       type: "object"
+    MaterialDashboardInstanceSettings:
+      properties:
+        processNamesToAddToAllQueryAndViewScreens:
+          description: "Names of processes to offer on the query and record-view screens\
+            \ of every table, in their configured order.  Only processes that the\
+            \ user may see (i.e., that are in the meta-data's `processes` map) are\
+            \ listed, so the list may be empty."
+          items:
+            type: "string"
+          type: "array"
+        recordViewActionsPlacement:
+          description: "Where the record view puts its actions: IN_IDENTITY_SECTION\
+            \ or INLINE_WITH_PAGE_TITLE.  When set, this overrides each table's placement."
+          type: "string"
+        weekdayCriteriaSettings:
+          $ref: "#/components/schemas/MaterialDashboardWeekdayCriteriaSettings"
+          description: "Weekday criteria settings for the query screens (day is any\
+            \ of, day is none of).  Omitted when the material dashboard meta-data\
+            \ does not define them."
+      type: "object"
+    MaterialDashboardWeekdayCriteriaSettings:
+      properties:
+        dateTimeFieldFunctionArguments:
+          additionalProperties: true
+          description: "Arguments for the WeekdayOfDateTime field function that a\
+            \ frontend sends with weekday criteria on date-time fields (for example\
+            \ timeZoneId or useSessionZoneId)."
+          type: "object"
+        enabled:
+          description: "Whether query screens offer the weekday criteria (day is any\
+            \ of, day is none of) on date and date-time fields."
+          type: "boolean"
+      type: "object"
     MetaDataResponseV1:
       properties:
         appTree:
@@ -891,6 +1983,54 @@ components:
           description: "Map of all widgets within the QQQ Instance (that the user\
             \ has permission to see that they exist)."
           type: "object"
+      type: "object"
+    OrderBy:
+      properties:
+        fieldName:
+          description: "Field name that this order-by applies to"
+          type: "string"
+        isAscending:
+          description: "Whether this order-by is ascending or descending"
+          type: "boolean"
+      type: "object"
+    OutputRecord:
+      properties:
+        associatedRecords:
+          additionalProperties:
+            type: "array"
+          description: "Records associated with this record, keyed by association\
+            \ name.  Each value is a list of records with the same shape as this one.\
+            \  Only present when associations were requested or written."
+          type: "object"
+        displayValues:
+          description: "Formatted string versions of the values that make up the record.\
+            \  Keys are Strings, which match the table's field names. Values are all\
+            \ Strings."
+          type: "object"
+        errors:
+          description: "Messages for errors on this record (for example on an associated\
+            \ record that could not be written).  Omitted when there are none."
+          items:
+            type: "string"
+          type: "array"
+        recordLabel:
+          description: "Label to identify the record to a user."
+          type: "string"
+        tableName:
+          description: "Name of the table that the record is from."
+          type: "string"
+        values:
+          description: "Raw values that make up the record.  Keys are Strings, which\
+            \ match the table's field names. Values can be any type, as per the table's\
+            \ fields.  Single-record responses (get, insert, update) include fields\
+            \ whose value is null; query results omit them."
+          type: "object"
+        warnings:
+          description: "Messages for warnings on this record.  Omitted when there\
+            \ are none."
+          items:
+            type: "string"
+          type: "array"
       type: "object"
     PossibleValueOption:
       properties:
@@ -1173,6 +2313,15 @@ components:
       type: "object"
     ProcessCancelResponseV1:
       type: "object"
+    ProcessCapabilityV1:
+      properties:
+        available:
+          description: "True when the process exists and the user may run it."
+          type: "boolean"
+        processName:
+          description: "The process to run (present only when available)."
+          type: "string"
+      type: "object"
     ProcessJobLaunchResponseV1:
       properties:
         jobId:
@@ -1182,6 +2331,132 @@ components:
         status:
           description: "Status of the new job: QUEUED, or AWAITING_CONFIRMATION for\
             \ a launch from the assistant channel."
+          type: "string"
+      type: "object"
+    ProcessMetaData:
+      properties:
+        durableJobAlways:
+          description: "True when the process always runs as a durable background\
+            \ job (too large to run while the user waits)."
+          type: "boolean"
+        durableJobEligible:
+          description: "True when the process can run as a durable background job\
+            \ (POST /processes/{processName}/jobs): clients may offer \"Run in background\"\
+            ."
+          type: "boolean"
+        frontendSteps:
+          description: "Frontend steps (aka, Screens) for this process."
+          items:
+            $ref: "#/components/schemas/FrontendStep"
+          type: "array"
+        hasPermission:
+          description: "Boolean to indicate if the user has permission for the process."
+          type: "boolean"
+        helpContents:
+          additionalProperties:
+            items:
+              $ref: "#/components/schemas/HelpContentV1"
+            type: "array"
+          description: "Help entries by slot, filtered for the current session."
+          type: "object"
+        icon:
+          $ref: "#/components/schemas/Icon"
+          description: "Icon to display for the process."
+        iconName:
+          description: "Name of the process's icon."
+          type: "string"
+        isHidden:
+          description: "Boolean indicator of whether the process should be shown to\
+            \ users or not"
+          type: "boolean"
+        label:
+          description: "User-facing name for this process"
+          type: "string"
+        maxInputRecords:
+          description: "Most input records the process runs with, when it has a maximum."
+          type: "number"
+        minInputRecords:
+          description: "Fewest input records the process runs with (for processes\
+            \ on a table's records)."
+          type: "number"
+        name:
+          description: "Unique name for this process within the QQQ Instance"
+          type: "string"
+        stepFlow:
+          description: "Indicator of the Step Flow used by the process.  Possible\
+            \ values are: LINEAR, STATE_MACHINE."
+          type: "string"
+        tableName:
+          description: "If this process is associated with a table, the table name\
+            \ is given here"
+          type: "string"
+      type: "object"
+    ProcessMetaDataAdjustment:
+      properties:
+        updatedFields:
+          additionalProperties:
+            $ref: "#/components/schemas/FieldMetaData"
+          description: "Fields whose meta-data has changed.  e.g., changing a label,\
+            \ or required status, or inline-possible-values."
+          type: "object"
+        updatedFrontendStepList:
+          description: "In case the backend has changed the list of frontend steps,\
+            \ it will be set in this field."
+          items:
+            $ref: "#/components/schemas/FrontendStep"
+          type: "array"
+      type: "object"
+    ProcessMetaDataLight:
+      properties:
+        durableJobAlways:
+          description: "True when the process always runs as a durable background\
+            \ job (too large to run while the user waits)."
+          type: "boolean"
+        durableJobEligible:
+          description: "True when the process can run as a durable background job\
+            \ (POST /processes/{processName}/jobs): clients may offer \"Run in background\"\
+            ."
+          type: "boolean"
+        hasPermission:
+          description: "Boolean to indicate if the user has permission for the process."
+          type: "boolean"
+        helpContents:
+          additionalProperties:
+            items:
+              $ref: "#/components/schemas/HelpContentV1"
+            type: "array"
+          description: "Help entries by slot, filtered for the current session."
+          type: "object"
+        icon:
+          $ref: "#/components/schemas/Icon"
+          description: "Icon to display for the process."
+        iconName:
+          description: "Name of the process's icon."
+          type: "string"
+        isHidden:
+          description: "Boolean indicator of whether the process should be shown to\
+            \ users or not"
+          type: "boolean"
+        label:
+          description: "User-facing name for this process"
+          type: "string"
+        maxInputRecords:
+          description: "Most input records the process runs with, when it has a maximum."
+          type: "number"
+        minInputRecords:
+          description: "Fewest input records the process runs with (for processes\
+            \ on a table's records)."
+          type: "number"
+        name:
+          description: "Unique name for this process within the QQQ Instance"
+          type: "string"
+        stepFlow:
+          description: "Indicator of the Step Flow used by the process.  Possible\
+            \ values are: LINEAR, STATE_MACHINE."
+          type: "string"
+        tableName:
+          description: "If this process is associated with a table, the table name\
+            \ is given here"
           type: "string"
       type: "object"
     ProcessMetaDataResponseV1:
@@ -1618,6 +2893,79 @@ components:
             \ additional fields will be set."
           type: "string"
       type: "object"
+    PublicBranding:
+      properties:
+        accentColor:
+          description: "Primary accent color, as a CSS color value."
+          type: "string"
+        accentColorLight:
+          description: "Light variant of the accent color, as a CSS color value."
+          type: "string"
+        appName:
+          description: "Name of this application, for display to users."
+          type: "string"
+        companyName:
+          description: "Name of the company that operates this application."
+          type: "string"
+        icon:
+          description: "Path or URL of the application's small icon image."
+          type: "string"
+        logo:
+          description: "Path or URL of the application's logo image."
+          type: "string"
+      type: "object"
+    QueryFilter:
+      properties:
+        booleanOperator:
+          description: "Boolean operator to apply between criteria"
+          enum:
+          - "AND"
+          - "OR"
+          type: "string"
+        criteria:
+          description: "Field level criteria that make up the query filter"
+          items:
+            $ref: "#/components/schemas/FilterCriteria"
+          type: "array"
+        limit:
+          description: "Maximum number of results to return."
+          type: "number"
+        orderBys:
+          description: "How the query's results should be ordered (sorted)."
+          items:
+            $ref: "#/components/schemas/OrderBy"
+          type: "array"
+        skip:
+          description: "Records to skip (e.g., to implement pagination)"
+          type: "number"
+      type: "object"
+    QueryJoin:
+      properties:
+        alias:
+          description: "Alias to apply to this table in the join query"
+          type: "string"
+        baseTableOrAlias:
+          description: "Base table (or an alias) that this QueryJoin is joined against"
+          type: "string"
+        joinName:
+          description: "Name of a join to use in case the baseTable and joinTable\
+            \ have more than one"
+          type: "string"
+        joinTable:
+          description: "Table being joined into the query by this QueryJoin"
+          type: "string"
+        select:
+          description: "Whether or not to select values from the join table"
+          type: "boolean"
+        type:
+          description: "Type of join being performed (SQL semantics)"
+          enum:
+          - "INNER"
+          - "LEFT"
+          - "RIGHT"
+          - "FULL"
+          type: "string"
+      type: "object"
     RealtimeChannelRevokedEventV1:
       properties:
         channel:
@@ -1800,6 +3148,38 @@ components:
           - type: "boolean"
           nullable: true
       type: "object"
+    RecordDeveloperModeAssociatedScript:
+      properties:
+        associatedScript:
+          $ref: "#/components/schemas/AssociatedScriptMetaData"
+          description: "Definition of the associated script, from the table's meta-data."
+        script:
+          $ref: "#/components/schemas/OutputRecord"
+          description: "The script record that the record references.  Omitted if\
+            \ the record does not reference an existing script."
+        scriptRevisions:
+          description: "The script's revisions (scriptRevision records), newest (highest\
+            \ id) first.  Present (possibly empty) when script is."
+          items:
+            $ref: "#/components/schemas/OutputRecord"
+          type: "array"
+        scriptType:
+          $ref: "#/components/schemas/OutputRecord"
+          description: "The scriptType record of the associated script.  Omitted if\
+            \ there is no such record."
+        testInputFields:
+          description: "Input fields for testing the script.  Present (possibly empty)\
+            \ when the associated script has a script tester."
+          items:
+            $ref: "#/components/schemas/FieldMetaData"
+          type: "array"
+        testOutputFields:
+          description: "Output fields from testing the script.  Present (possibly\
+            \ empty) when the associated script has a script tester."
+          items:
+            $ref: "#/components/schemas/FieldMetaData"
+          type: "array"
+      type: "object"
     RecordDeveloperModeResponseV1:
       properties:
         associatedScripts:
@@ -1948,6 +3328,42 @@ components:
             type: "object"
           type: "object"
       type: "object"
+    RecordFeaturesV1:
+      properties:
+        capabilities:
+          additionalProperties:
+            type: "boolean"
+          type: "object"
+        features:
+          items:
+            enum:
+            - "ATTACHMENTS"
+            - "TAGS"
+            - "CUSTOM_FIELDS"
+            - "COMMENTS"
+            - "PRESENCE"
+            - "SHARING"
+            - "FAVORITES"
+            - "FOLLOW"
+            - "TIMELINE"
+            - "RECENTS"
+            - "TASKS"
+            - "ASSIGNMENT"
+            type: "string"
+          type: "array"
+        ownership:
+          properties:
+            assigneeFieldName:
+              type: "string"
+            ownerFieldName:
+              type: "string"
+          type: "object"
+        settings:
+          additionalProperties:
+            additionalProperties: true
+            type: "object"
+          type: "object"
+      type: "object"
     RecordSearchDetailV1:
       properties:
         displayValue:
@@ -1986,6 +3402,26 @@ components:
         text:
           description: "Plain-text snippet of the field value (never markup; an ellipsis\
             \ marks trimmed ends)."
+          type: "string"
+      type: "object"
+    RecordSearchProviderStatusV1:
+      properties:
+        failureClass:
+          description: "When the provider failed: the simple class name of the root\
+            \ cause (e.g., ConnectException)."
+          type: "string"
+        message:
+          description: "When the provider failed with a user-facing error: its message\
+            \ (one line)."
+          type: "string"
+        status:
+          description: "OK: the provider searched the tables it claimed.  FAILED:\
+            \ it failed, and those tables were searched with the default search. \
+            \ NONE: there is no provider, or it claimed none of the searched tables."
+          enum:
+          - "OK"
+          - "FAILED"
+          - "NONE"
           type: "string"
       type: "object"
     RecordSearchResponseV1:
@@ -2093,6 +3529,79 @@ components:
             \ search knows it (records the user may not read can make it high)."
           type: "number"
       type: "object"
+    RelatedRecordPicker:
+      properties:
+        associationName:
+          description: "The association whose rows the picker adds (MULTI_CHILD, LINK)"
+          type: "string"
+        canAddChildren:
+          description: "Whether the user may add child or join rows (prepare and add\
+            \ routes)"
+          type: "boolean"
+        canCreateTarget:
+          description: "Whether to offer quick-create of a target record (insert route\
+            \ of targetTableName)"
+          type: "boolean"
+        canRemoveChildren:
+          description: "Whether the user may unlink (remove route; LINK only)"
+          type: "boolean"
+        childTableName:
+          description: "The child or join table new rows go into (MULTI_CHILD, LINK)"
+          type: "string"
+        childTargetFieldName:
+          description: "The child table's field that holds the picked record's key\
+            \ (MULTI_CHILD, LINK)"
+          type: "string"
+        columns:
+          description: "Target fields to show as result columns"
+          items:
+            type: "string"
+          type: "array"
+        defaultFilter:
+          $ref: "#/components/schemas/QueryFilter"
+          description: "Initial, user-editable filter; the query route returns it\
+            \ resolved as resolvedDefaultFilter"
+        fieldName:
+          description: "The foreign-key field the picker sets (SINGLE)"
+          type: "string"
+        filter:
+          $ref: "#/components/schemas/QueryFilter"
+          description: "Filter the server always applies to the picker's queries (may\
+            \ contain ${input.fieldName} variables, read from the parent record)"
+        label:
+          description: "Dialog title, and the label of the button that opens it"
+          type: "string"
+        maxSelections:
+          description: "Most records one add or link may pick (MULTI_CHILD, LINK)"
+          type: "number"
+        mode:
+          description: "SINGLE: choose one record for fieldName.  MULTI_CHILD: add\
+            \ child rows through associationName, after a review of reviewFieldNames.\
+            \  LINK: link and unlink through associationName (a join table)."
+          type: "string"
+        name:
+          description: "Picker name; the {pickerName} path segment of the relatedRecordPicker\
+            \ routes"
+          type: "string"
+        previewFields:
+          description: "Target fields to show for the highlighted record"
+          items:
+            type: "string"
+          type: "array"
+        reviewFieldNames:
+          description: "Child fields the user fills per picked record before saving\
+            \ (MULTI_CHILD); empty means no review step"
+          items:
+            type: "string"
+          type: "array"
+        targetTableName:
+          description: "The table records are picked from (read its metadata for fields,\
+            \ sections and quickCreateSectionName)"
+          type: "string"
+        thumbnailField:
+          description: "Target field holding an image URL, for thumbnails"
+          type: "string"
+      type: "object"
     RelatedRecordPickerAddResponseV1:
       properties:
         records:
@@ -2174,6 +3683,92 @@ components:
           description: "How many join rows were deleted"
           type: "number"
       type: "object"
+    ReportMetaData:
+      properties:
+        hasPermission:
+          description: "Whether the user may run the report."
+          type: "object"
+        helpContents:
+          additionalProperties:
+            items:
+              $ref: "#/components/schemas/HelpContentV1"
+            type: "array"
+          description: "Help entries by slot, filtered for the current session."
+          type: "object"
+        iconName:
+          description: "Name of the report's icon."
+          type: "string"
+        label:
+          description: "User-facing name for this report."
+          type: "string"
+        name:
+          description: "Unique name for this report within the QQQ Instance."
+          type: "string"
+        processName:
+          description: "Process that runs this report, when it has one; otherwise\
+            \ it runs from GET /reports/{reportName}."
+          type: "string"
+      type: "object"
+    SavedViewsCapabilityV1:
+      properties:
+        available:
+          description: "True when the user may list saved views (queryProcessName\
+            \ can run)."
+          type: "boolean"
+        deleteProcessName:
+          description: "Deletes a view; absent when the user may not delete views."
+          type: "string"
+        queryProcessName:
+          description: "Lists the views (input tableName; output savedViewList)."
+          type: "string"
+        storeProcessName:
+          description: "Stores (inserts or updates) a view; absent when the user may\
+            \ not store views."
+          type: "string"
+      type: "object"
+    SharingCapabilityV1:
+      properties:
+        available:
+          description: "True when the table is shareable and the user may list shares."
+          type: "boolean"
+        deleteProcessName:
+          description: "Removes a share."
+          type: "string"
+        editProcessName:
+          description: "Changes a share's scope."
+          type: "string"
+        insertProcessName:
+          description: "Adds a share (the record owner only; the server checks)."
+          type: "string"
+        listProcessName:
+          description: "Lists a record's shares."
+          type: "string"
+      type: "object"
+    SupplementalInstanceMetaData:
+      properties:
+        assistant:
+          additionalProperties: true
+          description: "Present (an object) when the instance has the assistant QBit's\
+            \ `assistant` supplemental meta-data - that is, when the assistant is\
+            \ installed and enabled, so a frontend may probe its routes.  Always has\
+            \ `available: true`, plus the strings, numbers and booleans the QBit publishes\
+            \ for frontends."
+          type: "object"
+        materialDashboard:
+          $ref: "#/components/schemas/MaterialDashboardInstanceSettings"
+          description: "Settings from the instance's `materialDashboard` supplemental\
+            \ meta-data, when the instance defines it."
+        materialDashboardTheme:
+          additionalProperties: true
+          description: "The application theme from the instance's MaterialDashboardThemeMetaData\
+            \ supplemental meta-data, when the instance defines it.  Keys are MaterialDashboardThemeMetaData\
+            \ property names (for example primaryColor, fontFamily, typographyH1FontSize,\
+            \ borderRadiusGlobal, density, customCss, brandedHeaderEnabled, sidebarBackgroundColor,\
+            \ tableHeaderBackgroundColor); values are strings, numbers or booleans.\
+            \  An explicit allow-list of the theme's visual properties; properties\
+            \ without a value are omitted."
+          type: "object"
+      type: "object"
     TableApiDocumentV1:
       additionalProperties: true
       description: "An OpenAPI 3 document (the application API's own format, not part\
@@ -2224,6 +3819,36 @@ components:
           items:
             $ref: "#/components/schemas/TableApiV1"
           type: "array"
+      type: "object"
+    TableCapabilitiesV1:
+      properties:
+        SAVED_VIEW_DELETE_PROCESS:
+          type: "string"
+        SAVED_VIEW_QUERY_PROCESS:
+          type: "string"
+        SAVED_VIEW_STORE_PROCESS:
+          type: "string"
+        audits:
+          $ref: "#/components/schemas/AuditsCapabilityV1"
+          description: "Audit history of this table's records."
+        bulkDelete:
+          $ref: "#/components/schemas/ProcessCapabilityV1"
+          description: "Bulk delete of selected records."
+        bulkEdit:
+          $ref: "#/components/schemas/ProcessCapabilityV1"
+          description: "Bulk edit of selected records."
+        bulkEditWithFile:
+          $ref: "#/components/schemas/ProcessCapabilityV1"
+          description: "Bulk edit from a file."
+        bulkInsert:
+          $ref: "#/components/schemas/ProcessCapabilityV1"
+          description: "Bulk insert (load a file into the table)."
+        savedViews:
+          $ref: "#/components/schemas/SavedViewsCapabilityV1"
+          description: "Saved views of this table."
+        sharing:
+          $ref: "#/components/schemas/SharingCapabilityV1"
+          description: "Record sharing, for a shareable table."
       type: "object"
     TableCountResponseV1:
       properties:
@@ -2339,6 +3964,263 @@ components:
           items:
             type: "string"
           type: "array"
+      type: "object"
+    TableMenu:
+      properties:
+        icon:
+          $ref: "#/components/schemas/Icon"
+          description: "Icon of the menu's button."
+        items:
+          description: "The menu's items, in order."
+          items:
+            $ref: "#/components/schemas/TableMenuItem"
+          type: "array"
+        label:
+          description: "User-facing label of the menu's button."
+          type: "string"
+        slot:
+          description: "Where the menu goes: VIEW_SCREEN_ACTIONS, VIEW_SCREEN_ADDITIONAL,\
+            \ QUERY_SCREEN_ACTIONS or QUERY_SCREEN_ADDITIONAL (or a slot the application\
+            \ defines)."
+          type: "string"
+      type: "object"
+    TableMenuItem:
+      properties:
+        icon:
+          $ref: "#/components/schemas/Icon"
+          description: "Icon of the item, when it overrides the frontend's default."
+        itemType:
+          description: "What the item is and how a frontend handles it: BUILT_IN (a\
+            \ standard action named by values.option, such as NEW, COPY, EDIT, DELETE,\
+            \ DEVELOPER_MODE, AUDIT, THIS_TABLE_PROCESS_LIST or ALL_TABLES_PROCESS_LIST),\
+            \ RUN_PROCESS (values.processName), DOWNLOAD_FILE (values.fieldName),\
+            \ SUB_MENU and SUB_LIST (values.items), or DIVIDER."
+          type: "string"
+        label:
+          description: "User-facing label of the item, when it overrides the frontend's\
+            \ default."
+          type: "string"
+        values:
+          additionalProperties: true
+          description: "Item-type specific values: option for BUILT_IN, processName\
+            \ for RUN_PROCESS, fieldName for DOWNLOAD_FILE, and items (a list of menu\
+            \ items of this same shape) for SUB_MENU and SUB_LIST."
+          type: "object"
+      type: "object"
+    TableMetaData:
+      properties:
+        associations:
+          description: "Named record associations and their joins, without child record\
+            \ access"
+          items:
+            $ref: "#/components/schemas/Association"
+          type: "array"
+        builtInViews:
+          description: "Built-in views; evaluate their filters in the current session\
+            \ without persisting the resolved user id."
+          items:
+            $ref: "#/components/schemas/BuiltInViewV1"
+          type: "array"
+        capabilities:
+          description: "List of strings describing actions that are supported by the\
+            \ backend application for the table."
+          items:
+            type: "string"
+          type: "array"
+        clientCapabilities:
+          $ref: "#/components/schemas/TableCapabilitiesV1"
+          description: "What a client may offer on this table beyond plain CRUD -\
+            \ saved views, audits, sharing and the bulk processes - with the process\
+            \ or table to use for each, for the current user.  Clients use these instead\
+            \ of hard-coded process names.  Since 1.6.0."
+        deletePermission:
+          description: "Boolean to indicate if the user has delete permission for\
+            \ the table."
+          type: "boolean"
+        editPermission:
+          description: "Boolean to indicate if the user has edit permission for the\
+            \ table."
+          type: "boolean"
+        exposedJoins:
+          description: "Sections to organize fields on screens for this record"
+          items:
+            $ref: "#/components/schemas/ExposedJoin"
+          type: "array"
+        fields:
+          additionalProperties:
+            $ref: "#/components/schemas/FieldMetaData"
+          description: "Fields in this table"
+          type: "object"
+        hasRestrictedFields:
+          description: "True when any field has REVEALABLE, MASKED, or HIDDEN access\
+            \ for the current session."
+          type: "boolean"
+        helpContents:
+          additionalProperties:
+            items:
+              $ref: "#/components/schemas/HelpContentV1"
+            type: "array"
+          description: "Help Contents for this table."
+          type: "object"
+        icon:
+          $ref: "#/components/schemas/Icon"
+          description: "Icon to display for the table"
+        insertPermission:
+          description: "Boolean to indicate if the user has insert permission for\
+            \ the table."
+          type: "boolean"
+        isHidden:
+          description: "Boolean indicator of whether the table should be shown to\
+            \ users or not"
+          type: "boolean"
+        label:
+          description: "User-facing name for this table"
+          type: "string"
+        menus:
+          description: "Menus the table defines for screen slots (for example the\
+            \ record view's VIEW_SCREEN_ACTIONS menu, which replaces the default actions\
+            \ menu, and VIEW_SCREEN_ADDITIONAL menus).  Omitted when the table defines\
+            \ none."
+          items:
+            $ref: "#/components/schemas/TableMenu"
+          type: "array"
+        metaDataGeneration:
+          description: "Runtime metadata generation; refetch metadata when this changes."
+          type: "number"
+        name:
+          description: "Unique name for this table within the QQQ Instance"
+          type: "string"
+        primaryKeyField:
+          description: "Name of the primary key field in this table"
+          type: "string"
+        quickCreateSectionName:
+          description: "Name of the section whose editable fields a quick-create form\
+            \ shows (else the required, editable fields)"
+          type: "string"
+        readPermission:
+          description: "Boolean to indicate if the user has read permission for the\
+            \ table."
+          type: "boolean"
+        recordFeatures:
+          $ref: "#/components/schemas/RecordFeaturesV1"
+          description: "Enabled record collaboration features, public settings, and\
+            \ this session's table capabilities."
+        relatedRecordPickers:
+          description: "Related-record pickers of this table whose target the user\
+            \ may read (docs/RELATED-RECORD-PICKER.md)"
+          items:
+            $ref: "#/components/schemas/RelatedRecordPicker"
+          type: "array"
+        searchFields:
+          description: "Names of the fields that record search (POST /search) matches\
+            \ for this table. Only present when the table is searchable and the user\
+            \ has read permission for it."
+          items:
+            type: "string"
+          type: "array"
+        sections:
+          description: "Sections to organize fields on screens for this record"
+          items:
+            $ref: "#/components/schemas/TableSection"
+          type: "array"
+        shareableTableMetaData:
+          description: "For tables that support the sharing feature, meta-data about\
+            \ the sharing setup."
+          properties:
+            assetIdFieldName:
+              type: "string"
+            audiencePossibleValueSourceName:
+              type: "string"
+            audienceTypes:
+              type: "object"
+            audienceTypesPossibleValueSourceName:
+              type: "string"
+            scopeFieldName:
+              type: "string"
+            sharedRecordTableName:
+              type: "string"
+            thisTableOwnerIdFieldName:
+              type: "string"
+          type: "object"
+        supplementalMetaData:
+          description: "Additional meta data about the table, not necessarily known\
+            \ to QQQ."
+          type: "object"
+        usesVariants:
+          description: "Whether or not this table's backend uses variants."
+          type: "boolean"
+        variantTableLabel:
+          description: "If the table uses variants, this is the user-facing label\
+            \ for the table that supplies variants for this table."
+          type: "string"
+        virtualFields:
+          additionalProperties:
+            $ref: "#/components/schemas/VirtualFieldMetaData"
+          description: "Virtual fields in this table"
+          type: "object"
+      type: "object"
+    TableMetaDataLight:
+      properties:
+        capabilities:
+          description: "List of strings describing actions that are supported by the\
+            \ backend application for the table."
+          items:
+            type: "string"
+          type: "array"
+        deletePermission:
+          description: "Boolean to indicate if the user has delete permission for\
+            \ the table."
+          type: "boolean"
+        editPermission:
+          description: "Boolean to indicate if the user has edit permission for the\
+            \ table."
+          type: "boolean"
+        helpContents:
+          additionalProperties:
+            items:
+              $ref: "#/components/schemas/HelpContentV1"
+            type: "array"
+          description: "Help Contents for this table."
+          type: "object"
+        icon:
+          $ref: "#/components/schemas/Icon"
+          description: "Icon to display for the table"
+        insertPermission:
+          description: "Boolean to indicate if the user has insert permission for\
+            \ the table."
+          type: "boolean"
+        isHidden:
+          description: "Boolean indicator of whether the table should be shown to\
+            \ users or not"
+          type: "boolean"
+        label:
+          description: "User-facing name for this table"
+          type: "string"
+        metaDataGeneration:
+          description: "Runtime metadata generation; refetch metadata when this changes."
+          type: "number"
+        name:
+          description: "Unique name for this table within the QQQ Instance"
+          type: "string"
+        readPermission:
+          description: "Boolean to indicate if the user has read permission for the\
+            \ table."
+          type: "boolean"
+        recordFeatures:
+          $ref: "#/components/schemas/RecordFeaturesV1"
+          description: "Enabled record collaboration features, public settings, and\
+            \ this session's table capabilities."
+        searchFields:
+          description: "Names of the fields that record search (POST /search) matches\
+            \ for this table. Only present when the table is searchable and the user\
+            \ has read permission for it."
+          items:
+            type: "string"
+          type: "array"
+        variantTableLabel:
+          description: "If the table uses variants, this is the user-facing label\
+            \ for the table that supplies variants for this table."
+          type: "string"
       type: "object"
     TableMetaDataResponseV1:
       properties:
@@ -2621,6 +4503,61 @@ components:
             $ref: "#/components/schemas/OutputRecord"
           type: "array"
       type: "object"
+    TableSection:
+      properties:
+        alternatives:
+          additionalProperties:
+            $ref: "#/components/schemas/TableSection"
+          description: "Alternative versions of this section for specific screens,\
+            \ keyed by alternative type (for example RECORD_VIEW or RECORD_EDIT).\
+            \  A screen of that type uses the alternative in place of this definition.\
+            \  Omitted when there are none."
+          type: "object"
+        collapsible:
+          $ref: "#/components/schemas/TableSectionCollapsible"
+          description: "Whether screens that can collapse sections may collapse this\
+            \ one, and whether it starts open.  Omitted when the section defines no\
+            \ collapsible behavior."
+        fieldNames:
+          description: "List of field names to include in this section."
+          type: "array"
+        gridColumns:
+          description: "Layout suggestion, for how many columns of a 12-grid this\
+            \ section should use."
+          type: "number"
+        helpContents:
+          description: "Help Contents for this section table."
+          items:
+            $ref: "#/components/schemas/HelpContentV1"
+          type: "array"
+        icon:
+          $ref: "#/components/schemas/Icon"
+          description: "Icon to display for the table"
+        label:
+          description: "User-facing label to display for this section"
+          type: "string"
+        name:
+          description: "Unique identifier for this section within this table"
+          type: "string"
+        tier:
+          description: "Importance of this section (T1, T2, or T3)"
+          type: "string"
+        widgetName:
+          description: "Name of a widget in this QQQ instance to include in this section\
+            \ (instead of fields)."
+          type: "string"
+      type: "object"
+    TableSectionCollapsible:
+      properties:
+        initiallyOpen:
+          description: "Whether a collapsible section starts open, before the user\
+            \ has opened or closed it."
+          type: "boolean"
+        isCollapsible:
+          description: "Whether screens that can collapse sections let the user collapse\
+            \ and expand this one."
+          type: "boolean"
+      type: "object"
     TableUpdateResponseV1:
       properties:
         record:
@@ -2670,6 +4607,20 @@ components:
             type: "string"
           type: "array"
       type: "object"
+    TableVariant:
+      properties:
+        id:
+          description: "Identifier for the variant option (record) being used."
+          type: "string"
+        name:
+          description: "A user-facing name (or label) for the variant option being\
+            \ used."
+          type: "string"
+        type:
+          description: "Specification for the variant type (variantTypeKey from QQQ\
+            \ BackendVariantsConfig)"
+          type: "string"
+      type: "object"
     TableVariantsResponseV1:
       properties:
         variants:
@@ -2679,6 +4630,22 @@ components:
           items:
             $ref: "#/components/schemas/TableVariant"
           type: "array"
+      type: "object"
+    UiApiExtensionInfo:
+      properties:
+        description:
+          description: "A short description of the extension."
+          type: "string"
+        name:
+          description: "The extension namespace, e.g. alerts or sql-workbench."
+          type: "string"
+        pathPrefix:
+          description: "The path prefix of the extension operations under the API\
+            \ base path, e.g. /qbit/backups or /esb."
+          type: "string"
+        version:
+          description: "The extension semantic version (MAJOR.MINOR.PATCH)."
+          type: "string"
       type: "object"
     UploadRefResponseV1:
       properties:
@@ -2736,6 +4703,935 @@ components:
           items:
             type: "number"
           type: "array"
+      type: "object"
+    VirtualFieldMetaData:
+      properties:
+        accessTier:
+          description: "Effective field access: FULL, REVEALABLE, MASKED, or HIDDEN.\
+            \ Omitted means FULL. Restricted values are strings, regardless of field\
+            \ type."
+          enum:
+          - "FULL"
+          - "REVEALABLE"
+          - "MASKED"
+          - "HIDDEN"
+          type: "string"
+        adornments:
+          description: "Special UI dressings to add to the field."
+          items:
+            $ref: "#/components/schemas/FieldAdornment"
+          type: "array"
+        allowedFilterOperators:
+          description: "Allowed filter operators when restricted: EQUALS and IN for\
+            \ REVEALABLE when exact match is enabled, otherwise empty. Omitted means\
+            \ unrestricted."
+          items:
+            type: "string"
+          type: "array"
+        behaviors:
+          description: "Names of the field's behaviors that a frontend applies while\
+            \ editing, e.g., TO_UPPER_CASE, TO_LOWER_CASE or TRIM.  Absent when the\
+            \ field has none."
+          items:
+            type: "string"
+          type: "array"
+        defaultValue:
+          description: "Default value to use in this field."
+          type: "string"
+        displayFormat:
+          description: "C-style format specifier for displaying values in this field."
+          type: "string"
+        gridColumns:
+          description: "Width of this field in a 12-column record form or view grid\
+            \ (e.g., 12 for the full width, 6 for half).  Absent when the frontend's\
+            \ default applies."
+          type: "number"
+        helpContents:
+          description: "Help Contents for this field."
+          items:
+            $ref: "#/components/schemas/HelpContentV1"
+          type: "array"
+        inlinePossibleValueSource:
+          description: "Inline possible-value source for this field; enumValues supply\
+            \ choices without a separate lookup."
+          properties:
+            customCodeReference:
+              properties:
+                codeType:
+                  enum:
+                  - "JAVA"
+                  - "JAVA_SCRIPT"
+                  type: "string"
+                inlineCode:
+                  type: "string"
+                name:
+                  type: "string"
+              type: "object"
+            enumValues:
+              type: "array"
+            helpContent:
+              type: "object"
+            idType:
+              enum:
+              - "STRING"
+              - "INTEGER"
+              - "LONG"
+              - "DECIMAL"
+              - "BOOLEAN"
+              - "DATE"
+              - "TIME"
+              - "DATE_TIME"
+              - "TEXT"
+              - "HTML"
+              - "PASSWORD"
+              - "BLOB"
+              type: "string"
+            label:
+              type: "string"
+            name:
+              type: "string"
+            orderByFields:
+              type: "array"
+            overrideIdField:
+              type: "string"
+            picker:
+              properties:
+                detailFields:
+                  type: "array"
+                filterFields:
+                  type: "array"
+                pageSize:
+                  type: "number"
+                previewField:
+                  type: "string"
+                searchFields:
+                  type: "array"
+                sorts:
+                  type: "array"
+                subtitleFields:
+                  type: "array"
+                thumbnailField:
+                  type: "string"
+                uploadProcessName:
+                  type: "string"
+                uploadResultIdField:
+                  type: "string"
+              type: "object"
+            searchFields:
+              type: "array"
+            tableName:
+              type: "string"
+            type:
+              enum:
+              - "ENUM"
+              - "TABLE"
+              - "CUSTOM"
+              type: "string"
+            valueFields:
+              type: "array"
+            valueFieldsIfNotFound:
+              type: "array"
+            valueFormat:
+              type: "string"
+            valueFormatIfNotFound:
+              type: "string"
+          type: "object"
+        isEditable:
+          description: "Indicate if user may edit the value in this field."
+          type: "boolean"
+        isHeavy:
+          description: "Indicator of 'heavy' fields, which are not loaded by default.\
+            \  e.g., some blobs or long-texts"
+          type: "boolean"
+        isHidden:
+          description: "Indicate if this field should be hidden from users"
+          type: "boolean"
+        isQueryCriteria:
+          description: "Indicator of whether or not this virtual field can be included\
+            \ as a query filter criteria"
+          type: "boolean"
+        isQuerySelectable:
+          description: "Indicator of whether or not this virtual field can be included\
+            \ in query outputs (e.g., if it can be selected, in the SQL sense)"
+          type: "boolean"
+        isRequired:
+          description: "Indicate if a value in this field is required."
+          type: "boolean"
+        isSortable:
+          description: "False for restricted fields; omitted means sortable."
+          type: "boolean"
+        label:
+          description: "User-facing name for this field"
+          type: "string"
+        maxLength:
+          description: "For String fields, the max length the field supports."
+          type: "number"
+        maxValue:
+          description: "For number fields, the largest value the field accepts (inclusive).\
+            \  Absent when there is no such limit."
+          type: "string"
+        minValue:
+          description: "For number fields, the smallest value the field accepts (inclusive).\
+            \  Absent when there is no such limit."
+          type: "string"
+        name:
+          description: "Unique name for this field within its container (table or\
+            \ process)"
+          type: "string"
+        picker:
+          description: "When this field's possible value source declares a record\
+            \ picker (for sources over large tables), its configuration: thumbnail,\
+            \ preview, subtitle and detail fields, filter fields, search fields, sorts\
+            \ and page size.  Frontends offer a searchable, paged picker dialog."
+          properties:
+            detailFields:
+              type: "array"
+            filterFields:
+              type: "array"
+            pageSize:
+              type: "number"
+            previewField:
+              type: "string"
+            searchFields:
+              type: "array"
+            sorts:
+              type: "array"
+            subtitleFields:
+              type: "array"
+            thumbnailField:
+              type: "string"
+            uploadProcessName:
+              type: "string"
+            uploadResultIdField:
+              type: "string"
+          type: "object"
+        pickerTableName:
+          description: "When this field has a picker, the table its possible value\
+            \ source reads, whose metadata describes the picker's fields."
+          type: "string"
+        possibleValueSourceDependencyBehavior:
+          description: "DISABLE_UNTIL_SET disables a contingent field until its dependencies\
+            \ are set (default). SHOW_ALL_UNTIL_SET keeps it enabled and omits criteria\
+            \ with missing inputs in form searches. Absent for non-contingent fields."
+          enum:
+          - "DISABLE_UNTIL_SET"
+          - "SHOW_ALL_UNTIL_SET"
+          type: "string"
+        possibleValueSourceDependsOn:
+          description: "Names of fields controlling this field's choices, including\
+            \ explicit and filter dependencies. Absent for non-contingent fields."
+          items:
+            type: "string"
+          type: "array"
+        possibleValueSourceName:
+          description: "If this field's values should come from a possible value source,\
+            \ then that PVS is named here."
+          type: "string"
+        supplementalMetaData:
+          description: "Additional frontend-visible metadata for this field, keyed\
+            \ by supplemental type."
+          type: "object"
+        type:
+          description: "Data-type for this field"
+          type: "string"
+        validation:
+          $ref: "#/components/schemas/FieldValidationV1"
+          description: "The field's validation rules, as the server enforces them\
+            \ on insert and update (required, maxLength and tooLongBehavior, min/max\
+            \ value, pattern).  Absent when the field has none.  Since 1.6.0."
+      type: "object"
+    WidgetBlock:
+      properties:
+        blockId:
+          description: "Unique identifier for this block within it widget.  Used as\
+            \ a key for helpContents."
+          type: "string"
+        blockType:
+          description: "What type of block to render."
+          enum:
+          - "BUTTON"
+          - "AUDIO"
+          - "BIG_NUMBER"
+          - "COMPOSITE"
+          - "DIVIDER"
+          - "IMAGE"
+          - "INPUT_FIELD"
+          - "NUMBER_ICON_BADGE"
+          - "PROGRESS_BAR"
+          - "TABLE_SUB_ROW_DETAIL_ROW"
+          - "TEXT"
+          - "UP_OR_DOWN_NUMBER"
+          type: "string"
+        blockTypeName:
+          description: "Name of the block's type, as the backend declares it (including\
+            \ types this API version does not enumerate in blockType)."
+          type: "string"
+        conditional:
+          description: "Optional field name (e.g,. from a process's set of fields)\
+            \ to act as a 'guard' for the block - e.g., only include it in the UI\
+            \ if the value for this field is true"
+          type: "string"
+        layout:
+          description: "For COMPOSITE type blocks, an indicator of how the sub-blocks\
+            \ should be laid out"
+          enum:
+          - "FLEX_COLUMN"
+          - "FLEX_ROW_WRAPPED"
+          - "FLEX_ROW_SPACE_BETWEEN"
+          - "FLEX_ROW_CENTER"
+          - "TABLE_SUB_ROW_DETAILS"
+          - "BADGES_WRAPPER"
+          type: "string"
+        modalMode:
+          description: "For COMPOSITE type blocks, optional control to make the widget\
+            \ appear modally"
+          enum:
+          - "MODAL"
+          type: "string"
+        styles:
+          $ref: "#/components/schemas/WidgetBlockStyles"
+          description: "Styles to apply to the block.  Different fields based on blockType."
+          oneOf:
+          - properties:
+              backgroundColor:
+                description: "A background color to use for the block"
+                type: "string"
+              padding:
+                description: "Optional padding to apply to the block"
+                properties:
+                  bottom:
+                    type: "object"
+                  left:
+                    type: "object"
+                  right:
+                    type: "object"
+                  top:
+                    type: "object"
+                type: "object"
+            type: "object"
+          - properties:
+              color:
+                description: "A Color to use for the button.  May be specified as\
+                  \ a StandardColor (one of: SUCCESS, WARNING, ERROR, INFO, MUTED)\
+                  \ or an RGB code."
+                type: "string"
+              format:
+                description: "An optional indicator of the screen format preferred\
+                  \ by the application to be used for this block, such as OUTLINED,\
+                  \ FILLED, or TEXT.  Different frontends may support different formats,\
+                  \ and implement them differently."
+                type: "string"
+            type: "object"
+          - properties:
+              height:
+                description: "A request to render the image at a specified height."
+                type: "string"
+              padding:
+                description: "Optional padding to apply to the image"
+                properties:
+                  bottom:
+                    type: "object"
+                  left:
+                    type: "object"
+                  right:
+                    type: "object"
+                  top:
+                    type: "object"
+                type: "object"
+              width:
+                description: "A request to render the image at a specified width."
+                type: "string"
+            type: "object"
+          - properties:
+              color:
+                description: "A Color to display the text in.  May be specified as\
+                  \ a StandardColor (one of: SUCCESS, WARNING, ERROR, INFO, MUTED)\
+                  \ or an RGB code."
+                type: "string"
+              format:
+                description: "An optional indicator of the screen format preferred\
+                  \ by the application to be used for this block.  Different frontends\
+                  \ may support different formats, and implement them differently."
+                type: "string"
+              size:
+                description: "An optional indicator of the size at which the text\
+                  \ should be rendered.  May be a named value (one oflargest, headline,\
+                  \ title, body, smallest) or a numeric size - both are up to the\
+                  \ frontend to interpret."
+                type: "string"
+              weight:
+                description: "An optional indicator of the weight at which the text\
+                  \ should be rendered.  May be a named value (one ofextralight, thin,\
+                  \ medium, black, semibold, bold, extrabold) or a numeric, e.g.,\
+                  \ 100, 200, ..., 900"
+                type: "string"
+            type: "object"
+        subBlocks:
+          description: "For COMPOSITE type blocks, a list of sub-blocks."
+          items:
+            $ref: "#/components/schemas/WidgetBlock"
+          type: "array"
+        values:
+          $ref: "#/components/schemas/WidgetBlockValues"
+          description: "Values to show in the block, or otherwise control its behavior.\
+            \  Different fields based on blockType."
+          oneOf:
+          - description: "Values used for an AUDIO type widget block"
+            properties:
+              autoPlay:
+                description: "Control if the file should automatically play when the\
+                  \ block is rendered"
+                type: "boolean"
+              path:
+                description: "The path to the audio file on the server"
+                type: "string"
+              showControls:
+                description: "Control if on-screen controls should be shown to allow\
+                  \ the user to control playback"
+                type: "boolean"
+            type: "object"
+          - description: "Values used for a BUTTON type widget block"
+            properties:
+              actionCode:
+                description: "Code used within the app as the value submitted when\
+                  \ the button is clicked"
+                type: "string"
+              controlCode:
+                description: "Instructions for what should happen in the frontend\
+                  \ (e.g., within a screen), when the button is clicked.\n\nTo show\
+                  \ a modal composite block, use format:  `showModal:${blockId}` (e.g.,\
+                  \ `showModal:myBlock`)\n\nTo hide a modal composite block, use format:\
+                  \  `hideModal:${blockId}` (e.g., `hideModal:myBlock`)\n\nTo toggle\
+                  \ visibility of a modal composite block, use format:  `toggleModal:${blockId}`\
+                  \ (e.g., `toggleModal:myBlock`)\n"
+                type: "string"
+              endIcon:
+                description: "An optional icon to display after the text in the button"
+                properties:
+                  color:
+                    description: "A color code to use for displaying the icon"
+                    type: "string"
+                  name:
+                    description: "A material UI icon name."
+                    type: "string"
+                  path:
+                    description: "A path to an image file that can be requested from\
+                      \ the server, to serve as the icon image instead of a material\
+                      \ UI icon."
+                    type: "string"
+                type: "object"
+              label:
+                description: "User-facing label to display in the button"
+                type: "string"
+              startIcon:
+                description: "An optional icon to display before the text in the button"
+                properties:
+                  color:
+                    description: "A color code to use for displaying the icon"
+                    type: "string"
+                  name:
+                    description: "A material UI icon name."
+                    type: "string"
+                  path:
+                    description: "A path to an image file that can be requested from\
+                      \ the server, to serve as the icon image instead of a material\
+                      \ UI icon."
+                    type: "string"
+                type: "object"
+            type: "object"
+          - description: "Values used for an IMAGE type widget block"
+            properties:
+              path:
+                description: "The path to the image on the server"
+                type: "string"
+            type: "object"
+          - description: "Values used for an INPUT_FIELD type widget block"
+            properties:
+              autoFocus:
+                description: "Indicate whether this field should auto-focus when it\
+                  \ is rendered"
+                type: "boolean"
+              fieldMetaData:
+                description: "Metadata to define the field that this block controls"
+                properties:
+                  accessTier:
+                    description: "Effective field access: FULL, REVEALABLE, MASKED,\
+                      \ or HIDDEN. Omitted means FULL. Restricted values are strings,\
+                      \ regardless of field type."
+                    enum:
+                    - "FULL"
+                    - "REVEALABLE"
+                    - "MASKED"
+                    - "HIDDEN"
+                    type: "string"
+                  adornments:
+                    description: "Special UI dressings to add to the field."
+                    items:
+                      $ref: "#/components/schemas/FieldAdornment"
+                    type: "array"
+                  allowedFilterOperators:
+                    description: "Allowed filter operators when restricted: EQUALS\
+                      \ and IN for REVEALABLE when exact match is enabled, otherwise\
+                      \ empty. Omitted means unrestricted."
+                    items:
+                      type: "string"
+                    type: "array"
+                  behaviors:
+                    description: "Names of the field's behaviors that a frontend applies\
+                      \ while editing, e.g., TO_UPPER_CASE, TO_LOWER_CASE or TRIM.\
+                      \  Absent when the field has none."
+                    items:
+                      type: "string"
+                    type: "array"
+                  defaultValue:
+                    description: "Default value to use in this field."
+                    type: "string"
+                  displayFormat:
+                    description: "C-style format specifier for displaying values in\
+                      \ this field."
+                    type: "string"
+                  gridColumns:
+                    description: "Width of this field in a 12-column record form or\
+                      \ view grid (e.g., 12 for the full width, 6 for half).  Absent\
+                      \ when the frontend's default applies."
+                    type: "number"
+                  helpContents:
+                    description: "Help Contents for this field."
+                    items:
+                      $ref: "#/components/schemas/HelpContentV1"
+                    type: "array"
+                  inlinePossibleValueSource:
+                    description: "Inline possible-value source for this field; enumValues\
+                      \ supply choices without a separate lookup."
+                    properties:
+                      customCodeReference:
+                        properties:
+                          codeType:
+                            enum:
+                            - "JAVA"
+                            - "JAVA_SCRIPT"
+                            type: "string"
+                          inlineCode:
+                            type: "string"
+                          name:
+                            type: "string"
+                        type: "object"
+                      enumValues:
+                        type: "array"
+                      helpContent:
+                        type: "object"
+                      idType:
+                        enum:
+                        - "STRING"
+                        - "INTEGER"
+                        - "LONG"
+                        - "DECIMAL"
+                        - "BOOLEAN"
+                        - "DATE"
+                        - "TIME"
+                        - "DATE_TIME"
+                        - "TEXT"
+                        - "HTML"
+                        - "PASSWORD"
+                        - "BLOB"
+                        type: "string"
+                      label:
+                        type: "string"
+                      name:
+                        type: "string"
+                      orderByFields:
+                        type: "array"
+                      overrideIdField:
+                        type: "string"
+                      picker:
+                        properties:
+                          detailFields:
+                            type: "array"
+                          filterFields:
+                            type: "array"
+                          pageSize:
+                            type: "number"
+                          previewField:
+                            type: "string"
+                          searchFields:
+                            type: "array"
+                          sorts:
+                            type: "array"
+                          subtitleFields:
+                            type: "array"
+                          thumbnailField:
+                            type: "string"
+                          uploadProcessName:
+                            type: "string"
+                          uploadResultIdField:
+                            type: "string"
+                        type: "object"
+                      searchFields:
+                        type: "array"
+                      tableName:
+                        type: "string"
+                      type:
+                        enum:
+                        - "ENUM"
+                        - "TABLE"
+                        - "CUSTOM"
+                        type: "string"
+                      valueFields:
+                        type: "array"
+                      valueFieldsIfNotFound:
+                        type: "array"
+                      valueFormat:
+                        type: "string"
+                      valueFormatIfNotFound:
+                        type: "string"
+                    type: "object"
+                  isEditable:
+                    description: "Indicate if user may edit the value in this field."
+                    type: "boolean"
+                  isHeavy:
+                    description: "Indicator of 'heavy' fields, which are not loaded\
+                      \ by default.  e.g., some blobs or long-texts"
+                    type: "boolean"
+                  isHidden:
+                    description: "Indicate if this field should be hidden from users"
+                    type: "boolean"
+                  isRequired:
+                    description: "Indicate if a value in this field is required."
+                    type: "boolean"
+                  isSortable:
+                    description: "False for restricted fields; omitted means sortable."
+                    type: "boolean"
+                  label:
+                    description: "User-facing name for this field"
+                    type: "string"
+                  maxLength:
+                    description: "For String fields, the max length the field supports."
+                    type: "number"
+                  maxValue:
+                    description: "For number fields, the largest value the field accepts\
+                      \ (inclusive).  Absent when there is no such limit."
+                    type: "string"
+                  minValue:
+                    description: "For number fields, the smallest value the field\
+                      \ accepts (inclusive).  Absent when there is no such limit."
+                    type: "string"
+                  name:
+                    description: "Unique name for this field within its container\
+                      \ (table or process)"
+                    type: "string"
+                  picker:
+                    description: "When this field's possible value source declares\
+                      \ a record picker (for sources over large tables), its configuration:\
+                      \ thumbnail, preview, subtitle and detail fields, filter fields,\
+                      \ search fields, sorts and page size.  Frontends offer a searchable,\
+                      \ paged picker dialog."
+                    properties:
+                      detailFields:
+                        type: "array"
+                      filterFields:
+                        type: "array"
+                      pageSize:
+                        type: "number"
+                      previewField:
+                        type: "string"
+                      searchFields:
+                        type: "array"
+                      sorts:
+                        type: "array"
+                      subtitleFields:
+                        type: "array"
+                      thumbnailField:
+                        type: "string"
+                      uploadProcessName:
+                        type: "string"
+                      uploadResultIdField:
+                        type: "string"
+                    type: "object"
+                  pickerTableName:
+                    description: "When this field has a picker, the table its possible\
+                      \ value source reads, whose metadata describes the picker's\
+                      \ fields."
+                    type: "string"
+                  possibleValueSourceDependencyBehavior:
+                    description: "DISABLE_UNTIL_SET disables a contingent field until\
+                      \ its dependencies are set (default). SHOW_ALL_UNTIL_SET keeps\
+                      \ it enabled and omits criteria with missing inputs in form\
+                      \ searches. Absent for non-contingent fields."
+                    enum:
+                    - "DISABLE_UNTIL_SET"
+                    - "SHOW_ALL_UNTIL_SET"
+                    type: "string"
+                  possibleValueSourceDependsOn:
+                    description: "Names of fields controlling this field's choices,\
+                      \ including explicit and filter dependencies. Absent for non-contingent\
+                      \ fields."
+                    items:
+                      type: "string"
+                    type: "array"
+                  possibleValueSourceName:
+                    description: "If this field's values should come from a possible\
+                      \ value source, then that PVS is named here."
+                    type: "string"
+                  supplementalMetaData:
+                    description: "Additional frontend-visible metadata for this field,\
+                      \ keyed by supplemental type."
+                    type: "object"
+                  type:
+                    description: "Data-type for this field"
+                    type: "string"
+                  validation:
+                    description: "The field's validation rules, as the server enforces\
+                      \ them on insert and update (required, maxLength and tooLongBehavior,\
+                      \ min/max value, pattern).  Absent when the field has none.\
+                      \  Since 1.6.0."
+                    properties:
+                      maxInclusive:
+                        description: "Whether maxValue itself is accepted (false:\
+                          \ the value must be less)."
+                        type: "boolean"
+                      maxLength:
+                        description: "For string fields, the most characters the field\
+                          \ stores.  What happens to a longer value is tooLongBehavior."
+                        type: "number"
+                      maxValue:
+                        description: "For number fields, the largest value accepted\
+                          \ (plain digits, exact).  See maxInclusive."
+                        type: "string"
+                      minInclusive:
+                        description: "Whether minValue itself is accepted (false:\
+                          \ the value must be greater)."
+                        type: "boolean"
+                      minValue:
+                        description: "For number fields, the smallest value accepted\
+                          \ (plain digits, exact).  See minInclusive."
+                        type: "string"
+                      pattern:
+                        description: "A regular expression a non-empty value must\
+                          \ match as a whole (written to mean the same in Java and\
+                          \ ECMAScript)."
+                        type: "string"
+                      patternMessage:
+                        description: "The message the server gives for a value that\
+                          \ does not match pattern."
+                        type: "string"
+                      required:
+                        description: "True when a value is required."
+                        type: "boolean"
+                      tooLongBehavior:
+                        description: "With maxLength: ERROR (a longer value is refused),\
+                          \ TRUNCATE or TRUNCATE_ELLIPSIS (it is trimmed on save),\
+                          \ PASS_THROUGH (neither)."
+                        type: "string"
+                    type: "object"
+                type: "object"
+              hideSoftKeyboard:
+                description: "Indicate if the frontend uses a software/on-screen keyboard,\
+                  \ if the application should try to hide it (e.g., upon auto-focus)."
+                type: "boolean"
+              placeholder:
+                description: "Optional placeholder text to display in the input box."
+                type: "string"
+              submitOnEnter:
+                description: "Indicate whether the form that this field is on should\
+                  \ be submitted when Enter is pressed"
+                type: "boolean"
+            type: "object"
+          - description: "Values used for a TEXT type widget block"
+            properties:
+              endIcon:
+                description: "An optional icon to display after the text"
+                properties:
+                  color:
+                    description: "A color code to use for displaying the icon"
+                    type: "string"
+                  name:
+                    description: "A material UI icon name."
+                    type: "string"
+                  path:
+                    description: "A path to an image file that can be requested from\
+                      \ the server, to serve as the icon image instead of a material\
+                      \ UI icon."
+                    type: "string"
+                type: "object"
+              startIcon:
+                description: "An optional icon to display before the text"
+                properties:
+                  color:
+                    description: "A color code to use for displaying the icon"
+                    type: "string"
+                  name:
+                    description: "A material UI icon name."
+                    type: "string"
+                  path:
+                    description: "A path to an image file that can be requested from\
+                      \ the server, to serve as the icon image instead of a material\
+                      \ UI icon."
+                    type: "string"
+                type: "object"
+              text:
+                description: "The text to display in the block"
+                type: "string"
+            type: "object"
+      type: "object"
+    WidgetBlockAudioValues:
+      description: "Values used for an AUDIO type widget block"
+      properties:
+        autoPlay:
+          description: "Control if the file should automatically play when the block\
+            \ is rendered"
+          type: "boolean"
+        path:
+          description: "The path to the audio file on the server"
+          type: "string"
+        showControls:
+          description: "Control if on-screen controls should be shown to allow the\
+            \ user to control playback"
+          type: "boolean"
+      type: "object"
+    WidgetBlockBaseStyles:
+      properties:
+        backgroundColor:
+          description: "A background color to use for the block"
+          type: "string"
+        padding:
+          description: "Optional padding to apply to the block"
+          properties:
+            bottom:
+              type: "object"
+            left:
+              type: "object"
+            right:
+              type: "object"
+            top:
+              type: "object"
+          type: "object"
+      type: "object"
+    WidgetBlockButtonStyles:
+      properties:
+        color:
+          description: "A Color to use for the button.  May be specified as a StandardColor\
+            \ (one of: SUCCESS, WARNING, ERROR, INFO, MUTED) or an RGB code."
+          type: "string"
+        format:
+          description: "An optional indicator of the screen format preferred by the\
+            \ application to be used for this block, such as OUTLINED, FILLED, or\
+            \ TEXT.  Different frontends may support different formats, and implement\
+            \ them differently."
+          type: "string"
+      type: "object"
+    WidgetBlockButtonValues:
+      description: "Values used for a BUTTON type widget block"
+      properties:
+        actionCode:
+          description: "Code used within the app as the value submitted when the button\
+            \ is clicked"
+          type: "string"
+        controlCode:
+          description: "Instructions for what should happen in the frontend (e.g.,\
+            \ within a screen), when the button is clicked.\n\nTo show a modal composite\
+            \ block, use format:  `showModal:${blockId}` (e.g., `showModal:myBlock`)\n\
+            \nTo hide a modal composite block, use format:  `hideModal:${blockId}`\
+            \ (e.g., `hideModal:myBlock`)\n\nTo toggle visibility of a modal composite\
+            \ block, use format:  `toggleModal:${blockId}` (e.g., `toggleModal:myBlock`)\n"
+          type: "string"
+        endIcon:
+          $ref: "#/components/schemas/Icon"
+          description: "An optional icon to display after the text in the button"
+        label:
+          description: "User-facing label to display in the button"
+          type: "string"
+        startIcon:
+          $ref: "#/components/schemas/Icon"
+          description: "An optional icon to display before the text in the button"
+      type: "object"
+    WidgetBlockImageStyles:
+      properties:
+        height:
+          description: "A request to render the image at a specified height."
+          type: "string"
+        padding:
+          description: "Optional padding to apply to the image"
+          properties:
+            bottom:
+              type: "object"
+            left:
+              type: "object"
+            right:
+              type: "object"
+            top:
+              type: "object"
+          type: "object"
+        width:
+          description: "A request to render the image at a specified width."
+          type: "string"
+      type: "object"
+    WidgetBlockImageValues:
+      description: "Values used for an IMAGE type widget block"
+      properties:
+        path:
+          description: "The path to the image on the server"
+          type: "string"
+      type: "object"
+    WidgetBlockInputFieldValues:
+      description: "Values used for an INPUT_FIELD type widget block"
+      properties:
+        autoFocus:
+          description: "Indicate whether this field should auto-focus when it is rendered"
+          type: "boolean"
+        fieldMetaData:
+          $ref: "#/components/schemas/FieldMetaData"
+          description: "Metadata to define the field that this block controls"
+        hideSoftKeyboard:
+          description: "Indicate if the frontend uses a software/on-screen keyboard,\
+            \ if the application should try to hide it (e.g., upon auto-focus)."
+          type: "boolean"
+        placeholder:
+          description: "Optional placeholder text to display in the input box."
+          type: "string"
+        submitOnEnter:
+          description: "Indicate whether the form that this field is on should be\
+            \ submitted when Enter is pressed"
+          type: "boolean"
+      type: "object"
+    WidgetBlockStyles:
+      type: "object"
+    WidgetBlockTextStyles:
+      properties:
+        color:
+          description: "A Color to display the text in.  May be specified as a StandardColor\
+            \ (one of: SUCCESS, WARNING, ERROR, INFO, MUTED) or an RGB code."
+          type: "string"
+        format:
+          description: "An optional indicator of the screen format preferred by the\
+            \ application to be used for this block.  Different frontends may support\
+            \ different formats, and implement them differently."
+          type: "string"
+        size:
+          description: "An optional indicator of the size at which the text should\
+            \ be rendered.  May be a named value (one oflargest, headline, title,\
+            \ body, smallest) or a numeric size - both are up to the frontend to interpret."
+          type: "string"
+        weight:
+          description: "An optional indicator of the weight at which the text should\
+            \ be rendered.  May be a named value (one ofextralight, thin, medium,\
+            \ black, semibold, bold, extrabold) or a numeric, e.g., 100, 200, ...,\
+            \ 900"
+          type: "string"
+      type: "object"
+    WidgetBlockTextValues:
+      description: "Values used for a TEXT type widget block"
+      properties:
+        endIcon:
+          $ref: "#/components/schemas/Icon"
+          description: "An optional icon to display after the text"
+        startIcon:
+          $ref: "#/components/schemas/Icon"
+          description: "An optional icon to display before the text"
+        text:
+          description: "The text to display in the block"
+          type: "string"
+      type: "object"
+    WidgetBlockValues:
       type: "object"
     WidgetData:
       description: "The data of a widget: one of the per-type shapes, chosen by `type`\
@@ -4830,6 +7726,60 @@ paths:
                 $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Too many requests (code RATE_LIMITED); retry later."
       summary: "Get authentication metaData"
+      tags:
+      - "Authentication"
+  /qqq/v1/{applicationApiPath}/{applicationApiVersion}/branding/{role}:
+    get:
+      description: "The image the app declares for a branding role (`logo` or `icon`),\
+        \ from the application's\nstatic overlay, available before sign-in. 404 when\
+        \ the app declares none for the role, or\ndeclares a data: URI or an external\
+        \ URL (those are in `branding` of GET /metaData/authentication).\nSince 1.6.0."
+      operationId: "getBrandingAsset"
+      parameters:
+      - description: "logo or icon."
+        in: "path"
+        name: "role"
+        required: true
+        schema:
+          enum:
+          - "logo"
+          - "icon"
+          type: "string"
+      responses:
+        200:
+          content:
+            image/*:
+              schema:
+                format: "binary"
+                type: "string"
+          description: "The image (png, jpeg, gif, webp, avif, ico or svg)."
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
+      summary: "Get a branding image"
       tags:
       - "Authentication"
   /qqq/v1/{applicationApiPath}/{applicationApiVersion}/manageSession:

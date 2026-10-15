@@ -30,6 +30,7 @@ import com.kingsrook.qqq.backend.core.actions.tables.StorageAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
+import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.profile.UserProfilesMetaData;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.middleware.javalin.executors.AbstractMiddlewareExecutor;
@@ -49,6 +50,7 @@ import com.kingsrook.qqq.openapi.model.Schema;
 import com.kingsrook.qqq.openapi.model.Type;
 import io.javalin.http.Context;
 import io.javalin.http.HttpStatus;
+import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
@@ -59,6 +61,8 @@ import io.javalin.http.HttpStatus;
  *******************************************************************************/
 public class AvatarGetSpecV1 extends AbstractEndpointSpec<AbstractMiddlewareInput, AbstractMiddlewareOutputInterface, AbstractMiddlewareExecutor<AbstractMiddlewareInput, AbstractMiddlewareOutputInterface>>
 {
+   private static final QLogger LOG = QLogger.getLogger(AvatarGetSpecV1.class);
+
    private static final String IMMUTABLE = "private, max-age=31536000, immutable";
    private static final String SHORT     = "private, max-age=300";
 
@@ -208,18 +212,31 @@ public class AvatarGetSpecV1 extends AbstractEndpointSpec<AbstractMiddlewareInpu
       }
 
       String etag = "\"" + version + "-" + size + "\"";
-      context.header("ETag", etag);
       if(etag.equals(context.header("If-None-Match")))
       {
+         context.header("ETag", etag);
          context.status(HttpStatus.NOT_MODIFIED);
          return;
       }
 
+      byte[] bytes;
       try(InputStream input = new StorageAction().getInputStream(UserProfiles.avatarObject(avatar.avatarKey(), size)))
       {
-         context.contentType("image/png");
-         context.result(input.readAllBytes());
+         bytes = input.readAllBytes();
       }
+      catch(Exception e)
+      {
+         ////////////////////////////////////////////////////////////////////
+         // a row naming an object that is gone (storage restored or       //
+         // expired) shows initials, not an error page in every comment    //
+         ////////////////////////////////////////////////////////////////////
+         LOG.warn("Avatar object missing; serving none", e, logPair("avatarKey", avatar.avatarKey()), logPair("size", size));
+         context.header("Cache-Control", SHORT);
+         throw (new QNotFoundException("No avatar."));
+      }
+      context.header("ETag", etag);
+      context.contentType("image/png");
+      context.result(bytes);
    }
 
 

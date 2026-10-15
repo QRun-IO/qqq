@@ -31,10 +31,12 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
 import com.kingsrook.qqq.backend.core.actions.profile.UserProfileMetaDataProvider;
+import com.kingsrook.qqq.backend.core.actions.tables.StorageAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.jobs.DurableJobsMetaData;
 import com.kingsrook.qqq.backend.core.jobs.DurableJobsMetaDataProvider;
+import com.kingsrook.qqq.backend.core.model.actions.tables.storage.StorageInput;
 import com.kingsrook.qqq.backend.core.model.audits.AuditsMetaDataProvider;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -44,6 +46,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
+import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.TableBasedAuthenticationModule;
 import com.kingsrook.qqq.middleware.javalin.TestUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
@@ -212,6 +215,15 @@ class AvatarGetSpecV1Test extends SpecTestBase
       assertEquals(404, Unirest.get(getBaseUrlAndPath() + "/avatars/bob").header("Cookie", bob).asString().getStatus());
       assertEquals(400, Unirest.get(getBaseUrlAndPath() + "/avatars/alice?size=7").header("Cookie", bob).asString().getStatus());
       assertEquals(401, Unirest.get(getBaseUrlAndPath() + "/avatars/alice").asString().getStatus());
+
+      ///////////////////////////////////////////////////////////////////
+      // an object that is gone from storage is "no avatar", not a 500 //
+      ///////////////////////////////////////////////////////////////////
+      String key = url.substring(url.indexOf("?v=") + 3);
+      QContext.init(serverQInstance, new QSystemUserSession());
+      new StorageAction().deleteObject(new StorageInput(STORAGE_TABLE).withReference("avatars/" + key + "/32.png"));
+      assertEquals(404, Unirest.get(getBaseUrlAndPath() + "/avatars/alice?size=32").header("Cookie", bob).asString().getStatus());
+      assertEquals(200, Unirest.get(getBaseUrlAndPath() + "/avatars/alice?size=64").header("Cookie", bob).asBytes().getStatus());
 
       ok(patch(alice, "{\"values\":{\"avatar\":null}}"));
       assertEquals(404, Unirest.get(getBaseUrlAndPath() + "/avatars/alice").header("Cookie", bob).asString().getStatus());

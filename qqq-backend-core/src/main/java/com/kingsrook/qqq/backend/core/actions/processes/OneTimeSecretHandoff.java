@@ -50,9 +50,11 @@ import com.kingsrook.qqq.backend.core.state.TableStateProvider;
  ** own user), never written to process state, traces or listeners, removed on
  ** the first take, and dropped after a short time-to-live.
  **
- ** Where it is held: in this JVM's memory - and, when the instance shares state
+ ** Where it is held: in this JVM's memory - or, when the instance shares state
  ** across nodes through an ENCRYPTED table store (StateProviderMetaData with
- ** QQQ_STATE_ENCRYPTION_KEY), also there, so the poll may reach any node. An
+ ** QQQ_STATE_ENCRYPTION_KEY), only there, so the poll may reach any node and
+ ** the secret is still handed out once (memory is the fallback when the store
+ ** write fails). An
  ** unencrypted shared store is never used for secrets. A poll that finds
  ** nothing gets the documented "shown once, else rotate" outcome.
  *******************************************************************************/
@@ -99,19 +101,26 @@ public final class OneTimeSecretHandoff
       }
 
       Entry entry = new Entry(new ArrayList<>(secrets), Instant.now().plus(TIME_TO_LIVE));
-      ENTRIES.put(processUUID, entry);
 
-      encryptedSharedStore().ifPresent(store ->
+      ///////////////////////////////////////////////////////////////////////
+      // with an encrypted shared store, the store holds the only copy: a  //
+      // copy kept here too would be handed out again by this node after   //
+      // another node's poll took the stored one                           //
+      ///////////////////////////////////////////////////////////////////////
+      Optional<StateProviderInterface> store = encryptedSharedStore();
+      if(store.isPresent())
       {
          try
          {
-            store.put(key(processUUID), entry);
+            store.get().put(key(processUUID), entry);
+            return;
          }
          catch(Exception e)
          {
             LOG.warn("Could not share one-time secrets across nodes; they stay on this node", e);
          }
-      });
+      }
+      ENTRIES.put(processUUID, entry);
    }
 
 
@@ -178,7 +187,7 @@ public final class OneTimeSecretHandoff
    /*******************************************************************************
     **
     *******************************************************************************/
-   private static SimpleStateKey<String> key(String processUUID)
+   static SimpleStateKey<String> key(String processUUID)
    {
       return (new SimpleStateKey<>(KEY_PREFIX + processUUID));
    }

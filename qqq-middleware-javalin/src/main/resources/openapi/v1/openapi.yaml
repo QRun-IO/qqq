@@ -9504,6 +9504,24 @@ paths:
                       - "TABLE_UPDATE"
                       - "TABLE_DELETE"
                       - "TABLE_EXPORT"
+                      clientCapabilities:
+                        audits:
+                          available: false
+                          level: "NONE"
+                        bulkDelete:
+                          available: true
+                          processName: "person.bulkDelete"
+                        bulkEdit:
+                          available: true
+                          processName: "person.bulkEdit"
+                        bulkEditWithFile:
+                          available: true
+                          processName: "person.bulkEditWithFile"
+                        bulkInsert:
+                          available: true
+                          processName: "person.bulkInsert"
+                        savedViews:
+                          available: false
                       deletePermission: true
                       editPermission: true
                       fields:

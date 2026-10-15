@@ -32,6 +32,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QSupplementalTableMe
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
+import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIExclude;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIIncludeProperties;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIListItems;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIMapValueType;
@@ -45,6 +46,8 @@ import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIMap
 @OpenAPIIncludeProperties(ancestorClasses = TableMetaDataLight.class)
 public class TableMetaData extends TableMetaDataLight implements ToSchema
 {
+   @OpenAPIExclude()
+   private TableCapabilitiesV1 clientCapabilities;
 
 
    /*******************************************************************************
@@ -54,6 +57,13 @@ public class TableMetaData extends TableMetaDataLight implements ToSchema
    public TableMetaData(QFrontendTableMetaData wrapped)
    {
       super(wrapped);
+
+      ///////////////////////////////////////////////////////////////////////////
+      // capabilities depend on the session: compute them now, in the request //
+      // context, not when the object is serialized                           //
+      ///////////////////////////////////////////////////////////////////////////
+      QInstance instance = QContext.getQInstance();
+      this.clientCapabilities = instance == null || wrapped == null ? null : TableCapabilitiesV1.of(instance.getTable(wrapped.getName()));
    }
 
 
@@ -251,8 +261,7 @@ public class TableMetaData extends TableMetaDataLight implements ToSchema
    @OpenAPIDescription("What a client may offer on this table beyond plain CRUD - saved views, audits, sharing and the bulk processes - with the process or table to use for each, for the current user.  Clients use these instead of hard-coded process names.  Since 1.6.0.")
    public TableCapabilitiesV1 getClientCapabilities()
    {
-      QInstance instance = QContext.getQInstance();
-      return (instance == null || wrapped == null ? null : TableCapabilitiesV1.of(instance.getTable(wrapped.getName())));
+      return (clientCapabilities);
    }
 
 

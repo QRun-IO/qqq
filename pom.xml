@@ -318,6 +318,17 @@
       <resource>
         <directory>src/main/resources</directory>
         <filtering>false</filtering>
+        <excludes>
+          <exclude>help/*.yaml</exclude>
+        </excludes>
+      </resource>
+      <!-- help bundles carry the artifact version (docs/HELP-CONTENT.md 5.1) -->
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>true</filtering>
+        <includes>
+          <include>help/*.yaml</include>
+        </includes>
       </resource>
       <resource>
         <directory>${project.build.directory}/maven-shared-archive-resources</directory>

@@ -72,7 +72,7 @@ public final class EsbHealthChecks
          {
             continue;
          }
-         add(registry, "core.esb.connection." + provider.toLowerCase(Locale.ROOT), 30, AlertSeverity.ERROR, input ->
+         add(registry, "core.esb.connection." + HealthChecksMetaData.toNamePart(provider), 30, AlertSeverity.ERROR, input ->
          {
             if(!Boolean.TRUE.equals(QEsbRuntime.getInstance().isRunning()))
             {

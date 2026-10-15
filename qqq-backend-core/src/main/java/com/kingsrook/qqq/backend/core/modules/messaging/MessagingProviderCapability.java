@@ -54,5 +54,10 @@ public enum MessagingProviderCapability
    /*******************************************************************************
     ** Provider supports looking up previously accepted messages.
     *******************************************************************************/
-   MESSAGE_LOOKUP
+   MESSAGE_LOOKUP,
+
+   /*******************************************************************************
+    ** Provider consumes Attachment.openStream and closes it after sending.
+    *******************************************************************************/
+   STREAMING_ATTACHMENTS
 }

@@ -707,6 +707,7 @@ public class Auth0AuthenticationModule implements QAuthenticationModuleInterface
       // create user object.  look for multiple possible keys in the jwt payload where the name & email may be //
       ///////////////////////////////////////////////////////////////////////////////////////////////////////////
       QUser qUser = new QUser();
+      qUser.setEmail(payload.optString("email", payload.optString("com.kingsrook.qqq.email", null)));
       qUser.setFullName("Unknown");
       for(String key : List.of("name", "com.kingsrook.qqq.name", "com.kingsrook.qqq.client_name"))
       {

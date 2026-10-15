@@ -39,7 +39,7 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
     ** and PATCH for fixes (UiApiContractTest enforces it); a breaking change
     ** needs a new URL version (/qqq/v2).
     ***************************************************************************/
-   public static final String SEMANTIC_VERSION = "1.4.0";
+   public static final String SEMANTIC_VERSION = "1.5.0";
 
    /***************************************************************************
     ** Optional core features, published by GET /version.
@@ -47,7 +47,7 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
    public static final List<String> FEATURES = List.of(
       "metaData", "tables", "recordSearch", "tableVariants", "recordDeveloper", "possibleValues",
       "widgets", "processes", "processCancel", "reports", "exports", "downloads", "version", "extensions", "recordFeatures", "realtime",
-      "help", "preferences", "durableJobs");
+      "help", "preferences", "durableJobs", "delivery");
 
    private final List<AbstractEndpointSpec<?, ?, ?>> list = new ArrayList<>();
 
@@ -63,6 +63,9 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
 
       list.add(new MetaDataSpecV1());
       list.add(new PreferencesSpecV1());
+      list.add(new DeliveryDestinationsSpecV1());
+      list.add(new DeliveryTargetsSpecV1());
+      list.add(new DeliveryOutputSpecV1());
       list.add(new PreferenceSectionGetSpecV1());
       list.add(new PreferenceSectionPatchSpecV1());
       list.add(new PreferenceSectionActionSpecV1());
@@ -75,14 +78,14 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
       list.add(new HelpCoverageSpecV1());
 
       ///////////////////////////////////////////////////////////////////////////
-      // before TableGetSpecV1: GET /table/{t}/variants would otherwise match //
+      // before TableGetSpecV1: GET /table/{t}/variants and /apis would match  //
       // GET /table/{t}/{primaryKey} (routes match in registration order)     //
       ///////////////////////////////////////////////////////////////////////////
       list.add(new TableVariantsSpecV1());
+      list.add(new TableApisSpecV1());
       list.add(new TableGetSpecV1());
       list.add(new TableRecordFeaturesSpecV1());
       list.add(new TableFormAdjusterSpecV1());
-      list.add(new TableApisSpecV1());
       list.add(new TableApiDocumentSpecV1());
       list.add(new TableInsertSpecV1());
       list.add(new TableUpdateSpecV1());

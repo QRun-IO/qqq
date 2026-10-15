@@ -330,6 +330,33 @@ class HealthMetaDataTest extends BaseTest
 
 
    /*******************************************************************************
+    ** Generated names are valid for any backend name (kof22's "websiteDatabase"
+    ** failed validation in RC.8), and validation errors name the check.
+    *******************************************************************************/
+   @Test
+   void generatedNamesAreNormalizedAndErrorsNameTheCheck() throws Exception
+   {
+      assertThat(HealthChecksMetaData.toNamePart("websiteDatabase")).isEqualTo("website_database");
+      assertThat(HealthChecksMetaData.toNamePart("kof22Artemis")).isEqualTo("kof22_artemis");
+      assertThat(HealthChecksMetaData.toNamePart("My Backend/#1")).isEqualTo("my_backend_1");
+      assertThat(HealthChecksMetaData.toNamePart("--")).isEqualTo("unnamed");
+      assertThat(HealthChecksMetaData.toNamePart(null)).isEqualTo("unnamed");
+
+      QBackendModuleDispatcher.registerBackendModule(new ProbeBackend());
+      QContext.getQInstance().addBackend(new QBackendMetaData().withName("websiteDatabase").withBackendType(ProbeBackend.class));
+      QInstance instance = install();
+      assertThat(HealthChecksMetaData.ofOrWithNew(instance).resolveAll(instance)).extracting(HealthCheckMetaData::getName)
+         .contains("core.database.website_database");
+      assertThat(HealthChecksMetaData.definitionError(HealthChecksMetaData.ofOrWithNew(instance).getChecks().stream()
+         .filter(c -> c.getName().equals("core.database.website_database")).findFirst().orElseThrow())).isNull();
+
+      HealthChecksMetaData.ofOrWithNew(instance).withCheck(valid("test.ok").withName("Bad.Name"));
+      assertThatThrownBy(() -> new QInstanceValidator().revalidate(instance)).hasMessageContaining("Health check [Bad.Name]: invalid name");
+   }
+
+
+
+   /*******************************************************************************
     ** Module probes are registered without importing backend implementations.
     *******************************************************************************/
    @Test

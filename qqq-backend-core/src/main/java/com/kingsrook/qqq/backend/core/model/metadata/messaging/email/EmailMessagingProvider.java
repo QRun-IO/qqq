@@ -21,9 +21,11 @@
 package com.kingsrook.qqq.backend.core.model.metadata.messaging.email;
 
 
+import java.util.Set;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.SendMessageInput;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.SendMessageOutput;
+import com.kingsrook.qqq.backend.core.modules.messaging.MessagingProviderCapability;
 import com.kingsrook.qqq.backend.core.modules.messaging.MessagingProviderInterface;
 
 
@@ -51,5 +53,15 @@ public class EmailMessagingProvider implements MessagingProviderInterface
    public SendMessageOutput sendMessage(SendMessageInput sendMessageInput) throws QException
    {
       return new SendEmailAction().sendMessage(sendMessageInput);
+   }
+
+
+   /*******************************************************************************
+    ** SMTP MIME serialization consumes attachments through their stream sources.
+    *******************************************************************************/
+   @Override
+   public Set<MessagingProviderCapability> getCapabilities()
+   {
+      return (Set.of(MessagingProviderCapability.STREAMING_ATTACHMENTS));
    }
 }

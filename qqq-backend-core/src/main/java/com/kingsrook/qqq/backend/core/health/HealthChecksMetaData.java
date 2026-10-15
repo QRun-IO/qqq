@@ -24,6 +24,7 @@ package com.kingsrook.qqq.backend.core.health;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
@@ -157,7 +158,7 @@ public class HealthChecksMetaData implements QSupplementalInstanceMetaData
       for(HealthCheckMetaData check : checks)
       {
          String error = definitionError(check);
-         validator.assertCondition(error == null, "Health check: " + error);
+         validator.assertCondition(error == null, "Health check " + (check == null ? "(null)" : "[" + check.getName() + "]") + ": " + error);
          if(check != null)
          {
             validator.assertCondition(names.add(check.getName()), "Duplicate health check name: " + check.getName());
@@ -173,6 +174,27 @@ public class HealthChecksMetaData implements QSupplementalInstanceMetaData
          validator.assertCondition(supplier.getComponent() != null && !supplier.getComponent().isBlank(), "Health supplier requires a component.");
          validator.validateSimpleCodeReference("Health supplier: ", supplier.getSupplier(), HealthCheckSupplier.class);
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Turn an arbitrary identifier (a backend, provider or record name) into a
+    ** valid check-name segment: camelCase becomes snake_case, everything is lower
+    ** case, and characters outside [a-z0-9._-] become '_'.  For example
+    ** "websiteDatabase" becomes "website_database".
+    *******************************************************************************/
+   public static String toNamePart(String raw)
+   {
+      if(raw == null)
+      {
+         return ("unnamed");
+      }
+      String part = raw.replaceAll("([a-z0-9])([A-Z])", "$1_$2").toLowerCase(Locale.ROOT)
+         .replaceAll("[^a-z0-9._-]+", "_")
+         .replaceAll("([._-])[._-]+", "$1")
+         .replaceAll("^[._-]+|[._-]+$", "");
+      return (part.isEmpty() ? "unnamed" : part);
    }
 
 

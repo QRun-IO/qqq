@@ -49,7 +49,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class UiApiContractTest
 {
    private static final Path   VERSION_DIRECTORY = Path.of("src/main/resources/openapi/v1");
-   private static final String REGENERATE_HINT   = "run com.kingsrook.qqq.middleware.javalin.tools.PublishAPI -r <repo root>, bump MiddlewareVersionV1.SEMANTIC_VERSION and update docs/UI-API-CHANGELOG.md";
+   private static final String REGENERATE_HINT   = "run com.kingsrook.qqq.middleware.javalin.tools.PublishAPI -r <repo root>, bump MiddlewareVersionV1.SEMANTIC_VERSION, update docs/UI-API-CHANGELOG.md, and regenerate qqq-middleware-api api-aware.yaml (ApiAwareUiApiContractTest -Dqqq.uiApi.regenerate=true)";
 
 
 

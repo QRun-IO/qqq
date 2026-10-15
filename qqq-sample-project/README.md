@@ -39,6 +39,14 @@ and reports coverage without another Maven build. Candidate, GA-tag, and hotfix
 gates also wait for `sample_bootstrap_source` and run strict coverage. Each job
 uploads test results and available diagnostics even when a test fails.
 
+`sample_multinode_acceptance` installs the framework and runs the two deployment-mode
+tests (see [Deployment modes](../docs/DEPLOYMENT-MODES.md)). `SampleSingleNodeDefaultsTest`
+runs one in-process server with nothing set. `SampleMultiNodeIT` runs packaged sample
+JVMs in the opt-in `SAMPLE_CLUSTER_MODE`: an H2 TCP database in the test JVM, node B's
+embedded broker, and `QQQ_NODE_ROLES` web (A), all (B) and worker (C). Every coverage
+gate requires it. Its SIGTERM drain case runs on Linux only, because `Process.destroy`
+is a hard kill on Windows.
+
 Workflow job names retain their `feature_`, `snapshot_`, `candidate_`, `release_`,
 and `hotfix_` prefixes (unprefixed in `test_only`). Feature publishing requires the
 reporting gate, bootstrap and ESB; RC/GA publishing requires the strict gate,

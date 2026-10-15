@@ -203,7 +203,7 @@ public class C3P0PooledConnectionProvider implements ConnectionProviderInterface
          {
             checkoutTimeouts.incrementAndGet();
             String message = "Timed out after " + connectionPool.getCheckoutTimeout() + "ms waiting for a pooled connection to backend [" + backend.getName() + "]: "
-               + "pool exhausted (" + describeState() + "). Raise maxPoolSize, or look for long transactions or leaked connections.";
+               + "pool exhausted (" + describeState() + "). Raise maxPoolSize, or look for long transactions or leaked connections. (" + e.getMessage() + ")";
             LOG.warn(message, logPair("backendName", backend.getName()));
             throw (new SQLException(message, "08001", e));
          }

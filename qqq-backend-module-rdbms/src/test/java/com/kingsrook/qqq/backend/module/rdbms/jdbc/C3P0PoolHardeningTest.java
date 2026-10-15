@@ -108,7 +108,8 @@ class C3P0PoolHardeningTest extends BaseTest
          assertThatThrownBy(() -> ConnectionManager.getConnection(backend))
             .isInstanceOf(SQLException.class)
             .hasMessageContaining("waiting for a pooled connection to backend [" + backend.getName() + "]")
-            .hasMessageContaining("pool exhausted (max 2, busy 2");
+            .hasMessageContaining("pool exhausted (max 2, busy 2")
+            .hasMessageContaining("checkout a Connection has timed out");
          assertThat(Duration.between(start, Instant.now())).isLessThan(Duration.ofSeconds(10));
 
          Map<String, Number> metrics = ConnectionManager.getPoolMetrics(backend);

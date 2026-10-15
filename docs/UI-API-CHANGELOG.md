@@ -80,7 +80,7 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 
 ## Versions
 
-### 1.6.0 (next QQQ 4.1.0 RC) - native clients
+### 1.6.0 (QQQ 4.1.0-RC.14) - native clients
 Ready for CLI, TUI and native clients (see `UI-API-CLIENTS.md`).
 
 - Typed widget scalars, chart datasets and subheaders, child records and metadata, process metadata, records, and composite styles.

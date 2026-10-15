@@ -37,6 +37,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.state.QStateProviders;
+import com.kingsrook.qqq.backend.core.state.SimpleStateKey;
 import com.kingsrook.qqq.backend.core.state.StateProviderInterface;
 import com.kingsrook.qqq.backend.core.state.StateProviderMetaData;
 import com.kingsrook.qqq.backend.core.state.StateType;
@@ -58,6 +59,8 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 public final class AsyncJobRegistry
 {
    private static final QLogger LOG = QLogger.getLogger(AsyncJobRegistry.class);
+
+   private static final String CANCEL_KEY_PREFIX = "asyncJobCancel:";
 
    public static final String LOST_NODE_MESSAGE = "The server running this step stopped before it finished. Please run it again.";
 
@@ -228,17 +231,9 @@ public final class AsyncJobRegistry
       if(now - running.lastCancelCheckMillis >= 1000)
       {
          running.lastCancelCheckMillis = now;
-         try
+         if(isCancelStored(QStateProviders.forInstance(running.instance), jobUUID))
          {
-            Optional<AsyncJobStatus> stored = QStateProviders.forInstance(running.instance).get(AsyncJobStatus.class, new UUIDAndTypeStateKey(jobUUID, StateType.ASYNC_JOB_STATUS));
-            if(stored.isPresent() && stored.get().getCancelRequested())
-            {
-               status.setCancelRequested(true);
-            }
-         }
-         catch(Exception e)
-         {
-            LOG.debug("Could not check for a cancel request", e);
+            status.setCancelRequested(true);
          }
       }
       return (status.getCancelRequested());
@@ -259,7 +254,53 @@ public final class AsyncJobRegistry
       }
 
       storedStatus.setCancelRequested(true);
-      AsyncJobManager.getStateProvider().put(new UUIDAndTypeStateKey(jobUUID, StateType.ASYNC_JOB_STATUS), storedStatus);
+      StateProviderInterface provider = AsyncJobManager.getStateProvider();
+      provider.put(new UUIDAndTypeStateKey(jobUUID, StateType.ASYNC_JOB_STATUS), storedStatus);
+
+      ////////////////////////////////////////////////////////////////////////
+      // with shared state, the running node rewrites the status row (its    //
+      // progress and heartbeat) and could overwrite the flag above between  //
+      // its read and its write; a separate marker, which only cancels write, //
+      // can't be lost that way                                              //
+      ////////////////////////////////////////////////////////////////////////
+      if(QStateProviders.isShared(QContext.getQInstance()))
+      {
+         provider.put(cancelKey(jobUUID), Boolean.TRUE);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** The stored cancel marker's key for a job.
+    *******************************************************************************/
+   static SimpleStateKey<String> cancelKey(UUID jobUUID)
+   {
+      return (new SimpleStateKey<>(CANCEL_KEY_PREFIX + jobUUID));
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether the shared store holds a cancel request for a job (the marker,
+    ** or a status stored with the flag).
+    *******************************************************************************/
+   private static boolean isCancelStored(StateProviderInterface provider, UUID jobUUID)
+   {
+      try
+      {
+         if(provider.get(Boolean.class, cancelKey(jobUUID)).orElse(false))
+         {
+            return (true);
+         }
+         Optional<AsyncJobStatus> stored = provider.get(AsyncJobStatus.class, new UUIDAndTypeStateKey(jobUUID, StateType.ASYNC_JOB_STATUS));
+         return (stored.isPresent() && stored.get().getCancelRequested());
+      }
+      catch(Exception e)
+      {
+         LOG.debug("Could not check for a cancel request", e);
+         return (false);
+      }
    }
 
 
@@ -273,17 +314,9 @@ public final class AsyncJobRegistry
       {
          return;
       }
-      try
+      if(isCancelStored(provider, key.getUuid()))
       {
-         Optional<AsyncJobStatus> stored = provider.get(AsyncJobStatus.class, key);
-         if(stored.isPresent() && stored.get().getCancelRequested())
-         {
-            status.setCancelRequested(true);
-         }
-      }
-      catch(Exception e)
-      {
-         LOG.debug("Could not read a stored cancel request", e);
+         status.setCancelRequested(true);
       }
    }
 

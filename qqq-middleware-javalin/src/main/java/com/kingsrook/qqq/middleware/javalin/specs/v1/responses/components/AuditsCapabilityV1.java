@@ -32,10 +32,10 @@ import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDes
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class AuditsCapabilityV1 implements ToSchema
 {
-   @OpenAPIDescription("True when the table is audited and the user can read its audits one of the two ways.")
+   @OpenAPIDescription("True when the user can read this table and its audits one of the two ways (the audit process enforces both). Independent of level: records of a table at level NONE can still have audits written explicitly.")
    private Boolean available;
 
-   @OpenAPIDescription("The table's audit level: NONE, RECORD or FIELD.")
+   @OpenAPIDescription("The table's audit level: NONE, RECORD or FIELD (informational: what is audited automatically).")
    private String  level;
 
    @OpenAPIDescription("The process that returns a record's audits (inputs tableName, recordId); absent when the user may not run it.")

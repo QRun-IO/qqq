@@ -80,8 +80,9 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 
 ## Versions
 
-### 1.7.0 (QQQ 4.1.0-RC.16) - user profiles and avatars
-See [USER-PROFILE-AVATARS.md](USER-PROFILE-AVATARS.md).
+### 1.7.0 (QQQ 4.1.0-RC.16) - navigation sections, search aliases, profiles and avatars
+
+User profiles and avatars (see [USER-PROFILE-AVATARS.md](USER-PROFILE-AVATARS.md)):
 
 - **`GET /avatars/{avatarId}`** (`getAvatar`): an avatar by its opaque id as a square PNG (`size` 32,
   64, 128 or 256; default 128) for any signed-in user; 404 when none (clients draw initials). A
@@ -97,7 +98,8 @@ See [USER-PROFILE-AVATARS.md](USER-PROFILE-AVATARS.md).
 - **`FieldAdornment.values`** for FILE_UPLOAD: `valueIsUploadRef` (upload with `POST /uploads`, send
   the ref as the value; the value read back is a URL), `accept`, `maxBytes` and `imageShape`.
 - `GET /version` features add `avatars`.
-### 1.7.0 (QQQ 4.1.0-RC.16) - navigation sections and search aliases
+
+Navigation sections and search aliases:
 
 - Published `AppSection.apps` for child app names.
 - Added `AppSection.role` (PRIMARY/HISTORY/SETTINGS/GROUP) and `collapsedByDefault`.

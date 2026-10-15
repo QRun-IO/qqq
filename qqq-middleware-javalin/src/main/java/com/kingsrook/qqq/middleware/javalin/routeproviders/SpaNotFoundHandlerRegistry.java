@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.middleware.javalin.QJavalinUtils;
 import io.javalin.config.JavalinConfig;
 import io.javalin.config.Key;
 import io.javalin.http.Context;
@@ -137,6 +138,18 @@ public class SpaNotFoundHandlerRegistry
       /////////////////////////////////////////////////////////////////////
       if(ctx.endpoints().lastHttpEndpoint() != null)
       {
+         return;
+      }
+
+      ///////////////////////////////////////////////////////////////////////////////
+      // an unknown UI API path is an API error (JSON, BasicErrorResponseV1), never //
+      // a single-page app's HTML - API clients must be able to parse every answer  //
+      ///////////////////////////////////////////////////////////////////////////////
+      String path = ctx.path();
+      if(path.equals("/qqq/v1") || path.startsWith("/qqq/v1/"))
+      {
+         QJavalinUtils.respondWithError(ctx, org.eclipse.jetty.http.HttpStatus.Code.NOT_FOUND, "No UI API operation " + ctx.method() + " " + path);
+         ctx.contentType("application/json");
          return;
       }
 

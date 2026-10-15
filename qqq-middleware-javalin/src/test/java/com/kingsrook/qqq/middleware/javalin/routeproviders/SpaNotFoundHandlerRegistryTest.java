@@ -178,6 +178,36 @@ class SpaNotFoundHandlerRegistryTest
 
 
    /*******************************************************************************
+    ** An unknown UI API path is a JSON 404 (BasicErrorResponseV1), even under a
+    ** root SPA - never the SPA page.
+    *******************************************************************************/
+   @Test
+   void testUnknownUiApiPathIsJson404() throws Exception
+   {
+      AtomicInteger invocations = new AtomicInteger();
+      SpaNotFoundHandlerRegistry.getInstance(config).registerSpaHandler("/", ctx ->
+      {
+         invocations.incrementAndGet();
+         ctx.status(200).result("<html>spa</html>");
+      });
+      service.start(0);
+      try(HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build())
+      {
+         HttpResponse<String> api = client.send(HttpRequest.newBuilder(URI.create("http://localhost:" + service.port() + "/qqq/v1/no/such/operation"))
+            .timeout(Duration.ofSeconds(5)).build(), HttpResponse.BodyHandlers.ofString());
+         assertEquals(404, api.statusCode());
+         assertTrue(api.body().contains("\"code\":\"NOT_FOUND\""), api.body());
+         assertEquals(0, invocations.get());
+
+         HttpResponse<String> page = client.send(HttpRequest.newBuilder(URI.create("http://localhost:" + service.port() + "/app/person"))
+            .timeout(Duration.ofSeconds(5)).build(), HttpResponse.BodyHandlers.ofString());
+         assertEquals("<html>spa</html>", page.body());
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Clearing one configuration cannot clear another configuration's handlers.
     *******************************************************************************/
    @Test

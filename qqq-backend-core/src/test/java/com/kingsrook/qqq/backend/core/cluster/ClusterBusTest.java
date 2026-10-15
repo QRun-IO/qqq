@@ -21,6 +21,7 @@
 package com.kingsrook.qqq.backend.core.cluster;
 
 
+import java.lang.ref.WeakReference;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -30,10 +31,12 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.utils.ClassPathUtils;
+import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import com.kingsrook.qqq.backend.core.utils.memoization.Memoization;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
@@ -176,5 +179,27 @@ class ClusterBusTest extends BaseTest
    {
       assertTrue(ClassPathUtils.getClassesInPackage("com.kingsrook.qqq.backend.core").size() > 500, "the audit scans the whole core");
       assertEquals(List.of(), ClusterCacheAudit.unregisteredStaticCaches("com.kingsrook.qqq.backend.core"));
+   }
+
+
+   /*******************************************************************************
+    ** A connected instance that is otherwise dropped can be collected (the bus
+    ** must not hold it strongly - a test suite that builds many instances
+    ** would run out of memory).
+    *******************************************************************************/
+   @Test
+   void connectedInstanceCanBeCollected() throws Exception
+   {
+      QInstance                instance = TestUtils.defineInstance();
+      WeakReference<QInstance> weak     = new WeakReference<>(instance);
+      ClusterBus.connect(instance);
+      instance = null;
+
+      for(int i = 0; i < 50 && weak.get() != null; i++)
+      {
+         System.gc();
+         Thread.sleep(20);
+      }
+      assertNull(weak.get(), "the cluster bus kept a dropped instance reachable");
    }
 }

@@ -226,9 +226,7 @@ components:
             \ clientId,\nand audience for an OAuth type workflow)."
           type: "string"
         values:
-          description: "Additional values, as determined by the type of authentication\
-            \ provider.\n"
-          oneOf:
+          anyOf:
           - description: "No additional values are used for some authentication providers."
             type: "object"
           - description: "Additional values used by the Auth0 type authentication\
@@ -271,6 +269,8 @@ components:
                 description: "OAuth2 scopes to request (space-separated)"
                 type: "string"
             type: "object"
+          description: "Additional values, as determined by the type of authentication\
+            \ provider.\n"
       type: "object"
     BackChannelLogoutResponseV1:
       type: "object"

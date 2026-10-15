@@ -28,10 +28,12 @@ import com.kingsrook.qqq.backend.core.model.metadata.branding.QBrandingMetaData;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.middleware.javalin.executors.io.AuthenticationMetaDataOutputInterface;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.NextDashboardCspSources;
+import com.kingsrook.qqq.middleware.javalin.schemabuilder.SchemaBuilder;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIOneOf;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.PublicBranding;
+import com.kingsrook.qqq.openapi.model.Schema;
 
 
 /*******************************************************************************
@@ -75,6 +77,25 @@ public class AuthenticationMetaDataResponseV1 implements AuthenticationMetaDataO
    public sealed interface Values permits EmptyValues, Auth0Values, OAuth2Values
    {
 
+   }
+
+
+
+   /***************************************************************************
+    ** values is one of several shapes, but the empty shape matches any object,
+    ** so it is an anyOf (a oneOf would refuse every non-empty values object).
+    ***************************************************************************/
+   @Override
+   public Schema toSchema()
+   {
+      Schema schema = new SchemaBuilder().classToSchema(getClass());
+      Schema values = schema.getProperties() == null ? null : schema.getProperties().get("values");
+      if(values != null && values.getOneOf() != null)
+      {
+         values.setAnyOf(values.getOneOf());
+         values.setOneOf(null);
+      }
+      return (schema);
    }
 
 

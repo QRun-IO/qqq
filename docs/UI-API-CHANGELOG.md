@@ -108,6 +108,8 @@ Ready for CLI, TUI and native clients (see `UI-API-CLIENTS.md`).
   login screen or a standalone frontend server needs no route outside `/qqq/v1` (#1035).
 - The contract check also fails on a dangling `$ref`; this fixed the API-aware document, whose
   bulk-load schemas were missing, and the `$ref: null` that content-less responses (204) had.
+- Fixed: `GET /metaData/authentication` `values` is an `anyOf` (was `oneOf`, which no OAuth2 or
+  Auth0 answer could satisfy, because the empty shape matches every object).
 - Extensions esb and health 1.1.0: operationIds, tags and the standard error responses.
 - **Typed table capabilities.** `GET /metaData/table/{tableName}` adds `clientCapabilities`
   (`TableCapabilitiesV1`): `savedViews` (query/store/delete process names), `audits` (level, and the

@@ -65,6 +65,34 @@ class QCollectingLoggerTest extends BaseTest
 
 
    /*******************************************************************************
+    ** In log4j, Level.OFF is the most-severe level, so logging AT it is always
+    ** emitted.  QLogger treats OFF (and null) as "don't log" for its
+    ** log(Level, ...) methods, so a configurable level of OFF means silence.
+    *******************************************************************************/
+   @Test
+   void testLogAtLevelOffOrNullIsNotEmitted()
+   {
+      ClassThatLogsThings classThatLogsThings = new ClassThatLogsThings();
+      QCollectingLogger   collectingLogger    = QLogger.activateCollectingLoggerForClass(ClassThatLogsThings.class);
+      try
+      {
+         classThatLogsThings.logAtLevel(Level.OFF, "off");
+         classThatLogsThings.logAtLevel(null, "null");
+         assertThat(collectingLogger.getCollectedMessages()).isEmpty();
+
+         classThatLogsThings.logAtLevel(Level.INFO, "info");
+         assertEquals(4, collectingLogger.getCollectedMessages().size());
+         assertThat(collectingLogger.getCollectedMessages()).allMatch(m -> Level.INFO.equals(m.getLevel()));
+      }
+      finally
+      {
+         QLogger.deactivateCollectingLoggerForClass(ClassThatLogsThings.class);
+      }
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    public static class ClassThatLogsThings
@@ -85,6 +113,17 @@ class QCollectingLoggerTest extends BaseTest
       private void logAWarn(String message)
       {
          LOG.warn(message);
+      }
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      private void logAtLevel(Level level, String message)
+      {
+         LOG.log(level, message);
+         LOG.log(level, message, (Throwable) null);
+         LOG.log(level, message, null, new LogPair("k", "v"));
+         LOG.log(level, new Exception(message));
       }
    }
 

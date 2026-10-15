@@ -322,7 +322,7 @@ public class JoinsContext
          addSecurityFiltersToInputFilter(filter);
       }
 
-      log("Constructed JoinsContext", logPair("mainTableName", this.mainTableName), logPair("queryJoins", this.queryJoins.stream().map(qj -> qj.getJoinTable()).collect(Collectors.joining(","))));
+      log("Constructed JoinsContext", logPair("mainTableName", this.mainTableName), logPair("queryJoins", () -> this.queryJoins.stream().map(qj -> qj.getJoinTable()).collect(Collectors.joining(","))));
       log("", logPair("securityFilter", securityFilter));
       log("", logPair("fullFilter", filter));
       dumpDebug(false, true);
@@ -1517,6 +1517,10 @@ public class JoinsContext
     *******************************************************************************/
    private void log(String message, LogPair... logPairs)
    {
+      if(logLevel.equals(Level.OFF))
+      {
+         return;
+      }
       LOG.log(logLevel, message, null, logPairs);
    }
 

@@ -80,6 +80,18 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 
 ## Versions
 
+### 1.7.0 (QQQ 4.1.0-RC.16) - navigation sections and search aliases
+
+- Published `AppSection.apps` for child app names.
+- Added `AppSection.role` (PRIMARY/HISTORY/SETTINGS/GROUP) and `collapsedByDefault`.
+- Added `keywords` on `AppTreeNode` and `AppMetaData`.
+- Validator accepts apps-only sections and checks child app membership and uniqueness.
+- Client rules: a GROUP section is a heading, never a destination (no page, URL or breadcrumb level).
+  Clients never re-sort server order. SETTINGS is collapsed unless the user expands it (honor an explicit
+  `collapsedByDefault` override). Match search on label + keywords + ancestor labels; never display keywords as labels.
+- Standard preference section `keyboard` (`singleKeyShortcuts`, default on) for WCAG 2.1.4, served by the
+  existing `/preferences` operations when an application registers it (`KeyboardPreferences`); no new operation.
+
 ### 1.6.0 (QQQ 4.1.0-RC.15) - native clients
 Ready for CLI, TUI and native clients (see `UI-API-CLIENTS.md`).
 

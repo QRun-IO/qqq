@@ -943,4 +943,29 @@ class MetaDataActionTest extends BaseTest
       }
    }
 
+   /*******************************************************************************
+    ** Search aliases are copied into frontend metadata and table clones.
+    *******************************************************************************/
+   @Test
+   void testKeywordCopies() throws QException
+   {
+      QAppMetaData app = QContext.getQInstance().getApp(TestUtils.APP_NAME_PEOPLE).withKeyword("customers");
+      QTableMetaData table = QContext.getQInstance().getTable(TestUtils.TABLE_NAME_PERSON).withKeyword("contacts");
+      AppTreeNode appNode = new AppTreeNode(app);
+      AppTreeNode tableNode = new AppTreeNode(table);
+      QTableMetaData tableClone = table.clone();
+      MetaDataOutput output = new MetaDataAction().execute(new MetaDataInput());
+      app.getKeywords().clear();
+      table.getKeywords().clear();
+      assertEquals(List.of("customers"), appNode.getKeywords());
+      assertEquals(List.of("contacts"), tableNode.getKeywords());
+      assertEquals(List.of("contacts"), tableClone.getKeywords());
+      assertEquals(List.of("customers"), output.getApps().get(app.getName()).getKeywords());
+      assertNull(new AppTreeNode(app).getKeywords());
+      assertNull(new AppTreeNode(table).getKeywords());
+      AppTreeNode clonedNode = tableNode.clone();
+      clonedNode.getKeywords().clear();
+      assertEquals(List.of("contacts"), tableNode.getKeywords());
+   }
+
 }

@@ -168,4 +168,16 @@ public class AppMetaData implements ToSchema
    {
       return (HelpContentV1.of(wrapped.getHelpContents()));
    }
+
+
+   /*******************************************************************************
+    ** Search aliases for this navigation item.
+    *******************************************************************************/
+   @OpenAPIDescription("Search aliases (old labels, jargon, vendor names); match search on label, keywords and ancestor labels; never display")
+   @OpenAPIListItems(value = String.class)
+   public List<String> getKeywords()
+   {
+      return (this.wrapped.getKeywords());
+   }
+
 }

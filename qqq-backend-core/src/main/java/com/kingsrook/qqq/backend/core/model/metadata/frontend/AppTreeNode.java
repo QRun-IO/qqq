@@ -46,6 +46,8 @@ public class AppTreeNode implements Cloneable
    private Boolean           hideChildrenFromNavigation = false;
    private List<AppTreeNode> children;
 
+   private List<String> keywords;
+
    private Integer appAffinity;
 
    private QIcon icon;
@@ -63,6 +65,8 @@ public class AppTreeNode implements Cloneable
       if(appChildMetaData.getClass().equals(QTableMetaData.class))
       {
          this.type = AppTreeNodeType.TABLE;
+         List<String> sourceKeywords = ((QTableMetaData) appChildMetaData).getKeywords();
+         this.keywords = sourceKeywords == null || sourceKeywords.isEmpty() ? null : new ArrayList<>(sourceKeywords);
       }
       else if(appChildMetaData.getClass().equals(QProcessMetaData.class))
       {
@@ -75,6 +79,8 @@ public class AppTreeNode implements Cloneable
       else if(appChildMetaData.getClass().equals(QAppMetaData.class))
       {
          this.type = AppTreeNodeType.APP;
+         List<String> sourceKeywords = ((QAppMetaData) appChildMetaData).getKeywords();
+         this.keywords = sourceKeywords == null || sourceKeywords.isEmpty() ? null : new ArrayList<>(sourceKeywords);
          children = new ArrayList<>();
       }
       else
@@ -218,6 +224,7 @@ public class AppTreeNode implements Cloneable
       try
       {
          AppTreeNode clone = (AppTreeNode) super.clone();
+         clone.keywords = keywords == null ? null : new ArrayList<>(keywords);
          if(children != null)
          {
             clone.children = new ArrayList<>();
@@ -282,5 +289,27 @@ public class AppTreeNode implements Cloneable
       this.children = children;
       return (this);
    }
+
+
+
+   /*******************************************************************************
+    ** Getter for keywords
+    *******************************************************************************/
+   public List<String> getKeywords()
+   {
+      return (this.keywords);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for keywords
+    *******************************************************************************/
+   public void setKeywords(List<String> keywords)
+   {
+      this.keywords = keywords;
+   }
+
+
 
 }

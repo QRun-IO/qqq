@@ -45,6 +45,8 @@ import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 @JsonInclude(Include.NON_NULL)
 public class QFrontendAppMetaData
 {
+   private List<String> keywords;
+
    private String name;
    private String label;
    private QIcon  icon;
@@ -66,6 +68,7 @@ public class QFrontendAppMetaData
    public QFrontendAppMetaData(QAppMetaData appMetaData, MetaDataOutput metaDataOutput)
    {
       this.name = appMetaData.getName();
+      this.keywords = CollectionUtils.nullSafeIsEmpty(appMetaData.getKeywords()) ? null : new ArrayList<>(appMetaData.getKeywords());
       this.label = appMetaData.getLabel();
       this.icon = appMetaData.getIcon();
 
@@ -81,7 +84,7 @@ public class QFrontendAppMetaData
          List<String> filteredTables    = CollectionUtils.nonNullList(section.getTables()).stream().filter(n -> metaDataOutput.getTables().containsKey(n)).toList();
          List<String> filteredProcesses = CollectionUtils.nonNullList(section.getProcesses()).stream().filter(n -> metaDataOutput.getProcesses().containsKey(n)).toList();
          List<String> filteredReports   = CollectionUtils.nonNullList(section.getReports()).stream().filter(n -> metaDataOutput.getReports().containsKey(n)).toList();
-         List<String> filteredApps      = CollectionUtils.nonNullList(section.getApps());
+         List<String> filteredApps      = new ArrayList<>(CollectionUtils.nonNullList(section.getApps()));
 
          //////////////////////////////////////////////////////
          // only include the section if it has some contents //
@@ -253,4 +256,34 @@ public class QFrontendAppMetaData
    {
       return icon;
    }
+
+
+
+   /*******************************************************************************
+    ** Getter for keywords
+    *******************************************************************************/
+   public List<String> getKeywords()
+   {
+      return (this.keywords);
+   }
+
+
+
+   /*******************************************************************************
+    ** Filter section apps after all permitted apps have been collected, regardless of server order.
+    *******************************************************************************/
+   public void filterSectionApps(Map<String, QFrontendAppMetaData> apps)
+   {
+      if(sections != null)
+      {
+         for(QAppSection section : sections)
+         {
+            section.setApps(CollectionUtils.nonNullList(section.getApps()).stream().filter(apps::containsKey).toList());
+         }
+         sections.removeIf(section -> CollectionUtils.nullSafeIsEmpty(section.getApps())
+            && CollectionUtils.nullSafeIsEmpty(section.getTables()) && CollectionUtils.nullSafeIsEmpty(section.getProcesses())
+            && CollectionUtils.nullSafeIsEmpty(section.getReports()));
+      }
+   }
+
 }

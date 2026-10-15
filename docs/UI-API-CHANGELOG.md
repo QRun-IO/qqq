@@ -73,7 +73,7 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 
 ## Versions
 
-### 1.4.0 (unreleased)
+### 1.4.0 (QQQ 4.1.0-RC.8)
 - Added `GET /jobs`, `GET /jobs/{jobId}`, `GET /jobs/{jobId}/progress`,
   `POST /jobs/{jobId}/cancel`, `POST /jobs/{jobId}/retry`, and `POST /jobs/track`.
   These routes require the durable jobs tables, `jobs_job.read`, and the owner record lock.

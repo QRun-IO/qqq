@@ -21,11 +21,19 @@
 package com.kingsrook.qqq.backend.core.instances;
 
 
+import java.io.IOException;
 import java.io.Serializable;
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -36,6 +44,7 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import io.github.cdimascio.dotenv.Dotenv;
 import io.github.cdimascio.dotenv.DotenvEntry;
+import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
@@ -47,14 +56,33 @@ import io.github.cdimascio.dotenv.DotenvEntry;
  ** Supported syntax / value sources are:
  ** ${env.VAR} = system environment variables, e.g., export VAR=val
  ** ${prop.VAR} = properties, e.g., -DVAR=val
+ ** ${file.PATH} = the trimmed contents of a mounted secret file, e.g., a
+ **   Kubernetes secret volume (${file./var/run/secrets/storage/access-key}) or a
+ **   Docker secret (${file./run/secrets/db-password}).  Read-only; the path must
+ **   be absolute and inside an allowed root (default /var/run/secrets and
+ **   /run/secrets; override with the qqq.fileReference.roots system property or
+ **   the QQQ_FILE_REFERENCE_ROOTS environment variable, comma-separated), and the
+ **   file at most FILE_REFERENCE_MAX_BYTES.  The file is read on every
+ **   interpretation (so a rotated secret is picked up), and its contents are
+ **   never logged.  Prefer env or a secret manager where they fit; this is for
+ **   orchestrator-mounted secret files only, not for application data.
+ **   An interpreter with value maps (one that resolves ${input.X} and similar
+ **   values from users, e.g., in query filters and report formulas) does not
+ **   read files unless setFileReferencesEnabled(true) is called on it.
  ** ${literal.VAR} = get back a literal "VAR" (in case VAR matches some of the other supported syntax in here)
  *******************************************************************************/
 public class QMetaDataVariableInterpreter
 {
    private static final QLogger LOG = QLogger.getLogger(QMetaDataVariableInterpreter.class);
 
+   public static final int          FILE_REFERENCE_MAX_BYTES      = 1024 * 1024;
+   public static final String       FILE_REFERENCE_ROOTS_PROPERTY = "qqq.fileReference.roots";
+   public static final String       FILE_REFERENCE_ROOTS_ENV      = "QQQ_FILE_REFERENCE_ROOTS";
+   public static final List<String> DEFAULT_FILE_REFERENCE_ROOTS  = List.of("/var/run/secrets", "/run/secrets");
+
    private Map<String, String>                    environmentOverrides;
    private Map<String, Map<String, Serializable>> valueMaps;
+   private Boolean                                fileReferencesEnabled;
 
 
 
@@ -204,6 +232,14 @@ public class QMetaDataVariableInterpreter
          return (result == null ? defaultIfLooksLikeVariableButNotFound : result);
       }
 
+      String filePrefix = "${file.";
+      if(value.startsWith(filePrefix) && value.endsWith("}") && isFileReferencesEnabled())
+      {
+         String path   = value.substring(filePrefix.length(), value.length() - 1);
+         String result = readFileReference(path);
+         return (result == null ? defaultIfLooksLikeVariableButNotFound : result);
+      }
+
       String literalPrefix = "${literal.";
       if(value.startsWith(literalPrefix) && value.endsWith("}"))
       {
@@ -250,7 +286,7 @@ public class QMetaDataVariableInterpreter
    {
       String[]    split                    = value.split("\\?\\?");
       boolean     anyPartLooksLikeVariable = false;
-      Set<String> allInputMaps             = new HashSet<>(Set.of("env", "prop"));
+      Set<String> allInputMaps             = new HashSet<>(Set.of("env", "prop", "file"));
       if(valueMaps != null)
       {
          allInputMaps.addAll(valueMaps.keySet());
@@ -295,6 +331,151 @@ public class QMetaDataVariableInterpreter
       // if we make it here and haven't returned, return either the defaultIfLooksLikeVariableButNotFound, or the input value. //
       ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
       return (anyPartLooksLikeVariable ? defaultIfLooksLikeVariableButNotFound : value);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether ${file.PATH} references are read: as set, else only when this
+    ** interpreter has no value maps (so values from users are never read as files).
+    *******************************************************************************/
+   public boolean isFileReferencesEnabled()
+   {
+      return (fileReferencesEnabled != null ? fileReferencesEnabled : valueMaps == null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Explicitly enable or disable ${file.PATH} references for this interpreter.
+    *******************************************************************************/
+   public void setFileReferencesEnabled(Boolean fileReferencesEnabled)
+   {
+      this.fileReferencesEnabled = fileReferencesEnabled;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for fileReferencesEnabled.
+    *******************************************************************************/
+   public QMetaDataVariableInterpreter withFileReferencesEnabled(Boolean fileReferencesEnabled)
+   {
+      this.fileReferencesEnabled = fileReferencesEnabled;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Read a ${file.PATH} reference: the trimmed UTF-8 contents of the file, or
+    ** null when the path is not absolute, is outside the allowed roots (after
+    ** resolving symbolic links, as Kubernetes secret volumes use them), is not a
+    ** regular file, is larger than FILE_REFERENCE_MAX_BYTES, or cannot be read.
+    ** Log lines name the path, never the contents.
+    *******************************************************************************/
+   private String readFileReference(String pathString)
+   {
+      try
+      {
+         Path path = Path.of(pathString);
+         if(!path.isAbsolute())
+         {
+            LOG.warn("Ignoring a file reference that is not an absolute path", logPair("path", pathString));
+            return (null);
+         }
+
+         Path realPath = path.toRealPath();
+         if(!isUnderAllowedRoot(realPath))
+         {
+            LOG.warn("Ignoring a file reference outside the allowed roots", logPair("path", pathString), logPair("roots", getFileReferenceRoots()));
+            return (null);
+         }
+
+         if(!Files.isRegularFile(realPath))
+         {
+            LOG.warn("Ignoring a file reference that is not a regular file", logPair("path", pathString));
+            return (null);
+         }
+
+         if(Files.size(realPath) > FILE_REFERENCE_MAX_BYTES)
+         {
+            LOG.warn("Ignoring a file reference larger than the limit", logPair("path", pathString), logPair("maxBytes", FILE_REFERENCE_MAX_BYTES));
+            return (null);
+         }
+
+         return (Files.readString(realPath, StandardCharsets.UTF_8).strip());
+      }
+      catch(NoSuchFileException e)
+      {
+         LOG.debug("File reference not found", logPair("path", pathString));
+         return (null);
+      }
+      catch(IOException | InvalidPathException | SecurityException e)
+      {
+         LOG.warn("Could not read a file reference", logPair("path", pathString), logPair("error", e.getClass().getSimpleName()));
+         return (null);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether a (real) path is inside one of the allowed file-reference roots.
+    *******************************************************************************/
+   private boolean isUnderAllowedRoot(Path realPath)
+   {
+      for(String root : getFileReferenceRoots())
+      {
+         try
+         {
+            Path rootPath = Path.of(root);
+            if(!rootPath.isAbsolute() || !Files.isDirectory(rootPath))
+            {
+               continue;
+            }
+
+            if(realPath.startsWith(rootPath.toRealPath()))
+            {
+               return (true);
+            }
+         }
+         catch(IOException | InvalidPathException e)
+         {
+            LOG.debug("Skipping an unusable file reference root", logPair("root", root));
+         }
+      }
+      return (false);
+   }
+
+
+
+   /*******************************************************************************
+    ** The allowed roots for ${file.PATH} references: the system property, else the
+    ** environment variable (comma-separated), else the defaults.
+    *******************************************************************************/
+   List<String> getFileReferenceRoots()
+   {
+      String configured = System.getProperty(FILE_REFERENCE_ROOTS_PROPERTY);
+      if(!StringUtils.hasContent(configured))
+      {
+         configured = getEnvironmentVariable(FILE_REFERENCE_ROOTS_ENV);
+      }
+
+      if(!StringUtils.hasContent(configured))
+      {
+         return (DEFAULT_FILE_REFERENCE_ROOTS);
+      }
+
+      List<String> roots = new ArrayList<>();
+      for(String root : configured.split(","))
+      {
+         if(StringUtils.hasContent(root))
+         {
+            roots.add(root.strip());
+         }
+      }
+      return (roots);
    }
 
 

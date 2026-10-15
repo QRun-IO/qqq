@@ -22,6 +22,7 @@ package com.kingsrook.qqq.backend.module.filesystem.s3.model.metadata;
 
 
 import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.module.filesystem.base.model.metadata.AbstractFilesystemBackendMetaData;
 import com.kingsrook.qqq.backend.module.filesystem.s3.S3BackendModule;
 
@@ -46,15 +47,30 @@ import com.kingsrook.qqq.backend.module.filesystem.s3.S3BackendModule;
  **   with a clear error instead of exhausting memory.  Null means the default
  **   (100,000); zero or negative means no cap.
  **
- ** accessKey, secretKey, region, endpoint and caCertificatesPem are interpreted
- ** for ${env.X} / ${prop.X} references when the instance is enriched.
+ ** - sessionToken: the session token of temporary (STS) credentials, used with
+ **   accessKey and secretKey.  It is fixed once set: when it expires, give the
+ **   backend the new credentials (a new client is built for them).
+ ** - credentialsProviderCode: a class implementing the AWS SDK's
+ **   AwsCredentialsProvider (no-arg constructor), for credentials that refresh
+ **   themselves (e.g., an STS assume-role provider).  When set, it wins over
+ **   accessKey / secretKey / sessionToken.
+ ** - With neither keys nor a provider, the SDK's default chain applies
+ **   (environment, profile, web identity, container and instance roles), which
+ **   refreshes its own temporary credentials.
+ **
+ ** accessKey, secretKey, sessionToken, region, endpoint and caCertificatesPem
+ ** are interpreted for ${env.X} / ${prop.X} / ${file.PATH} references when the
+ ** instance is enriched (see QMetaDataVariableInterpreter).
  *******************************************************************************/
 public class S3BackendMetaData extends AbstractFilesystemBackendMetaData
 {
    private String bucketName;
    private String accessKey;
    private String secretKey;
+   private String sessionToken;
    private String region;
+
+   private QCodeReference credentialsProviderCode;
 
    private String         endpoint;
    private Boolean        pathStyleAccess;
@@ -175,6 +191,69 @@ public class S3BackendMetaData extends AbstractFilesystemBackendMetaData
    public S3BackendMetaData withSecretKey(String secretKey)
    {
       this.secretKey = secretKey;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for sessionToken - the session token of temporary (STS) credentials
+    *******************************************************************************/
+   public String getSessionToken()
+   {
+      return (sessionToken);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for sessionToken - the session token of temporary (STS) credentials
+    *******************************************************************************/
+   public void setSessionToken(String sessionToken)
+   {
+      this.sessionToken = sessionToken;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for sessionToken - the session token of temporary (STS)
+    ** credentials
+    *******************************************************************************/
+   public S3BackendMetaData withSessionToken(String sessionToken)
+   {
+      this.sessionToken = sessionToken;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for credentialsProviderCode - an AwsCredentialsProvider class
+    *******************************************************************************/
+   public QCodeReference getCredentialsProviderCode()
+   {
+      return (credentialsProviderCode);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for credentialsProviderCode - an AwsCredentialsProvider class
+    *******************************************************************************/
+   public void setCredentialsProviderCode(QCodeReference credentialsProviderCode)
+   {
+      this.credentialsProviderCode = credentialsProviderCode;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for credentialsProviderCode - an AwsCredentialsProvider class
+    *******************************************************************************/
+   public S3BackendMetaData withCredentialsProviderCode(QCodeReference credentialsProviderCode)
+   {
+      this.credentialsProviderCode = credentialsProviderCode;
       return (this);
    }
 
@@ -475,6 +554,7 @@ public class S3BackendMetaData extends AbstractFilesystemBackendMetaData
       QMetaDataVariableInterpreter interpreter = new QMetaDataVariableInterpreter();
       accessKey = interpreter.interpret(accessKey);
       secretKey = interpreter.interpret(secretKey);
+      sessionToken = interpreter.interpret(sessionToken);
       region = interpreter.interpret(region);
       endpoint = interpreter.interpret(endpoint);
       caCertificatesPem = interpreter.interpret(caCertificatesPem);

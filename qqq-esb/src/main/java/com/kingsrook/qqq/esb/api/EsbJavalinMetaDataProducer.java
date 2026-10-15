@@ -43,7 +43,7 @@ import com.kingsrook.qqq.middleware.javalin.specs.extensions.MiddlewareSpecExten
 public class EsbJavalinMetaDataProducer extends MetaDataProducer<MiddlewareSpecExtensionsMetaData>
 {
    public static final String EXTENSION_NAME    = "esb";
-   public static final String EXTENSION_VERSION = "1.0.0";
+   public static final String EXTENSION_VERSION = "1.1.0";
 
 
 

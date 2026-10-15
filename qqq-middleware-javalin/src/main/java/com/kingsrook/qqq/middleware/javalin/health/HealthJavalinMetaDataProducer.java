@@ -37,7 +37,7 @@ public class HealthJavalinMetaDataProducer extends MetaDataProducer<MiddlewareSp
     *******************************************************************************/
    public static MiddlewareSpecExtension defineExtension()
    {
-      return (new MiddlewareSpecExtension().withName("health").withPathPrefix("/health").withSemanticVersion("1.0.0")
+      return (new MiddlewareSpecExtension().withName("health").withPathPrefix("/health").withSemanticVersion("1.1.0")
          .withDescription("Central health summary, components, history and on-demand checks.")
          .withSpec(HealthSummarySpecV1.class).withSpec(HealthComponentSpecV1.class)
          .withSpec(HealthHistorySpecV1.class).withSpec(HealthRunSpecV1.class));

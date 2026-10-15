@@ -60,7 +60,8 @@ or `QQQ_UI_API_STRICT_ROUTES=false` only logs them, as a temporary opt-out.
 
 | Extension | Prefix | Version | Owner |
 |---|---|---|---|
-| esb | `/esb` | 1.0.0 | qqq-esb (`EsbJavalinMetaDataProducer`) |
+| esb | `/esb` | 1.1.0 | qqq-esb (`EsbJavalinMetaDataProducer`) |
+| health | `/health` | 1.1.0 | qqq-middleware-javalin (`HealthJavalinMetaDataProducer`) |
 
 ## Legacy unversioned routes (deprecated)
 
@@ -103,6 +104,7 @@ Ready for CLI, TUI and native clients (see `UI-API-CLIENTS.md`).
   `traceId` (also the `X-QQQ-Trace-Id` response header; a safe client `X-Request-Id` is reused).
   Every operation declares 400, 404, 409 and 429, and secured operations 401 and 403, with this
   schema. Every extension document carries the schema.
+- Extensions esb and health 1.1.0: operationIds, tags and the standard error responses.
 - **Typed table capabilities.** `GET /metaData/table/{tableName}` adds `clientCapabilities`
   (`TableCapabilitiesV1`): `savedViews` (query/store/delete process names), `audits` (level, and the
   process or the audit tables to read them with), `sharing` (list/insert/edit/delete process

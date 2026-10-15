@@ -308,27 +308,6 @@ components:
           description: "Additional values, as determined by the type of authentication\
             \ provider.\n"
       type: "object"
-    AvatarLookupRequestV1:
-      additionalProperties: false
-      description: "The users to look up."
-      properties:
-        userIds:
-          description: "User ids (as in comments, presence and mentions); at most\
-            \ 200."
-          items:
-            type: "string"
-          type: "array"
-      type: "object"
-    AvatarLookupResponseV1:
-      description: "Avatar URLs by user id."
-      properties:
-        avatars:
-          additionalProperties:
-            type: "string"
-          description: "User id to avatar URL (relative; add size=32|64|128|256).\
-            \ Users without an avatar are absent."
-          type: "object"
-      type: "object"
     BackChannelLogoutResponseV1:
       type: "object"
     BasicErrorResponseV1:
@@ -834,25 +813,6 @@ components:
               type: "string"
             format:
               description: "FILE_UPLOAD: control style (dragAndDrop or button)."
-              type: "string"
-            valueIsUploadRef:
-              description: "FILE_UPLOAD: upload the file with POST /uploads and send\
-                \ its ref as the field's value (null removes the file); the value\
-                \ read back is a URL to show. Since 1.7.0."
-              type: "boolean"
-            accept:
-              description: "FILE_UPLOAD: accepted MIME types, comma-separated (e.g.\
-                \ image/png,image/jpeg). Since 1.7.0."
-              type: "string"
-            maxBytes:
-              description: "FILE_UPLOAD: largest accepted file in bytes. Since 1.7.0."
-              type: "integer"
-            imageShape:
-              description: "FILE_UPLOAD: the field is an image to crop and preview\
-                \ in this shape (square or circle; both crop square). Since 1.7.0."
-              enum:
-              - "square"
-              - "circle"
               type: "string"
             languageMode:
               description: "CODE_EDITOR: language of the code (e.g. javascript, sql,\
@@ -1824,12 +1784,7 @@ components:
           type: "string"
         values:
           additionalProperties: true
-          description: "Optional object with application-defined values. `user` describes\
-            \ the signed-in user: `name`, `email` or `username` (by authentication\
-            \ module), and, when the application installs user profiles (since 1.7.0),\
-            \ `displayName` (the name the user chose; prefer it to `name`) and `avatarUrl`\
-            \ (relative URL of GET /avatars/{avatarId} with its version; add `&size=32|64|128|256`).\
-            \ No `avatarUrl` means draw initials."
+          description: "Optional object with application-defined values."
           type: "object"
       type: "object"
     MaterialDashboardInstanceSettings:
@@ -8566,170 +8521,6 @@ paths:
                 $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Too many requests (code RATE_LIMITED); retry later."
       summary: "Get a branding image"
-      tags:
-      - "Authentication"
-  /qqq/v1/avatars/lookup:
-    post:
-      description: "The avatar URL (GET /avatars/{avatarId}, with its version) of\
-        \ each user id given, for any signed-in user.\nUsers without an avatar are\
-        \ not in the result: draw their initials. At most 200 ids per call. Since\
-        \ 1.7.0."
-      operationId: "lookupAvatars"
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AvatarLookupRequestV1"
-        required: true
-      responses:
-        200:
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AvatarLookupResponseV1"
-          description: "The avatar URLs of the users that have one."
-        400:
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BasicErrorResponseV1"
-          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
-            \ fieldErrors may name the fields."
-        401:
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BasicErrorResponseV1"
-          description: "Not authenticated, or the session or token is invalid or expired\
-            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
-        403:
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BasicErrorResponseV1"
-          description: "The user (or the credential's scope) may not do this (code\
-            \ PERMISSION_DENIED)."
-        404:
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BasicErrorResponseV1"
-          description: "Not found, or not visible to this user (code NOT_FOUND)."
-        409:
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BasicErrorResponseV1"
-          description: "Conflict with the current state, e.g. an edit conflict or\
-            \ an invalid transition (code CONFLICT)."
-        429:
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BasicErrorResponseV1"
-          description: "Too many requests (code RATE_LIMITED); retry later."
-      security:
-      - sessionUuidCookie:
-        - "N/A"
-      - bearerAuth:
-        - "N/A"
-      - oauth2:
-        - "openid"
-        - "profile"
-        - "email"
-      summary: "Look up users' avatars"
-      tags:
-      - "Authentication"
-  /qqq/v1/avatars/{avatarId}:
-    get:
-      description: "An avatar as a square PNG, by its opaque id, for any signed-in\
-        \ user. 404 when there is none (draw initials).\nAvatar URLs come from POST\
-        \ /avatars/lookup (other users), `values.user.avatarUrl` of POST /manageSession\
-        \ and\nthe `profile` preferences section (the signed-in user). A user's chosen\
-        \ Gravatar is fetched and re-encoded by\nthe server, so browsers never contact\
-        \ Gravatar. With `v` equal to the current version the response is\ncacheable\
-        \ for a year; otherwise for five minutes, with an ETag. Since 1.7.0."
-      operationId: "getAvatar"
-      parameters:
-      - description: "The avatar's opaque id (from an avatar URL)."
-        in: "path"
-        name: "avatarId"
-        required: true
-        schema:
-          type: "string"
-      - description: "Edge in pixels: 32, 64, 128 or 256 (default 128)."
-        in: "query"
-        name: "size"
-        required: false
-        schema:
-          type: "integer"
-      - description: "The avatar's version, from an avatarUrl; makes the response\
-          \ cacheable for a year."
-        in: "query"
-        name: "v"
-        required: false
-        schema:
-          type: "string"
-      responses:
-        200:
-          content:
-            image/png:
-              schema:
-                format: "binary"
-                type: "string"
-          description: "The avatar (PNG)."
-        304:
-          description: "Not modified (If-None-Match matched the ETag)."
-        400:
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BasicErrorResponseV1"
-          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
-            \ fieldErrors may name the fields."
-        401:
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BasicErrorResponseV1"
-          description: "Not authenticated, or the session or token is invalid or expired\
-            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
-        403:
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BasicErrorResponseV1"
-          description: "The user (or the credential's scope) may not do this (code\
-            \ PERMISSION_DENIED)."
-        404:
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BasicErrorResponseV1"
-          description: "Not found, or not visible to this user (code NOT_FOUND)."
-        409:
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BasicErrorResponseV1"
-          description: "Conflict with the current state, e.g. an edit conflict or\
-            \ an invalid transition (code CONFLICT)."
-        429:
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BasicErrorResponseV1"
-          description: "Too many requests (code RATE_LIMITED); retry later."
-      security:
-      - sessionUuidCookie:
-        - "N/A"
-      - bearerAuth:
-        - "N/A"
-      - oauth2:
-        - "openid"
-        - "profile"
-        - "email"
-      summary: "Get an avatar"
       tags:
       - "Authentication"
   /qqq/v1/manageSession:

@@ -37,7 +37,7 @@ public class ManageSessionResponseV1 implements ManageSessionOutputInterface, To
    @OpenAPIDescription("Unique identifier of the session. Required to be returned on subsequent requests in the sessionUUID Cookie, to prove authentication. Not included when the cookie is HttpOnly or the session was resumed from that cookie.")
    private String uuid;
 
-   @OpenAPIDescription("Optional object with application-defined values. `user` describes the signed-in user: `name`, `email` or `username` (by authentication module), and, when the application installs user profiles (since 1.7.0), `displayName` (the name the user chose; prefer it to `name`) and `avatarUrl` (relative URL of GET /avatars/{avatarId} with its version; add `&size=32|64|128|256`). No `avatarUrl` means draw initials.")
+   @OpenAPIDescription("Optional object with application-defined values. `user` describes the signed-in user: `name`, `email` or `username` (by authentication module), and, when the application installs user profiles (since 1.8.0), `displayName` (the name the user chose; prefer it to `name`) and `avatarUrl` (relative URL of GET /avatars/{avatarId} with its version; add `&size=32|64|128|256`). No `avatarUrl` means draw initials.")
    @OpenAPIHasAdditionalProperties()
    private Map<String, Serializable> values;
 

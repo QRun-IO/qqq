@@ -838,18 +838,18 @@ components:
             valueIsUploadRef:
               description: "FILE_UPLOAD: upload the file with POST /uploads and send\
                 \ its ref as the field's value (null removes the file); the value\
-                \ read back is a URL to show. Since 1.7.0."
+                \ read back is a URL to show. Since 1.8.0."
               type: "boolean"
             accept:
               description: "FILE_UPLOAD: accepted MIME types, comma-separated (e.g.\
-                \ image/png,image/jpeg). Since 1.7.0."
+                \ image/png,image/jpeg). Since 1.8.0."
               type: "string"
             maxBytes:
-              description: "FILE_UPLOAD: largest accepted file in bytes. Since 1.7.0."
+              description: "FILE_UPLOAD: largest accepted file in bytes. Since 1.8.0."
               type: "integer"
             imageShape:
               description: "FILE_UPLOAD: the field is an image to crop and preview\
-                \ in this shape (square or circle; both crop square). Since 1.7.0."
+                \ in this shape (square or circle; both crop square). Since 1.8.0."
               enum:
               - "square"
               - "circle"
@@ -1826,7 +1826,7 @@ components:
           additionalProperties: true
           description: "Optional object with application-defined values. `user` describes\
             \ the signed-in user: `name`, `email` or `username` (by authentication\
-            \ module), and, when the application installs user profiles (since 1.7.0),\
+            \ module), and, when the application installs user profiles (since 1.8.0),\
             \ `displayName` (the name the user chose; prefer it to `name`) and `avatarUrl`\
             \ (relative URL of GET /avatars/{avatarId} with its version; add `&size=32|64|128|256`).\
             \ No `avatarUrl` means draw initials."
@@ -8231,7 +8231,7 @@ info:
     \ its own\nconfiguration, identity and permission administration, audits, API\
     \ keys or secrets), exactly as if the user had\nno permission for them.\n"
   title: "QQQ Middleware API"
-  version: "1.7.0"
+  version: "1.8.0"
 openapi: "3.0.3"
 paths:
   /qqq/v1/version:
@@ -8573,7 +8573,7 @@ paths:
       description: "The avatar URL (GET /avatars/{avatarId}, with its version) of\
         \ each user id given, for any signed-in user.\nUsers without an avatar are\
         \ not in the result: draw their initials. At most 200 ids per call. Since\
-        \ 1.7.0."
+        \ 1.8.0."
       operationId: "lookupAvatars"
       requestBody:
         content:
@@ -8648,7 +8648,7 @@ paths:
         \ and\nthe `profile` preferences section (the signed-in user). A user's chosen\
         \ Gravatar is fetched and re-encoded by\nthe server, so browsers never contact\
         \ Gravatar. With `v` equal to the current version the response is\ncacheable\
-        \ for a year; otherwise for five minutes, with an ETag. Since 1.7.0."
+        \ for a year; otherwise for five minutes, with an ETag. Since 1.8.0."
       operationId: "getAvatar"
       parameters:
       - description: "The avatar's opaque id (from an avatar URL)."

@@ -200,7 +200,7 @@ public enum AdornmentType
 
       /////////////////////////////////////////////////////////////////////////////
       // the field's value is a ref from POST /uploads (upload first, then send  //
-      // the ref); reading it gives a URL to show (since UI API 1.7.0)           //
+      // the ref); reading it gives a URL to show (since UI API 1.8.0)           //
       /////////////////////////////////////////////////////////////////////////////
       public static String VALUE_IS_UPLOAD_REF = "valueIsUploadRef";
       public static String ACCEPT              = "accept";

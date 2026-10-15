@@ -59,7 +59,7 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  ** email), for any signed-in user (avatars appear beside comments, presence and
  ** mentions; POST /avatars/lookup maps user ids to avatar URLs).  404 when there
  ** is none: clients then draw initials.  A chosen Gravatar is fetched and
- ** re-encoded by the server.  Since UI API 1.7.0.
+ ** re-encoded by the server.  Since UI API 1.8.0.
  *******************************************************************************/
 public class AvatarGetSpecV1 extends AbstractEndpointSpec<AbstractMiddlewareInput, AbstractMiddlewareOutputInterface, AbstractMiddlewareExecutor<AbstractMiddlewareInput, AbstractMiddlewareOutputInterface>>
 {
@@ -86,7 +86,7 @@ public class AvatarGetSpecV1 extends AbstractEndpointSpec<AbstractMiddlewareInpu
             Avatar URLs come from POST /avatars/lookup (other users), `values.user.avatarUrl` of POST /manageSession and
             the `profile` preferences section (the signed-in user). A user's chosen Gravatar is fetched and re-encoded by
             the server, so browsers never contact Gravatar. With `v` equal to the current version the response is
-            cacheable for a year; otherwise for five minutes, with an ETag. Since 1.7.0."""));
+            cacheable for a year; otherwise for five minutes, with an ETag. Since 1.8.0."""));
    }
 
 

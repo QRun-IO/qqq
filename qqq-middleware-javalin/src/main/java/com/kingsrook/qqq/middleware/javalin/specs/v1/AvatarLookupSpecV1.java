@@ -53,7 +53,7 @@ import org.json.JSONObject;
 /*******************************************************************************
  ** POST /avatars/lookup: the avatar URLs of up to 200 users, by user id, for
  ** any signed-in user. A POST, so user ids (often emails) are never in a URL or
- ** an access log. Users without an avatar are left out. Since UI API 1.7.0.
+ ** an access log. Users without an avatar are left out. Since UI API 1.8.0.
  *******************************************************************************/
 public class AvatarLookupSpecV1 extends AbstractEndpointSpec<AbstractMiddlewareInput, AbstractMiddlewareOutputInterface, AbstractMiddlewareExecutor<AbstractMiddlewareInput, AbstractMiddlewareOutputInterface>>
 {
@@ -75,7 +75,7 @@ public class AvatarLookupSpecV1 extends AbstractEndpointSpec<AbstractMiddlewareI
          .withShortSummary("Look up users' avatars")
          .withLongDescription("""
             The avatar URL (GET /avatars/{avatarId}, with its version) of each user id given, for any signed-in user.
-            Users without an avatar are not in the result: draw their initials. At most 200 ids per call. Since 1.7.0."""));
+            Users without an avatar are not in the result: draw their initials. At most 200 ids per call. Since 1.8.0."""));
    }
 
 

@@ -104,7 +104,7 @@ public class ManageSessionExecutor extends AbstractMiddlewareExecutor<ManageSess
 
    /***************************************************************************
     ** Add the user's profile (avatarUrl, displayName) to values.user, when the
-    ** application installs profiles (UI API 1.7.0).  The session's own values
+    ** application installs profiles (UI API 1.8.0).  The session's own values
     ** are not changed.
     ***************************************************************************/
    private static void addProfileValues(LinkedHashMap<String, Serializable> valuesForFrontend, QSession session)

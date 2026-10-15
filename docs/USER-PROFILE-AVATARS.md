@@ -1,6 +1,6 @@
 # User profile and avatars
 
-Status: implemented in core and UI API 1.7.0 (QQQ 4.1.0-RC.16). Builds on
+Status: implemented in core and UI API 1.8.0 (QQQ 4.1.0-RC.17). Builds on
 [USER-PREFERENCES.md](USER-PREFERENCES.md). Security review (2026-10-15) fixes are included:
 owner record lock, in-memory imaging, response hardening, opaque avatar ids with a server-side
 Gravatar, consumed uploads deleted, decode concurrency and rate limits.
@@ -82,7 +82,7 @@ never used (no temporary files).
    or removing deletes the previous objects after the row is updated.
 6. The consumed upload (the original, with its metadata) is deleted once converted.
 
-## 4. UI API 1.7.0
+## 4. UI API 1.8.0
 
 | Operation | Notes |
 |---|---|

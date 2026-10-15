@@ -300,6 +300,22 @@ class OAuth2AuthenticationModuleRefreshTokenTest extends BaseTest
 
 
    /*******************************************************************************
+    ** A session with no stored token is invalid, not an exception that escapes
+    ** to the caller (a plain automated session used to crash server startup);
+    ** a system session is always valid.
+    *******************************************************************************/
+   @Test
+   void testTokenlessSessionIsInvalidAndSystemSessionIsValid()
+   {
+      OAuth2AuthenticationModule module = new OAuth2AuthenticationModule();
+      assertFalse(module.isSessionValid(qInstance, new QSession()));
+      assertFalse(module.isSessionValid(qInstance, sessionWithUuid(UUID.randomUUID().toString())));
+      assertTrue(module.isSessionValid(qInstance, new QSystemUserSession(qInstance)));
+   }
+
+
+
+   /*******************************************************************************
     ** A transient provider failure doesn't destroy the session's refresh token,
     ** so a later request can still refresh.
     *******************************************************************************/

@@ -53,6 +53,7 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
+import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.QSessionStoreRegistry;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.junit.jupiter.api.BeforeEach;
@@ -298,7 +299,10 @@ class HealthRunnerTest extends BaseTest
          assertThat(input.getAttempt()).isEqualTo(1);
          assertThat(input.getQInstance()).isSameAs(instance);
          assertThat(QContext.getQSession().getUser().getIdReference()).isEqualTo("health_runner");
-         assertThat(QContext.getQSession().getSecurityKeyValues()).isEmpty();
+         ////////////////////////////////////////////////////////////////
+         // system identity, so OAuth2/Auth0 hosts accept its writes //
+         ////////////////////////////////////////////////////////////////
+         assertThat(QContext.getQSession()).isInstanceOf(QSystemUserSession.class);
          return HealthCheckOutcome.degraded("slow").withLatencyMs(42L).withDetails(new HealthDetails().withValue("latency", 42))
             .withMetrics(List.of(new HealthMetric().withName("lag").withValue(3).withUnit("seconds")));
       }).withFailureThreshold(1).withSeverity(AlertSeverity.CRITICAL));

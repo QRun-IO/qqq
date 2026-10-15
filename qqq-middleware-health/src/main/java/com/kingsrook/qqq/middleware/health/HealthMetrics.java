@@ -36,7 +36,7 @@ import com.kingsrook.qqq.backend.core.health.HealthStatus;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
-import com.kingsrook.qqq.backend.core.model.session.QSession;
+import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 
 
 /*******************************************************************************
@@ -60,7 +60,7 @@ public final class HealthMetrics
    {
       Map<String, QRecord> rows = new LinkedHashMap<>();
       AtomicReference<QException> failure = new AtomicReference<>();
-      QContext.withTemporaryContext(new CapturedContext(instance, new QSession().withPermissions("health.read")), () ->
+      QContext.withTemporaryContext(new CapturedContext(instance, new QSystemUserSession(instance)), () ->
       {
          try
          {

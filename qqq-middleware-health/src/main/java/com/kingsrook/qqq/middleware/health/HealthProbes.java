@@ -45,7 +45,7 @@ import com.kingsrook.qqq.backend.core.health.HealthRunner;
 import com.kingsrook.qqq.backend.core.health.HealthStatus;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaData;
-import com.kingsrook.qqq.backend.core.model.session.QSession;
+import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 
 
 /*******************************************************************************
@@ -133,7 +133,7 @@ public final class HealthProbes
             {
                try
                {
-                  QContext.init(new CapturedContext(instance, new QSession().withPermissions("health.read")));
+                  QContext.init(new CapturedContext(instance, new QSystemUserSession(instance)));
                   HealthCheck implementation = check.getCheckInstance() == null ? QCodeLoader.getAdHoc(HealthCheck.class, check.getCheck()) : check.getCheckInstance();
                   long started = System.nanoTime();
                   HealthCheckOutcome outcome = implementation.run(new HealthCheckInput().withQInstance(instance)

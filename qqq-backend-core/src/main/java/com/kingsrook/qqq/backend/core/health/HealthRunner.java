@@ -56,7 +56,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
-import com.kingsrook.qqq.backend.core.model.session.QSession;
+import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 import com.kingsrook.qqq.backend.core.model.session.QUser;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
@@ -311,14 +311,17 @@ public class HealthRunner implements AutoCloseable
 
 
    /*******************************************************************************
-    ** Automated identity has health permissions only and no record security keys.
+    ** The runner is system code, like scheduled processes: it runs as a
+    ** QSystemUserSession (named after runnerUserName), so it can persist results
+    ** and run checks under every authentication module.  A plain session has no
+    ** stored token, and OAuth2/Auth0 hosts reject it on the first table action.
     ** Like scheduler workers, it installs a separate session on each thread.
     *******************************************************************************/
    private CapturedContext context()
    {
-      return (new CapturedContext(qInstance, new QSession()
-         .withUser(new QUser().withIdReference(settings.getRunnerUserName()).withFullName(settings.getRunnerUserName()))
-         .withSecurityKeyValues(Map.of()).withPermissions("health.read", "health.write")));
+      QSystemUserSession session = new QSystemUserSession(qInstance);
+      session.setUser(new QUser().withIdReference(settings.getRunnerUserName()).withFullName(settings.getRunnerUserName()));
+      return (new CapturedContext(qInstance, session));
    }
 
 

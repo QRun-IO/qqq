@@ -160,6 +160,19 @@ public final class JobSessions
 
 
    /*******************************************************************************
+    ** Whether a session comes from an access token rather than an interactive
+    ** sign-in: a scoped credential (PAT, QCredentialScope) or a bearer request.
+    ** Such sessions may not launch durable jobs - a worker could not hold the job
+    ** to the token's scope, expiry or revocation.
+    *******************************************************************************/
+   public static boolean isTokenSession(QSession session)
+   {
+      return (session != null && (session.getCredentialScope() != null || StringUtils.hasContent(session.getValue("qqq.oauth2.bearer"))));
+   }
+
+
+
+   /*******************************************************************************
     ** Bind a just-launched job to the launching sign-in (JobGrants), when grants
     ** are configured and the session is a real sign-in. Never fails the launch:
     ** a job without a grant falls back to the auth module's automated session.
@@ -171,12 +184,11 @@ public final class JobSessions
          return;
       }
 
-      //////////////////////////////////////////////////////////////////////
-      // a bearer-token request (API client) has no stored sign-in for a  //
-      // worker to rebuild: no grant; the auth module's automated session //
-      // path applies, as before                                          //
-      //////////////////////////////////////////////////////////////////////
-      if(StringUtils.hasContent(session.getValue("qqq.oauth2.bearer")))
+      ///////////////////////////////////////////////////////////////////
+      // token sessions never reach here (DurableJobs.launch refuses  //
+      // them); defensively, never bind a grant to one                //
+      ///////////////////////////////////////////////////////////////////
+      if(isTokenSession(session))
       {
          return;
       }

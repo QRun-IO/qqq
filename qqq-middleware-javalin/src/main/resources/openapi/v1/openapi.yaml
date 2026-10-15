@@ -7991,6 +7991,32 @@ paths:
       summary: "List a table's backend variants"
       tags:
       - "Tables"
+  /qqq/v1/table/{tableName}/apis:
+    get:
+      description: "The application APIs (served by the API middleware beside this\
+        \ one) that expose the table, with each API's versions and the root-relative\
+        \ path of the table's OpenAPI document in each version.  Empty when the application\
+        \ serves no APIs.  The caller must be allowed to read the table."
+      parameters:
+      - description: "Name of the table."
+        in: "path"
+        name: "tableName"
+        required: true
+        schema:
+          type: "string"
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TableApisResponseV1"
+          description: "Successful Response"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "List the APIs that expose a table"
+      tags:
+      - "Tables"
   /qqq/v1/table/{tableName}/{primaryKey}:
     delete:
       description: "Delete a single record from a table, identified by its primary\
@@ -8275,32 +8301,6 @@ paths:
       - sessionUuidCookie:
         - "N/A"
       summary: "Run a form adjuster"
-      tags:
-      - "Tables"
-  /qqq/v1/table/{tableName}/apis:
-    get:
-      description: "The application APIs (served by the API middleware beside this\
-        \ one) that expose the table, with each API's versions and the root-relative\
-        \ path of the table's OpenAPI document in each version.  Empty when the application\
-        \ serves no APIs.  The caller must be allowed to read the table."
-      parameters:
-      - description: "Name of the table."
-        in: "path"
-        name: "tableName"
-        required: true
-        schema:
-          type: "string"
-      responses:
-        200:
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/TableApisResponseV1"
-          description: "Successful Response"
-      security:
-      - sessionUuidCookie:
-        - "N/A"
-      summary: "List the APIs that expose a table"
       tags:
       - "Tables"
   /qqq/v1/table/{tableName}/apis/{apiName}/{version}/openapi:

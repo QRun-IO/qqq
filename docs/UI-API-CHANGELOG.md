@@ -73,6 +73,12 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 
 ## Versions
 
+### Unreleased (after 1.4.0; no change to the document)
+- Fixed: `GET /table/{tableName}/apis` answered 500 on a server, because `GET /table/{tableName}/{primaryKey}`
+  was registered first and took the request (Javalin matches routes in registration order). The
+  table APIs operation is now registered before the record get, and `MiddlewareVersionV1RouteOrderTest`
+  fails the build whenever a parameter route would shadow a later literal route.
+
 ### 1.4.0 (QQQ 4.1.0-RC.8)
 - Added `GET /jobs`, `GET /jobs/{jobId}`, `GET /jobs/{jobId}/progress`,
   `POST /jobs/{jobId}/cancel`, `POST /jobs/{jobId}/retry`, and `POST /jobs/track`.

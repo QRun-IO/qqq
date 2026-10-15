@@ -75,14 +75,14 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
       list.add(new HelpCoverageSpecV1());
 
       ///////////////////////////////////////////////////////////////////////////
-      // before TableGetSpecV1: GET /table/{t}/variants would otherwise match //
+      // before TableGetSpecV1: GET /table/{t}/variants and /apis would match  //
       // GET /table/{t}/{primaryKey} (routes match in registration order)     //
       ///////////////////////////////////////////////////////////////////////////
       list.add(new TableVariantsSpecV1());
+      list.add(new TableApisSpecV1());
       list.add(new TableGetSpecV1());
       list.add(new TableRecordFeaturesSpecV1());
       list.add(new TableFormAdjusterSpecV1());
-      list.add(new TableApisSpecV1());
       list.add(new TableApiDocumentSpecV1());
       list.add(new TableInsertSpecV1());
       list.add(new TableUpdateSpecV1());

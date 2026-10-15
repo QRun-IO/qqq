@@ -124,7 +124,7 @@ class RDBMSHealthTest
    void databaseRegistrationAndRedaction() throws Exception
    {
       var check = HealthChecksMetaData.ofOrWithNew(instance).getChecks().stream()
-         .filter(definition -> definition.getName().equals("core.database." + backend.getName())).findFirst().orElseThrow();
+         .filter(definition -> definition.getName().equals("core.database." + HealthChecksMetaData.toNamePart(backend.getName()))).findFirst().orElseThrow();
       assertThat(check.getKind()).isEqualTo(HealthCheckKind.READINESS);
       assertThat(check.getIncludeInReadiness()).isTrue();
       var outcome = check.getCheckInstance().run(new HealthCheckInput().withQInstance(instance).withDeadline(Instant.now().plusSeconds(3)));

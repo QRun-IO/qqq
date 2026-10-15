@@ -44,6 +44,7 @@ import com.nimbusds.jose.proc.DefaultJOSEObjectTypeVerifier;
 import com.nimbusds.jose.proc.JWSVerificationKeySelector;
 import com.nimbusds.jose.proc.SecurityContext;
 import com.nimbusds.jose.util.DefaultResourceRetriever;
+import com.nimbusds.jose.util.Resource;
 import com.nimbusds.jose.util.ResourceRetriever;
 import com.nimbusds.jwt.JWT;
 import com.nimbusds.jwt.JWTClaimsSet;
@@ -51,8 +52,7 @@ import com.nimbusds.jwt.JWTParser;
 import com.nimbusds.jwt.SignedJWT;
 import com.nimbusds.jwt.proc.DefaultJWTClaimsVerifier;
 import com.nimbusds.jwt.proc.DefaultJWTProcessor;
-import com.nimbusds.oauth2.sdk.id.Issuer;
-import com.nimbusds.openid.connect.sdk.op.OIDCProviderMetadata;
+import org.json.JSONObject;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
@@ -299,9 +299,25 @@ public class OAuth2BearerTokenVerifier
    {
       try
       {
-         OIDCProviderMetadata providerMetadata = OIDCProviderMetadata.resolve(new Issuer(baseUrl));
-         URL                  jwksUrl          = providerMetadata.getJWKSetURI().toURL();
-         return (new TrustedIssuer(providerMetadata.getIssuer().getValue(), buildKeySource(jwksUrl, new DefaultResourceRetriever(5_000, 5_000, 512 * 1024))));
+         ////////////////////////////////////////////////////////////////////////////
+         // only issuer and jwks_uri are needed, so read the discovery document   //
+         // leniently (OIDC, or an RFC 8414 authorization server) - the URL comes //
+         // from server configuration, never from a token                         //
+         ////////////////////////////////////////////////////////////////////////////
+         String     discoveryUrl = (baseUrl.endsWith("/") ? baseUrl : baseUrl + "/") + ".well-known/openid-configuration";
+         Resource   resource     = new DefaultResourceRetriever(5_000, 5_000, 512 * 1024).retrieveResource(new URL(discoveryUrl));
+         JSONObject discovery    = new JSONObject(resource.getContent());
+         String     issuer       = discovery.optString("issuer", null);
+         String     jwksUri      = discovery.optString("jwks_uri", null);
+         if(!StringUtils.hasContent(issuer) || !StringUtils.hasContent(jwksUri))
+         {
+            throw (new IllegalStateException("discovery document has no issuer or jwks_uri"));
+         }
+         if(!sameIssuer(baseUrl, issuer))
+         {
+            LOG.info("OAuth2 discovery issuer differs from the configured base url; tokens must carry the discovered issuer", logPair("baseUrl", baseUrl), logPair("issuer", issuer));
+         }
+         return (new TrustedIssuer(issuer, buildKeySource(new URL(jwksUri), new DefaultResourceRetriever(5_000, 5_000, 512 * 1024))));
       }
       catch(Exception e)
       {

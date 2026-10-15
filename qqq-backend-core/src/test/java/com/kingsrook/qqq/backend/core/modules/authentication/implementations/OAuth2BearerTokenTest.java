@@ -358,6 +358,47 @@ class OAuth2BearerTokenTest extends BaseTest
 
 
    /***************************************************************************
+    ** real discovery: issuer and jwks_uri read from the provider's
+    ** .well-known/openid-configuration (a loopback fixture).
+    ***************************************************************************/
+   @Test
+   void testDiscovery() throws Exception
+   {
+      com.sun.net.httpserver.HttpServer server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+      String                            base   = "http://127.0.0.1:" + server.getAddress().getPort() + "/application/o/disc/";
+      server.createContext("/application/o/disc/.well-known/openid-configuration", exchange ->
+      {
+         byte[] body = new JSONObject().put("issuer", base).put("jwks_uri", base + "jwks/").toString().getBytes(StandardCharsets.UTF_8);
+         exchange.sendResponseHeaders(200, body.length);
+         exchange.getResponseBody().write(body);
+         exchange.close();
+      });
+      server.createContext("/application/o/disc/jwks/", exchange ->
+      {
+         byte[] body = new JWKSet(appKey.toPublicJWK()).toString().getBytes(StandardCharsets.UTF_8);
+         exchange.sendResponseHeaders(200, body.length);
+         exchange.getResponseBody().write(body);
+         exchange.close();
+      });
+      server.start();
+      try
+      {
+         OAuth2BearerTokenVerifier.setIssuerResolverForTests(null);
+         metaData.setBaseUrl(base);
+         metaData.setNativeClientId(null);
+         metaData.setNativeClientBaseUrl(null);
+         assertEquals("user@example.com", createSession(sign(appKey, claims(base, APP_CLIENT).build())).getUser().getIdReference());
+         assertRejected(sign(otherKey, claims(base, APP_CLIENT).build()));
+      }
+      finally
+      {
+         server.stop(0);
+      }
+   }
+
+
+
+   /***************************************************************************
     ** an expired bearer session is invalid (e.g. for a queued async job).
     ***************************************************************************/
    @Test

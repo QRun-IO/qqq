@@ -21,6 +21,7 @@
 package com.kingsrook.qqq.middleware.javalin;
 
 
+import java.lang.ref.WeakReference;
 import java.nio.charset.Charset;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -410,7 +411,19 @@ public class QApplicationJavalinServer
       ////////////////////////////////////////////////////////////////////////
       if(drainShutdownHook == null)
       {
-         drainShutdownHook = JavalinClusterSupport.installShutdownHook(this::stop);
+         ///////////////////////////////////////////////////////////////////////
+         // the hook holds the server weakly: a server that is dropped without //
+         // stop() (tests) must not stay reachable from the JVM's hooks        //
+         ///////////////////////////////////////////////////////////////////////
+         WeakReference<QApplicationJavalinServer> self = new WeakReference<>(this);
+         drainShutdownHook = JavalinClusterSupport.installShutdownHook(() ->
+         {
+            QApplicationJavalinServer server = self.get();
+            if(server != null)
+            {
+               server.stop();
+            }
+         });
       }
    }
 

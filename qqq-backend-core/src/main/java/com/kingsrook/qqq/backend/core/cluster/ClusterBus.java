@@ -21,6 +21,7 @@
 package com.kingsrook.qqq.backend.core.cluster;
 
 
+import java.lang.ref.WeakReference;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
@@ -170,13 +171,20 @@ public final class ClusterBus
          return (CONNECTIONS.computeIfAbsent(instance, key ->
          {
             ClusterBusInterface transport = buildTransport(key);
+
+            ///////////////////////////////////////////////////////////////////
+            // the map is weak on the instance: the subscription must not   //
+            // hold it strongly, or no instance would ever be collected     //
+            ///////////////////////////////////////////////////////////////////
+            WeakReference<QInstance> weakInstance = new WeakReference<>(key);
             AutoCloseable subscription = transport.subscribe(event ->
             {
-               if(event == null || QNodeRoles.nodeId().equals(event.getOriginNodeId()))
+               QInstance target = weakInstance.get();
+               if(target == null || event == null || QNodeRoles.nodeId().equals(event.getOriginNodeId()))
                {
                   return;
                }
-               dispatch(key, event);
+               dispatch(target, event);
             });
             return (new Connection(transport, subscription));
          }));

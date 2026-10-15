@@ -124,15 +124,16 @@ without ESB (P2).
 
 1. `draining = true`. `/ready` returns 503 (`"draining"`), so the endpoints
    controller removes the pod. The k8s `preStop` sleep (5 s) covers propagation.
-2. It waits `QQQ_DRAIN_DELAY_SECONDS` (default 5) for in-flight load balancer
-   routing to settle.
+2. It waits `QQQ_DRAIN_DELAY_SECONDS` (default 0, so a single node stops at once;
+   set 5 on Kubernetes) for in-flight load balancer routing to settle.
 3. It stops Jetty gracefully: no new connections, and in-flight requests finish
    (Jetty `stopTimeout`, default 20 s).
 4. It drains `AsyncJobManager` (in-flight inline steps finish, up to the remaining
    budget) and `DurableJobsRuntime.stop` (leases released, so another worker
    picks them up). The ESB runtime and scheduler stop through their existing hooks.
 
-For kof22, `terminationGracePeriodSeconds` goes to 60. Budget: preStop 5 s, drain
+For kof22, `terminationGracePeriodSeconds` goes to 60. The user-facing settings for each
+mode are in [Deployment modes](../DEPLOYMENT-MODES.md). Budget: preStop 5 s, drain
 5 s, HTTP 20 s, jobs 25 s.
 
 ### E. qbit-cluster (new public repo QRun-IO/qbit-cluster, Apache-2.0)

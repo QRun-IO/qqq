@@ -27,6 +27,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -71,6 +72,17 @@ class PackagedSampleServer implements AutoCloseable
     *******************************************************************************/
    static PackagedSampleServer start(Class<?> launcher, Path directory, List<String> arguments, List<String> jvmOptions) throws Exception
    {
+      return start(launcher, directory, arguments, jvmOptions, Map.of());
+   }
+
+
+
+   /*******************************************************************************
+    ** Run a public launcher with additional JVM options and environment variables
+    ** (such as a node's QQQ_NODE_ROLES and QQQ_NODE_ID).
+    *******************************************************************************/
+   static PackagedSampleServer start(Class<?> launcher, Path directory, List<String> arguments, List<String> jvmOptions, Map<String, String> environment) throws Exception
+   {
       Path artifact = Path.of(SampleJavalinServer.class.getProtectionDomain().getCodeSource().getLocation().toURI());
       assertTrue(Files.isRegularFile(artifact), "Acceptance must load the packaged sample");
       Path bundle = artifact.resolveSibling(artifact.getFileName().toString().replace(".jar", "-jar-with-dependencies.jar"));
@@ -91,8 +103,10 @@ class PackagedSampleServer implements AutoCloseable
          "-Dqqq.sample.mockAuthentication=true", "-Dqqq.sample.port=0",
          "-cp", bundle.toString(), launcher.getName()));
       command.addAll(arguments);
-      Process process = new ProcessBuilder(command).directory(Files.createDirectory(work.resolve("cwd")).toFile())
-         .redirectErrorStream(true).redirectOutput(log.toFile()).start();
+      ProcessBuilder builder = new ProcessBuilder(command).directory(Files.createDirectory(work.resolve("cwd")).toFile())
+         .redirectErrorStream(true).redirectOutput(log.toFile());
+      builder.environment().putAll(environment);
+      Process process = builder.start();
       return new PackagedSampleServer(process, log);
    }
 
@@ -135,6 +149,37 @@ class PackagedSampleServer implements AutoCloseable
    String output() throws Exception
    {
       return Files.readString(log);
+   }
+
+
+
+   /*******************************************************************************
+    ** Kill the child at once (SIGKILL), as a lost node.
+    *******************************************************************************/
+   void kill() throws Exception
+   {
+      process.destroyForcibly();
+      assertTrue(process.waitFor(10, TimeUnit.SECONDS), "Killed sample process must exit");
+   }
+
+
+
+   /*******************************************************************************
+    ** Ask the child to stop (SIGTERM on Unix, so its shutdown hooks drain).
+    *******************************************************************************/
+   void terminate()
+   {
+      process.destroy();
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   boolean isAlive()
+   {
+      return process.isAlive();
    }
 
 

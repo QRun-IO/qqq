@@ -27,6 +27,7 @@ import com.kingsrook.qqq.backend.core.instances.AbstractQQQApplication;
 import com.kingsrook.qqq.esb.connection.EsbConnectionManager;
 import com.kingsrook.qqq.esb.runtime.QEsbRuntime;
 import com.kingsrook.qqq.middleware.javalin.QApplicationJavalinServer;
+import com.kingsrook.sampleapp.cluster.SampleClusterMode;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
 import io.javalin.config.JavalinConfig;
 import org.apache.activemq.artemis.core.config.Configuration;
@@ -81,10 +82,21 @@ public class SampleJavalinServer extends QApplicationJavalinServer
    {
       try
       {
-         primeTestDatabase("prime-test-database.sql");
-         if(Boolean.getBoolean("qqq.sample.sharing"))
+         //////////////////////////////////////////////////////////////////
+         // in cluster mode, only the node told to prime the shared      //
+         // database does so (SampleClusterMode); the others join it     //
+         //////////////////////////////////////////////////////////////////
+         if(SampleClusterMode.shouldPrimeDatabase())
          {
-            primeTestDatabase("prime-sharing-database.sql");
+            primeTestDatabase("prime-test-database.sql");
+            if(Boolean.getBoolean("qqq.sample.sharing"))
+            {
+               primeTestDatabase("prime-sharing-database.sql");
+            }
+            if(SampleClusterMode.isEnabled())
+            {
+               primeTestDatabase("prime-cluster-database.sql");
+            }
          }
       }
       catch(Exception e)
@@ -105,8 +117,16 @@ public class SampleJavalinServer extends QApplicationJavalinServer
             .setPagingDirectory(dataDirectory + "/paging")
             .setLargeMessagesDirectory(dataDirectory + "/largemessages")
             .addAcceptorConfiguration("tcp", "tcp://127.0.0.1:" + port);
-         embeddedBroker = new EmbeddedActiveMQ().setConfiguration(configuration);
-         embeddedBroker.start();
+         //////////////////////////////////////////////////////////////////////
+         // the broker is embedded unless this node uses another node's       //
+         // (qqq.sample.esb.embedded=false, cluster mode); it then connects   //
+         // to qqq.sample.esb.port                                            //
+         //////////////////////////////////////////////////////////////////////
+         if(!"false".equalsIgnoreCase(System.getProperty("qqq.sample.esb.embedded")))
+         {
+            embeddedBroker = new EmbeddedActiveMQ().setConfiguration(configuration);
+            embeddedBroker.start();
+         }
          Consumer<JavalinConfig> customizer = getJavalinConfigCustomizer();
          if(Integer.valueOf(0).equals(getPort()))
          {

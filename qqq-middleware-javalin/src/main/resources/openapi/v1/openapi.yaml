@@ -173,15 +173,17 @@ components:
     AuditsCapabilityV1:
       properties:
         available:
-          description: "True when the table is audited and the user can read its audits\
-            \ one of the two ways."
+          description: "True when the user can read this table and its audits one\
+            \ of the two ways (the audit process enforces both). Independent of level:\
+            \ records of a table at level NONE can still have audits written explicitly."
           nullable: true
           type: "boolean"
         detailTableName:
           description: "The audit detail table (field changes), joined to tableName."
           type: "string"
         level:
-          description: "The table's audit level: NONE, RECORD or FIELD."
+          description: "The table's audit level: NONE, RECORD or FIELD (informational:\
+            \ what is audited automatically)."
           type: "string"
         processName:
           description: "The process that returns a record's audits (inputs tableName,\
@@ -4514,8 +4516,10 @@ components:
               description: "Audit history of this table's records."
               properties:
                 available:
-                  description: "True when the table is audited and the user can read\
-                    \ its audits one of the two ways."
+                  description: "True when the user can read this table and its audits\
+                    \ one of the two ways (the audit process enforces both). Independent\
+                    \ of level: records of a table at level NONE can still have audits\
+                    \ written explicitly."
                   nullable: true
                   type: "boolean"
                 detailTableName:
@@ -4523,7 +4527,8 @@ components:
                     \ tableName."
                   type: "string"
                 level:
-                  description: "The table's audit level: NONE, RECORD or FIELD."
+                  description: "The table's audit level: NONE, RECORD or FIELD (informational:\
+                    \ what is audited automatically)."
                   type: "string"
                 processName:
                   description: "The process that returns a record's audits (inputs\

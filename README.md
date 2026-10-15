@@ -175,6 +175,8 @@ isolated resource-only probes from a module directory need `-Dcheckstyle.skip=tr
 
 [Contingent possible values](docs/CONTINGENT-POSSIBLE-VALUES.md) documents dependent choices, frontend integration, server validation and the address-book sample.
 
+[Deployment modes](docs/DEPLOYMENT-MODES.md) gives the exact configuration for a single node (the default: nothing to set), a single node with ESB, and HA on several nodes (roles, shared state, cluster bus, broker HA, drain), and how to go back to one node.
+
 Start with the [sample application](qqq-sample-project/README.md), [4.0 migration guide](docs/migration/4.0.adoc), [framework documentation](https://www.qrun.io/docs), and [QQQ Wiki](https://github.com/QRun-IO/qqq/wiki).
 
 ## License

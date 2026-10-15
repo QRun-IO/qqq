@@ -245,13 +245,15 @@ public class TableCapabilitiesV1 implements ToSchema
          .withDeleteProcessName(canQueryViews && canRun(instance, input, SAVED_VIEW_DELETE_PROCESS) ? SAVED_VIEW_DELETE_PROCESS : null));
 
       ////////////////////////////////////////////////////////////////////////////
-      // audits: the process, or the audit table, readable by the user.  The    //
-      // level is informational: a table with level NONE gets no automatic     //
-      // audits, but code can still write audits for its records explicitly    //
+      // audits: the user must read this table (the audit process enforces it  //
+      // too), then run the audit process or read the audit table.  The level  //
+      // is informational: a table with level NONE gets no automatic audits,   //
+      // but code can still write audits for its records explicitly            //
       ////////////////////////////////////////////////////////////////////////////
       AuditLevel level        = table.getAuditRules() == null || table.getAuditRules().getAuditLevel() == null ? AuditLevel.NONE : table.getAuditRules().getAuditLevel();
-      boolean    auditProcess = canRun(instance, input, GetAuditsForRecordProcess.NAME);
-      boolean    auditTable   = instance.getTable(AuditsMetaDataProvider.TABLE_NAME_AUDIT) != null
+      boolean    canReadTable = PermissionsHelper.hasTablePermission(input, table.getName(), TablePermissionSubType.READ);
+      boolean    auditProcess = canReadTable && canRun(instance, input, GetAuditsForRecordProcess.NAME);
+      boolean    auditTable   = canReadTable && instance.getTable(AuditsMetaDataProvider.TABLE_NAME_AUDIT) != null
          && PermissionsHelper.hasTablePermission(input, AuditsMetaDataProvider.TABLE_NAME_AUDIT, TablePermissionSubType.READ);
       rs.withAudits(new AuditsCapabilityV1()
          .withAvailable(auditProcess || auditTable)

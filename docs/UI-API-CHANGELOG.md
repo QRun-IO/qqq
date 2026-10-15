@@ -80,6 +80,15 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 
 ## Versions
 
+### Next release (QQQ 4.1.0-RC.16; merges into that release's version entry)
+
+- **Audits capability (behaviour fix, no schema change).** `clientCapabilities.audits.available`
+  no longer requires an audit level other than `NONE`: it requires that the user can read the
+  table, and can run `GetAuditsForRecord` or read the `audit` table. `level` is informational (a
+  table at level `NONE` gets no automatic audits, but code can still write audits for its
+  records). `GetAuditsForRecord` now refuses (permission denied) a table the user may not read,
+  or an unknown table.
+
 ### 1.6.0 (QQQ 4.1.0-RC.15) - native clients
 Ready for CLI, TUI and native clients (see `UI-API-CLIENTS.md`).
 
@@ -133,9 +142,6 @@ Ready for CLI, TUI and native clients (see `UI-API-CLIENTS.md`).
   names, for shareable tables) and `bulkInsert`/`bulkEdit`/`bulkEditWithFile`/`bulkDelete`
   (`ProcessCapabilityV1`). Each is computed for the current user, so clients no longer hard-code
   process names. (The existing `capabilities` list of backend capabilities is unchanged.)
-  `audits.available` depends only on whether the user can run the audit process or read the audit
-  table; `level` is informational (a table at level `NONE` gets no automatic audits, but code can
-  still write audits for its records).
 - **Field validation rules.** Each field adds `validation` (`FieldValidationV1`): `required`,
   `maxLength` with `tooLongBehavior`, `minValue`/`maxValue` with `minInclusive`/`maxInclusive`
   (only ranges the server refuses), and `pattern` with `patternMessage`. Core adds

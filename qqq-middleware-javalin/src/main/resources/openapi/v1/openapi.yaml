@@ -141,9 +141,9 @@ components:
     AuditsCapabilityV1:
       properties:
         available:
-          description: "True when the user can read audits one of the two ways. Independent\
-            \ of level: records of a table at level NONE can still have audits written\
-            \ explicitly."
+          description: "True when the user can read this table and its audits one\
+            \ of the two ways (the audit process enforces both). Independent of level:\
+            \ records of a table at level NONE can still have audits written explicitly."
           nullable: true
           type: "boolean"
         detailTableName:
@@ -4484,9 +4484,10 @@ components:
               description: "Audit history of this table's records."
               properties:
                 available:
-                  description: "True when the user can read audits one of the two\
-                    \ ways. Independent of level: records of a table at level NONE\
-                    \ can still have audits written explicitly."
+                  description: "True when the user can read this table and its audits\
+                    \ one of the two ways (the audit process enforces both). Independent\
+                    \ of level: records of a table at level NONE can still have audits\
+                    \ written explicitly."
                   nullable: true
                   type: "boolean"
                 detailTableName:
@@ -12592,8 +12593,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          type: "STRING"
                           isHeavy: false
+                          type: "STRING"
                           validation:
                             required: true
                           isHidden: false
@@ -12606,8 +12607,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          type: "STRING"
                           isHeavy: false
+                          type: "STRING"
                           isHidden: false
                       - components:
                         - type: "PROCESS_SUMMARY_RESULTS"
@@ -12786,8 +12787,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          type: "STRING"
                           isHeavy: false
+                          type: "STRING"
                           validation:
                             required: true
                           isHidden: false
@@ -12800,8 +12801,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          type: "STRING"
                           isHeavy: false
+                          type: "STRING"
                           isHidden: false
                       - components:
                         - type: "PROCESS_SUMMARY_RESULTS"
@@ -12945,8 +12946,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          type: "STRING"
                           isHeavy: false
+                          type: "STRING"
                           validation:
                             required: true
                           isHidden: false
@@ -12959,8 +12960,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          type: "STRING"
                           isHeavy: false
+                          type: "STRING"
                           isHidden: false
                       - components:
                         - type: "PROCESS_SUMMARY_RESULTS"

@@ -28,13 +28,16 @@ import java.util.Objects;
 import com.google.gson.reflect.TypeToken;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
 import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.permissions.UseTablePermissionCustomPermissionChecker;
 import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.actions.tables.CountAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.personalization.TableMetaDataPersonalizerInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
@@ -119,6 +122,16 @@ public class GetAuditsForRecordProcess implements MetaDataProducerInterface<QPro
       boolean sortDirection = BooleanUtils.isTrue(runBackendStepInput.getValueBoolean("isSortAscending"));
       Integer limit         = Objects.requireNonNullElse(runBackendStepInput.getValueInteger("limit"), 1000);
       String  tableName     = runBackendStepInput.getValueString("tableName");
+
+      /////////////////////////////////////////////////////////////////////////////
+      // a record's audits are visible only to users who may read its table:     //
+      // the audit rows name the table and record, and carry its old/new values  //
+      /////////////////////////////////////////////////////////////////////////////
+      if(!StringUtils.hasContent(tableName) || QContext.getQInstance().getTable(tableName) == null
+         || !PermissionsHelper.hasTablePermission(runBackendStepInput, tableName, TablePermissionSubType.READ))
+      {
+         throw (new QPermissionDeniedException("Permission denied."));
+      }
 
       QQueryFilter filter = new QQueryFilter()
          .withCriteria(new QFilterCriteria(AuditsMetaDataProvider.TABLE_NAME_AUDIT_TABLE + ".name", QCriteriaOperator.EQUALS, tableName))

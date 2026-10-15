@@ -27,6 +27,8 @@ import com.kingsrook.qqq.backend.core.model.audits.AuditsMetaDataProvider;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.AuditLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.QAuditRules;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.processes.implementations.audits.GetAuditsForRecordProcess;
@@ -37,6 +39,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
@@ -95,6 +98,44 @@ class TableCapabilitiesV1Test
       AuditsCapabilityV1 audits = TableCapabilitiesV1.of(person).getAudits();
       assertFalse(audits.getAvailable());
       assertEquals("FIELD", audits.getLevel());
+   }
+
+
+
+   /*******************************************************************************
+    ** available only shows the button: a user who may not read the table (or
+    ** the audits) gets available=false; the audit process enforces the same.
+    *******************************************************************************/
+   @Test
+   void testAuditsRequireReadPermission() throws Exception
+   {
+      QInstance instance = TestUtils.defineInstance();
+      new AuditsMetaDataProvider().defineAll(instance, TestUtils.BACKEND_NAME_MEMORY, null);
+      QTableMetaData person = instance.getTable(TestUtils.TABLE_NAME_PERSON);
+      person.setPermissionRules(new QPermissionRules().withLevel(PermissionLevel.READ_WRITE_PERMISSIONS));
+
+      QContext.init(instance, new QSession());
+      assertFalse(TableCapabilitiesV1.of(person).getAudits().getAvailable());
+
+      QContext.init(instance, new QSession().withPermission(TestUtils.TABLE_NAME_PERSON + ".read"));
+      assertTrue(TableCapabilitiesV1.of(person).getAudits().getAvailable());
+
+      ///////////////////////////////////////////////////////////////////////////
+      // the audit process and audit table protected too: reading the table   //
+      // alone is not enough                                                   //
+      ///////////////////////////////////////////////////////////////////////////
+      instance.getProcess(GetAuditsForRecordProcess.NAME).setPermissionRules(new QPermissionRules().withLevel(PermissionLevel.HAS_ACCESS_PERMISSION));
+      instance.getTable(AuditsMetaDataProvider.TABLE_NAME_AUDIT).setPermissionRules(new QPermissionRules().withLevel(PermissionLevel.READ_WRITE_PERMISSIONS));
+      AuditsCapabilityV1 audits = TableCapabilitiesV1.of(person).getAudits();
+      assertFalse(audits.getAvailable());
+      assertNull(audits.getProcessName());
+      assertNull(audits.getTableName());
+
+      QContext.init(instance, new QSession().withPermissions(TestUtils.TABLE_NAME_PERSON + ".read", GetAuditsForRecordProcess.NAME + ".hasAccess"));
+      audits = TableCapabilitiesV1.of(person).getAudits();
+      assertTrue(audits.getAvailable());
+      assertEquals(GetAuditsForRecordProcess.NAME, audits.getProcessName());
+      assertNull(audits.getTableName());
    }
 
 }

@@ -80,6 +80,10 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 ## Versions
 
 ### 1.5.0 (unreleased)
+- Fixed: `GET /table/{tableName}/apis` answered 500 on a server, because `GET /table/{tableName}/{primaryKey}`
+  was registered first and took the request (Javalin matches routes in registration order). The
+  table APIs operation is now registered before the record get, and `MiddlewareVersionV1RouteOrderTest`
+  fails the build whenever a parameter route would shadow a later literal route.
 - Output delivery:
   - Added `GET /delivery/destinations`, `POST /delivery/destinations/{name}/targets`
     (`{chosen: {...}}`), and `GET /delivery/output/{logId}`. Discovery and target

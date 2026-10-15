@@ -49,7 +49,20 @@ public class RealtimeEventV1 implements ToSchema
       Map<String, Schema> properties = new TreeMap<>();
       properties.put("event", new Schema().withType(Type.STRING));
       properties.put("channel", new Schema().withType(Type.STRING));
-      properties.put("data", new Schema().withType(Type.OBJECT).withAdditionalProperties(true));
+      Map<String, Schema> data = new TreeMap<>();
+      String dataByType = "dataByType: hello -> RealtimeHelloEventV1; job.progress -> RealtimeJobProgressEventV1; "
+         + "record.changed -> RealtimeRecordChangedEventV1; record.deleted -> RealtimeRecordDeletedEventV1; "
+         + "table.changed -> RealtimeTableChangedEventV1; metadata.changed -> RealtimeMetaDataChangedEventV1; "
+         + "session-ended -> RealtimeSessionEndedEventV1; resync -> RealtimeResyncEventV1; channel-revoked -> RealtimeChannelRevokedEventV1. "
+         + "Selected by the envelope's event; data has no discriminator. ";
+      for(ToSchema eventData : java.util.List.of(new RealtimeHelloEventV1(), new RealtimeJobProgressEventV1(),
+         new RealtimeRecordChangedEventV1(), new RealtimeRecordDeletedEventV1(), new RealtimeTableChangedEventV1(),
+         new RealtimeMetaDataChangedEventV1(), new RealtimeSessionEndedEventV1(), new RealtimeResyncEventV1(), new RealtimeChannelRevokedEventV1()))
+      {
+         data.putAll(eventData.toSchema().getProperties());
+      }
+      properties.put("data", new Schema().withType(Type.OBJECT).withProperties(data)
+         .withDescription(dataByType + "All properties are optional; QBits may publish additional event-specific data."));
       return (new Schema().withType(Type.OBJECT).withProperties(properties));
    }
 

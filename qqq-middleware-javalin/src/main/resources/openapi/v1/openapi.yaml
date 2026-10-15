@@ -233,6 +233,7 @@ components:
               bearerTokensAccepted:
                 description: "True when the server accepts the provider's access tokens\
                   \ as Authorization: Bearer <JWT>. Since 1.6.0."
+                nullable: true
                 type: "boolean"
               clientId:
                 description: "ClientId for OAuth2 provider"
@@ -397,6 +398,7 @@ components:
           type: "number"
         distinctCountCapped:
           description: "Whether more distinct values exist than were counted."
+          nullable: true
           type: "boolean"
         header:
           description: "Header text (or Column A, Column B ... when the file has no\
@@ -429,6 +431,7 @@ components:
           description: "Whether sample values may be shown: an AI route of hipaa,\
             \ or a mapped field that is unclassified or PUBLIC. Unmapped columns are\
             \ treated as classified."
+          nullable: true
           type: "boolean"
       type: "object"
     BulkLoadColumnRef:
@@ -523,6 +526,7 @@ components:
         hasHeaderRow:
           description: "Whether row 1 looks like a header row (the suggester maps\
             \ at least one of its values)."
+          nullable: true
           type: "boolean"
         rowsProfiled:
           description: "Data rows profiled (up to 1000)."
@@ -622,12 +626,15 @@ components:
       properties:
         chosen:
           additionalProperties: true
+          description: "Selections by delivery target step name; values are provider-defined\
+            \ target identifiers."
           type: "object"
       type: "object"
     ExposedJoin:
       properties:
         isMany:
           description: "Whether or not this join is 'to many' in nature"
+          nullable: true
           type: "boolean"
         joinPath:
           description: "A list of joins that travel from the base table to the exposed\
@@ -679,6 +686,7 @@ components:
           - "FILE_PREVIEW"
           type: "string"
         values:
+          additionalProperties: {}
           description: "Values associated with this adornment.  Keys and the meanings\
             \ of their values differ by type; the known\nkeys are listed (each names\
             \ the type(s) it applies to).  CHIP also uses pattern keys: `color.{fieldValue}`\n\
@@ -745,9 +753,11 @@ components:
               - "medlarge"
               - "large"
               - "xlarge"
+              - "full"
+              - "half"
               type: "string"
             format:
-              description: "FILE_UPLOAD: accepted file formats (e.g. .csv,.xlsx)."
+              description: "FILE_UPLOAD: control style (dragAndDrop or button)."
               type: "string"
             languageMode:
               description: "CODE_EDITOR: language of the code (e.g. javascript, sql,\
@@ -932,19 +942,24 @@ components:
           type: "object"
         isEditable:
           description: "Indicate if user may edit the value in this field."
+          nullable: true
           type: "boolean"
         isHeavy:
           description: "Indicator of 'heavy' fields, which are not loaded by default.\
             \  e.g., some blobs or long-texts"
+          nullable: true
           type: "boolean"
         isHidden:
           description: "Indicate if this field should be hidden from users"
+          nullable: true
           type: "boolean"
         isRequired:
           description: "Indicate if a value in this field is required."
+          nullable: true
           type: "boolean"
         isSortable:
           description: "False for restricted fields; omitted means sortable."
+          nullable: true
           type: "boolean"
         label:
           description: "User-facing name for this field"
@@ -1124,20 +1139,23 @@ components:
           type: "object"
       type: "object"
     FrontendComponentValues:
-      additionalProperties: true
       description: "These are the known values that can appear in the values map under\
         \ a FrontendComponent, to control\nhow that component should be presented\
-        \ to the user.\n\nNote that additional properties may appear as well.\n\n\
-        In addition, components are expected to use values from an active process's\
-        \ `values` map (e.g., as included in\na `ProcessStepComplete` object), with\
-        \ the following contract between component-types and expected values:\n\n\
-        - For component type=`HTML`, there will be a process value with key=`${stepName}.html`\
-        \ (e.g., `resultScreen.html`),\nwhose value is the HTML to display on that\
-        \ screen.\n- For component type=`HELP_TEXT`:  There will be a process value\
-        \ with key=`text`, whose value is the text to display on that screen.\nThere\
-        \ may also be a process value with key=`previewText`, which, if present, can\
-        \ be shown before the full text is shown,\ne.g., with a toggle control to\
-        \ hide/show the `text` value.\n"
+        \ to the user.\n\nAdditional application-defined properties may appear as\
+        \ well. BULK_EDIT_FORM, BULK_LOAD_FILE_MAPPING_FORM,\nBULK_LOAD_VALUE_MAPPING_FORM,\
+        \ BULK_LOAD_PROFILE_FORM, VALIDATION_REVIEW_SCREEN, VIEW_FORM, DOWNLOAD_FORM,\n\
+        RECORD_LIST, PROCESS_SUMMARY_RESULTS and GOOGLE_DRIVE_SELECT_FOLDER have no\
+        \ fixed component-local keys\nsupplied by the core producers; they consume\
+        \ process values and frontend-step metadata.\n\nIn addition, components are\
+        \ expected to use values from an active process's `values` map (e.g., as included\
+        \ in\na `ProcessStepComplete` object), with the following contract between\
+        \ component-types and expected values:\n\n- For component type=`HTML`, there\
+        \ will be a process value with key=`${stepName}.html` (e.g., `resultScreen.html`),\n\
+        whose value is the HTML to display on that screen.\n- For component type=`HELP_TEXT`:\
+        \  There will be a process value with key=`text`, whose value is the text\
+        \ to display on that screen.\nThere may also be a process value with key=`previewText`,\
+        \ which, if present, can be shown before the full text is shown,\ne.g., with\
+        \ a toggle control to hide/show the `text` value.\n"
       properties:
         blocks:
           description: "Components of type=`WIDGET`, which are set as `isAdHocWidget=true`,\
@@ -1158,10 +1176,17 @@ components:
             \ defined in the QQQ Instance, but instead,\nare defined as a list of\
             \ blocks within a frontend step component, will have a this value set\
             \ to true."
+          nullable: true
           type: "boolean"
+        previewText:
+          description: "HELP_TEXT: short text shown before expanding the full text."
+          type: "string"
         sectionLabel:
           description: "Components of type=`EDIT_FORM` can specify a user-facing text\
             \ label to show on screen.\n"
+          type: "string"
+        text:
+          description: "HELP_TEXT: text shown by the component."
           type: "string"
         widgetName:
           description: "Components of type=`WIDGET`, which should render a widget\
@@ -1221,6 +1246,9 @@ components:
           description: "Rendered Markdown (raw HTML escaped, unsafe links removed).\
             \ Explicit HTML is unchanged and clients must sanitize it."
           type: "string"
+        contentAsText:
+          description: "Plain-text help, preserving link text and line breaks."
+          type: "string"
         format:
           description: "Format of the long help."
           enum:
@@ -1241,12 +1269,15 @@ components:
       properties:
         hasContent:
           description: "Whether visible help has long content."
+          nullable: true
           type: "boolean"
         hasSummary:
           description: "Whether visible help has an explicit summary."
+          nullable: true
           type: "boolean"
         hidden:
           description: "Whether the target is hidden in metadata."
+          nullable: true
           type: "boolean"
         key:
           description: "Canonical helpContent address."
@@ -1302,6 +1333,9 @@ components:
           description: "Rendered Markdown (raw HTML escaped, unsafe links removed).\
             \ Explicit HTML is unchanged and clients must sanitize it."
           type: "string"
+        contentAsText:
+          description: "Plain-text help, preserving link text and line breaks."
+          type: "string"
         href:
           description: "Application-relative navigation link, when available."
           type: "string"
@@ -1336,11 +1370,14 @@ components:
           description: "A color code to use for displaying the icon"
           type: "string"
         name:
-          description: "A material UI icon name."
+          description: "Material UI icon name (web); prefer semanticName"
           type: "string"
         path:
           description: "A path to an image file that can be requested from the server,\
             \ to serve as the icon image instead of a material UI icon."
+          type: "string"
+        semanticName:
+          description: "Client-neutral kebab-case icon token; null when unmapped."
           type: "string"
       type: "object"
     JobActionResponseV1:
@@ -1550,6 +1587,7 @@ components:
               type: "string"
           type: "object"
         terminal:
+          nullable: true
           type: "boolean"
       type: "object"
     JobProgressV1:
@@ -1671,7 +1709,7 @@ components:
     MaterialDashboardWeekdayCriteriaSettings:
       properties:
         dateTimeFieldFunctionArguments:
-          additionalProperties: true
+          $ref: "#/components/schemas/WeekdayCriteriaArguments"
           description: "Arguments for the WeekdayOfDateTime field function that a\
             \ frontend sends with weekday criteria on date-time fields (for example\
             \ timeZoneId or useSessionZoneId)."
@@ -1679,6 +1717,7 @@ components:
         enabled:
           description: "Whether query screens offer the weekday criteria (day is any\
             \ of, day is none of) on date and date-time fields."
+          nullable: true
           type: "boolean"
       type: "object"
     MetaDataResponseV1:
@@ -1765,7 +1804,7 @@ components:
             properties:
               hasPermission:
                 description: "Whether the user may run the report."
-                type: "object"
+                type: "boolean"
               helpContents:
                 additionalProperties:
                   items:
@@ -1774,7 +1813,10 @@ components:
                 description: "Help entries by slot, filtered for the current session."
                 type: "object"
               iconName:
-                description: "Name of the report's icon."
+                description: "Material UI icon name (web); prefer iconSemanticName"
+                type: "string"
+              iconSemanticName:
+                description: "Client-neutral kebab-case icon token; null when unmapped."
                 type: "string"
               label:
                 description: "User-facing name for this report."
@@ -1804,8 +1846,8 @@ components:
                 \ QBit publishes for frontends."
               type: "object"
             materialDashboard:
-              description: "Settings from the instance's `materialDashboard` supplemental\
-                \ meta-data, when the instance defines it."
+              deprecated: true
+              description: "Use uiSettings; kept for Next UI until it migrates"
               properties:
                 processNamesToAddToAllQueryAndViewScreens:
                   description: "Names of processes to offer on the query and record-view\
@@ -1826,7 +1868,7 @@ components:
                     \ meta-data does not define them."
                   properties:
                     dateTimeFieldFunctionArguments:
-                      additionalProperties: true
+                      $ref: "#/components/schemas/WeekdayCriteriaArguments"
                       description: "Arguments for the WeekdayOfDateTime field function\
                         \ that a frontend sends with weekday criteria on date-time\
                         \ fields (for example timeZoneId or useSessionZoneId)."
@@ -1834,12 +1876,15 @@ components:
                     enabled:
                       description: "Whether query screens offer the weekday criteria\
                         \ (day is any of, day is none of) on date and date-time fields."
+                      nullable: true
                       type: "boolean"
                   type: "object"
               type: "object"
             materialDashboardTheme:
               additionalProperties: true
-              description: "The application theme from the instance's MaterialDashboardThemeMetaData\
+              deprecated: true
+              description: "Use uiSettings; kept for Next UI until it migrates. The\
+                \ application theme from the instance's MaterialDashboardThemeMetaData\
                 \ supplemental meta-data, when the instance defines it.  Keys are\
                 \ MaterialDashboardThemeMetaData property names (for example primaryColor,\
                 \ fontFamily, typographyH1FontSize, borderRadiusGlobal, density, customCss,\
@@ -1847,6 +1892,40 @@ components:
                 \ values are strings, numbers or booleans.  An explicit allow-list\
                 \ of the theme's visual properties; properties without a value are\
                 \ omitted."
+              type: "object"
+            uiSettings:
+              description: "Client-neutral process, query, record-view and theme settings."
+              properties:
+                processNamesToAddToAllQueryAndViewScreens:
+                  description: "Visible processes offered on every query and record-view\
+                    \ screen."
+                  items:
+                    type: "string"
+                  type: "array"
+                recordViewActionsPlacement:
+                  description: "Placement of record-view actions."
+                  type: "string"
+                theme:
+                  additionalProperties:
+                    type: "string"
+                  description: "Configured colors and font families; no web layout\
+                    \ or CSS settings."
+                  type: "object"
+                weekdayCriteriaSettings:
+                  description: "Weekday query criteria configuration."
+                  properties:
+                    dateTimeFieldFunctionArguments:
+                      $ref: "#/components/schemas/WeekdayCriteriaArguments"
+                      description: "Arguments for the WeekdayOfDateTime field function\
+                        \ that a frontend sends with weekday criteria on date-time\
+                        \ fields (for example timeZoneId or useSessionZoneId)."
+                      type: "object"
+                    enabled:
+                      description: "Whether query screens offer the weekday criteria\
+                        \ (day is any of, day is none of) on date and date-time fields."
+                      nullable: true
+                      type: "boolean"
+                  type: "object"
               type: "object"
           type: "object"
         tables:
@@ -1869,12 +1948,15 @@ components:
               footerHTML:
                 description: "HTML shown below the widget."
                 type: "string"
+              footerText:
+                description: "Plain-text footer, preserving link text and line breaks."
+                type: "string"
               gridColumns:
                 description: "Number of grid columns (of 12) the widget spans."
                 type: "number"
               hasPermission:
                 description: "Whether the user may render the widget."
-                type: "object"
+                type: "boolean"
               helpContent:
                 additionalProperties:
                   items:
@@ -1891,7 +1973,7 @@ components:
                 type: "object"
               isCard:
                 description: "Whether the widget is drawn as a card."
-                type: "object"
+                type: "boolean"
               label:
                 description: "User-facing name for this widget"
                 type: "string"
@@ -1903,13 +1985,13 @@ components:
                 type: "string"
               showExportButton:
                 description: "Whether the widget offers an export button."
-                type: "object"
+                type: "boolean"
               showReloadButton:
                 description: "Whether the widget offers a reload button."
-                type: "object"
+                type: "boolean"
               storeDropdownSelections:
                 description: "Whether dropdown selections are remembered for the user."
-                type: "object"
+                type: "boolean"
               tooltip:
                 description: "Tooltip text for the widget."
                 type: "string"
@@ -1928,6 +2010,7 @@ components:
           type: "string"
         isAscending:
           description: "Whether this order-by is ascending or descending"
+          nullable: true
           type: "boolean"
       type: "object"
     OutputRecord:
@@ -1991,6 +2074,7 @@ components:
         hasMore:
           description: "For a picker request: whether another page of options follows\
             \ (the picker never counts)"
+          nullable: true
           type: "boolean"
         options:
           description: "List of possible value options matching the search request"
@@ -2266,11 +2350,13 @@ components:
         durableJobAlways:
           description: "True when the process always runs as a durable background\
             \ job (too large to run while the user waits)."
+          nullable: true
           type: "boolean"
         durableJobEligible:
           description: "True when the process can run as a durable background job\
             \ (POST /processes/{processName}/jobs): clients may offer \"Run in background\"\
             ."
+          nullable: true
           type: "boolean"
         frontendSteps:
           description: "Frontend steps (aka, Screens) for this process."
@@ -2279,6 +2365,7 @@ components:
           type: "array"
         hasPermission:
           description: "Boolean to indicate if the user has permission for the process."
+          nullable: true
           type: "boolean"
         helpContents:
           additionalProperties:
@@ -2291,11 +2378,15 @@ components:
           $ref: "#/components/schemas/Icon"
           description: "Icon to display for the process."
         iconName:
-          description: "Name of the process's icon."
+          description: "Material UI icon name (web); prefer iconSemanticName"
+          type: "string"
+        iconSemanticName:
+          description: "Client-neutral kebab-case icon token; null when unmapped."
           type: "string"
         isHidden:
           description: "Boolean indicator of whether the process should be shown to\
             \ users or not"
+          nullable: true
           type: "boolean"
         label:
           description: "User-facing name for this process"
@@ -2339,14 +2430,17 @@ components:
         durableJobAlways:
           description: "True when the process always runs as a durable background\
             \ job (too large to run while the user waits)."
+          nullable: true
           type: "boolean"
         durableJobEligible:
           description: "True when the process can run as a durable background job\
             \ (POST /processes/{processName}/jobs): clients may offer \"Run in background\"\
             ."
+          nullable: true
           type: "boolean"
         hasPermission:
           description: "Boolean to indicate if the user has permission for the process."
+          nullable: true
           type: "boolean"
         helpContents:
           additionalProperties:
@@ -2359,11 +2453,15 @@ components:
           $ref: "#/components/schemas/Icon"
           description: "Icon to display for the process."
         iconName:
-          description: "Name of the process's icon."
+          description: "Material UI icon name (web); prefer iconSemanticName"
+          type: "string"
+        iconSemanticName:
+          description: "Client-neutral kebab-case icon token; null when unmapped."
           type: "string"
         isHidden:
           description: "Boolean indicator of whether the process should be shown to\
             \ users or not"
+          nullable: true
           type: "boolean"
         label:
           description: "User-facing name for this process"
@@ -2392,11 +2490,13 @@ components:
         durableJobAlways:
           description: "True when the process always runs as a durable background\
             \ job (too large to run while the user waits)."
+          nullable: true
           type: "boolean"
         durableJobEligible:
           description: "True when the process can run as a durable background job\
             \ (POST /processes/{processName}/jobs): clients may offer \"Run in background\"\
             ."
+          nullable: true
           type: "boolean"
         frontendSteps:
           description: "Frontend steps (aka, Screens) for this process."
@@ -2405,6 +2505,7 @@ components:
           type: "array"
         hasPermission:
           description: "Boolean to indicate if the user has permission for the process."
+          nullable: true
           type: "boolean"
         helpContents:
           additionalProperties:
@@ -2420,19 +2521,26 @@ components:
               description: "A color code to use for displaying the icon"
               type: "string"
             name:
-              description: "A material UI icon name."
+              description: "Material UI icon name (web); prefer semanticName"
               type: "string"
             path:
               description: "A path to an image file that can be requested from the\
                 \ server, to serve as the icon image instead of a material UI icon."
               type: "string"
+            semanticName:
+              description: "Client-neutral kebab-case icon token; null when unmapped."
+              type: "string"
           type: "object"
         iconName:
-          description: "Name of the process's icon."
+          description: "Material UI icon name (web); prefer iconSemanticName"
+          type: "string"
+        iconSemanticName:
+          description: "Client-neutral kebab-case icon token; null when unmapped."
           type: "string"
         isHidden:
           description: "Boolean indicator of whether the process should be shown to\
             \ users or not"
+          nullable: true
           type: "boolean"
         label:
           description: "User-facing name for this process"
@@ -2884,6 +2992,7 @@ components:
           type: "string"
         select:
           description: "Whether or not to select values from the join table"
+          nullable: true
           type: "boolean"
         type:
           description: "Type of join being performed (SQL semantics)"
@@ -2904,7 +3013,75 @@ components:
         channel:
           type: "string"
         data:
-          additionalProperties: true
+          description: "dataByType: hello -> RealtimeHelloEventV1; job.progress ->\
+            \ RealtimeJobProgressEventV1; record.changed -> RealtimeRecordChangedEventV1;\
+            \ record.deleted -> RealtimeRecordDeletedEventV1; table.changed -> RealtimeTableChangedEventV1;\
+            \ metadata.changed -> RealtimeMetaDataChangedEventV1; session-ended ->\
+            \ RealtimeSessionEndedEventV1; resync -> RealtimeResyncEventV1; channel-revoked\
+            \ -> RealtimeChannelRevokedEventV1. Selected by the envelope's event;\
+            \ data has no discriminator. All properties are optional; QBits may publish\
+            \ additional event-specific data."
+          properties:
+            bytesDone:
+              type: "number"
+            bytesTotal:
+              type: "number"
+            changedBy:
+              type: "string"
+            channel:
+              type: "string"
+            chunksDone:
+              type: "number"
+            chunksTotal:
+              type: "number"
+            connectionId:
+              type: "string"
+            currentPhase:
+              type: "string"
+            etaSeconds:
+              type: "number"
+            fields:
+              items:
+                type: "string"
+              type: "array"
+            generation:
+              type: "integer"
+            heartbeatSeconds:
+              type: "integer"
+            jobId:
+              type: "number"
+            logSeq:
+              type: "number"
+            message:
+              type: "string"
+            metaDataGeneration:
+              type: "integer"
+            percent:
+              type: "number"
+            pk:
+              anyOf:
+              - type: "string"
+              - type: "number"
+              - type: "boolean"
+              nullable: true
+            rowsDone:
+              type: "number"
+            rowsFailed:
+              type: "number"
+            rowsPerSecond:
+              type: "number"
+            rowsTotal:
+              type: "number"
+            status:
+              type: "string"
+            table:
+              type: "string"
+            version:
+              anyOf:
+              - type: "string"
+              - type: "number"
+              - type: "boolean"
+              nullable: true
           type: "object"
         event:
           type: "string"
@@ -3246,13 +3423,16 @@ components:
           type: "string"
         presence:
           items:
-            additionalProperties: true
+            additionalProperties: {}
+            description: "Provider-defined presence entry: user identity and activity\
+              \ values."
             type: "object"
           nullable: true
           type: "array"
         extensions:
           additionalProperties:
             additionalProperties: true
+            description: "Provider-specific record feature extension values."
             type: "object"
           type: "object"
       type: "object"
@@ -3289,6 +3469,8 @@ components:
         settings:
           additionalProperties:
             additionalProperties: true
+            description: "Feature-provider settings, keyed by provider-defined setting\
+              \ names."
             type: "object"
           type: "object"
       type: "object"
@@ -3434,6 +3616,7 @@ components:
         hasMore:
           description: "Whether the table has more matches past these results (request\
             \ them with offset)."
+          nullable: true
           type: "boolean"
         resultCount:
           description: "Number of results returned from the table."
@@ -3465,13 +3648,16 @@ components:
         canAddChildren:
           description: "Whether the user may add child or join rows (prepare and add\
             \ routes)"
+          nullable: true
           type: "boolean"
         canCreateTarget:
           description: "Whether to offer quick-create of a target record (insert route\
             \ of targetTableName)"
+          nullable: true
           type: "boolean"
         canRemoveChildren:
           description: "Whether the user may unlink (remove route; LINK only)"
+          nullable: true
           type: "boolean"
         childTableName:
           description: "The child or join table new rows go into (MULTI_CHILD, LINK)"
@@ -3564,6 +3750,7 @@ components:
         hasMore:
           description: "Whether more records follow (request the next page with skip);\
             \ there is no count"
+          nullable: true
           type: "boolean"
         linkedIds:
           description: "Ids (as strings) of the returned records the parent already\
@@ -3615,7 +3802,7 @@ components:
       properties:
         hasPermission:
           description: "Whether the user may run the report."
-          type: "object"
+          type: "boolean"
         helpContents:
           additionalProperties:
             items:
@@ -3624,7 +3811,10 @@ components:
           description: "Help entries by slot, filtered for the current session."
           type: "object"
         iconName:
-          description: "Name of the report's icon."
+          description: "Material UI icon name (web); prefer iconSemanticName"
+          type: "string"
+        iconSemanticName:
+          description: "Client-neutral kebab-case icon token; null when unmapped."
           type: "string"
         label:
           description: "User-facing name for this report."
@@ -3649,18 +3839,23 @@ components:
           type: "object"
         materialDashboard:
           $ref: "#/components/schemas/MaterialDashboardInstanceSettings"
-          description: "Settings from the instance's `materialDashboard` supplemental\
-            \ meta-data, when the instance defines it."
+          deprecated: true
+          description: "Use uiSettings; kept for Next UI until it migrates"
         materialDashboardTheme:
           additionalProperties: true
-          description: "The application theme from the instance's MaterialDashboardThemeMetaData\
-            \ supplemental meta-data, when the instance defines it.  Keys are MaterialDashboardThemeMetaData\
+          deprecated: true
+          description: "Use uiSettings; kept for Next UI until it migrates. The application\
+            \ theme from the instance's MaterialDashboardThemeMetaData supplemental\
+            \ meta-data, when the instance defines it.  Keys are MaterialDashboardThemeMetaData\
             \ property names (for example primaryColor, fontFamily, typographyH1FontSize,\
             \ borderRadiusGlobal, density, customCss, brandedHeaderEnabled, sidebarBackgroundColor,\
             \ tableHeaderBackgroundColor); values are strings, numbers or booleans.\
             \  An explicit allow-list of the theme's visual properties; properties\
             \ without a value are omitted."
           type: "object"
+        uiSettings:
+          $ref: "#/components/schemas/UiSettings"
+          description: "Client-neutral process, query, record-view and theme settings."
       type: "object"
     TableApiDocumentV1:
       additionalProperties: true
@@ -3864,10 +4059,20 @@ components:
             \ default."
           type: "string"
         values:
-          additionalProperties: true
           description: "Item-type specific values: option for BUILT_IN, processName\
             \ for RUN_PROCESS, fieldName for DOWNLOAD_FILE, and items (a list of menu\
             \ items of this same shape) for SUB_MENU and SUB_LIST."
+          properties:
+            fieldName:
+              type: "string"
+            items:
+              items:
+                $ref: "#/components/schemas/TableMenuItem"
+              type: "array"
+            option:
+              type: "string"
+            processName:
+              type: "string"
           type: "object"
       type: "object"
     TableMetaData:
@@ -3893,10 +4098,12 @@ components:
         deletePermission:
           description: "Boolean to indicate if the user has delete permission for\
             \ the table."
+          nullable: true
           type: "boolean"
         editPermission:
           description: "Boolean to indicate if the user has edit permission for the\
             \ table."
+          nullable: true
           type: "boolean"
         exposedJoins:
           description: "Sections to organize fields on screens for this record"
@@ -3911,6 +4118,7 @@ components:
         hasRestrictedFields:
           description: "True when any field has REVEALABLE, MASKED, or HIDDEN access\
             \ for the current session."
+          nullable: true
           type: "boolean"
         helpContents:
           additionalProperties:
@@ -3925,10 +4133,12 @@ components:
         insertPermission:
           description: "Boolean to indicate if the user has insert permission for\
             \ the table."
+          nullable: true
           type: "boolean"
         isHidden:
           description: "Boolean indicator of whether the table should be shown to\
             \ users or not"
+          nullable: true
           type: "boolean"
         label:
           description: "User-facing name for this table"
@@ -3957,6 +4167,7 @@ components:
         readPermission:
           description: "Boolean to indicate if the user has read permission for the\
             \ table."
+          nullable: true
           type: "boolean"
         recordFeatures:
           $ref: "#/components/schemas/RecordFeaturesV1"
@@ -4005,6 +4216,7 @@ components:
           type: "object"
         usesVariants:
           description: "Whether or not this table's backend uses variants."
+          nullable: true
           type: "boolean"
         variantTableLabel:
           description: "If the table uses variants, this is the user-facing label\
@@ -4027,10 +4239,12 @@ components:
         deletePermission:
           description: "Boolean to indicate if the user has delete permission for\
             \ the table."
+          nullable: true
           type: "boolean"
         editPermission:
           description: "Boolean to indicate if the user has edit permission for the\
             \ table."
+          nullable: true
           type: "boolean"
         helpContents:
           additionalProperties:
@@ -4045,10 +4259,12 @@ components:
         insertPermission:
           description: "Boolean to indicate if the user has insert permission for\
             \ the table."
+          nullable: true
           type: "boolean"
         isHidden:
           description: "Boolean indicator of whether the table should be shown to\
             \ users or not"
+          nullable: true
           type: "boolean"
         label:
           description: "User-facing name for this table"
@@ -4062,6 +4278,7 @@ components:
         readPermission:
           description: "Boolean to indicate if the user has read permission for the\
             \ table."
+          nullable: true
           type: "boolean"
         recordFeatures:
           $ref: "#/components/schemas/RecordFeaturesV1"
@@ -4102,10 +4319,12 @@ components:
         deletePermission:
           description: "Boolean to indicate if the user has delete permission for\
             \ the table."
+          nullable: true
           type: "boolean"
         editPermission:
           description: "Boolean to indicate if the user has edit permission for the\
             \ table."
+          nullable: true
           type: "boolean"
         exposedJoins:
           description: "Sections to organize fields on screens for this record"
@@ -4120,6 +4339,7 @@ components:
         hasRestrictedFields:
           description: "True when any field has REVEALABLE, MASKED, or HIDDEN access\
             \ for the current session."
+          nullable: true
           type: "boolean"
         helpContents:
           additionalProperties:
@@ -4135,20 +4355,25 @@ components:
               description: "A color code to use for displaying the icon"
               type: "string"
             name:
-              description: "A material UI icon name."
+              description: "Material UI icon name (web); prefer semanticName"
               type: "string"
             path:
               description: "A path to an image file that can be requested from the\
                 \ server, to serve as the icon image instead of a material UI icon."
               type: "string"
+            semanticName:
+              description: "Client-neutral kebab-case icon token; null when unmapped."
+              type: "string"
           type: "object"
         insertPermission:
           description: "Boolean to indicate if the user has insert permission for\
             \ the table."
+          nullable: true
           type: "boolean"
         isHidden:
           description: "Boolean indicator of whether the table should be shown to\
             \ users or not"
+          nullable: true
           type: "boolean"
         label:
           description: "User-facing name for this table"
@@ -4177,6 +4402,7 @@ components:
         readPermission:
           description: "Boolean to indicate if the user has read permission for the\
             \ table."
+          nullable: true
           type: "boolean"
         recordFeatures:
           $ref: "#/components/schemas/RecordFeaturesV1"
@@ -4223,6 +4449,7 @@ components:
           type: "object"
         usesVariants:
           description: "Whether or not this table's backend uses variants."
+          nullable: true
           type: "boolean"
         variantTableLabel:
           description: "If the table uses variants, this is the user-facing label\
@@ -4291,10 +4518,12 @@ components:
         initiallyOpen:
           description: "Whether a collapsible section starts open, before the user\
             \ has opened or closed it."
+          nullable: true
           type: "boolean"
         isCollapsible:
           description: "Whether screens that can collapse sections let the user collapse\
             \ and expand this one."
+          nullable: true
           type: "boolean"
       type: "object"
     TableUpdateResponseV1:
@@ -4385,6 +4614,26 @@ components:
         version:
           description: "The extension semantic version (MAJOR.MINOR.PATCH)."
           type: "string"
+      type: "object"
+    UiSettings:
+      properties:
+        processNamesToAddToAllQueryAndViewScreens:
+          description: "Visible processes offered on every query and record-view screen."
+          items:
+            type: "string"
+          type: "array"
+        recordViewActionsPlacement:
+          description: "Placement of record-view actions."
+          type: "string"
+        theme:
+          additionalProperties:
+            type: "string"
+          description: "Configured colors and font families; no web layout or CSS\
+            \ settings."
+          type: "object"
+        weekdayCriteriaSettings:
+          $ref: "#/components/schemas/MaterialDashboardWeekdayCriteriaSettings"
+          description: "Weekday query criteria configuration."
       type: "object"
     UploadRefResponseV1:
       properties:
@@ -4577,27 +4826,34 @@ components:
           type: "object"
         isEditable:
           description: "Indicate if user may edit the value in this field."
+          nullable: true
           type: "boolean"
         isHeavy:
           description: "Indicator of 'heavy' fields, which are not loaded by default.\
             \  e.g., some blobs or long-texts"
+          nullable: true
           type: "boolean"
         isHidden:
           description: "Indicate if this field should be hidden from users"
+          nullable: true
           type: "boolean"
         isQueryCriteria:
           description: "Indicator of whether or not this virtual field can be included\
             \ as a query filter criteria"
+          nullable: true
           type: "boolean"
         isQuerySelectable:
           description: "Indicator of whether or not this virtual field can be included\
             \ in query outputs (e.g., if it can be selected, in the SQL sense)"
+          nullable: true
           type: "boolean"
         isRequired:
           description: "Indicate if a value in this field is required."
+          nullable: true
           type: "boolean"
         isSortable:
           description: "False for restricted fields; omitted means sortable."
+          nullable: true
           type: "boolean"
         label:
           description: "User-facing name for this field"
@@ -4674,6 +4930,18 @@ components:
           description: "Data-type for this field"
           type: "string"
       type: "object"
+    WeekdayCriteriaArguments:
+      additionalProperties:
+        anyOf:
+        - type: "string"
+        - type: "number"
+        - type: "boolean"
+      properties:
+        timeZoneId:
+          type: "string"
+        useSessionZoneId:
+          type: "boolean"
+      type: "object"
     WidgetBlock:
       properties:
         blockId:
@@ -4705,6 +4973,9 @@ components:
             \ to act as a 'guard' for the block - e.g., only include it in the UI\
             \ if the value for this field is true"
           type: "string"
+        footerText:
+          description: "Footer as plain text."
+          type: "string"
         layout:
           description: "For COMPOSITE type blocks, an indicator of how the sub-blocks\
             \ should be laid out"
@@ -4721,6 +4992,12 @@ components:
             \ appear modally"
           enum:
           - "MODAL"
+          type: "string"
+        overlayHtml:
+          description: "Composite overlay as HTML."
+          type: "string"
+        overlayText:
+          description: "Composite overlay as plain text."
           type: "string"
         styles:
           $ref: "#/components/schemas/WidgetBlockStyles"
@@ -4815,6 +5092,7 @@ components:
               autoPlay:
                 description: "Control if the file should automatically play when the\
                   \ block is rendered"
+                nullable: true
                 type: "boolean"
               path:
                 description: "The path to the audio file on the server"
@@ -4822,6 +5100,7 @@ components:
               showControls:
                 description: "Control if on-screen controls should be shown to allow\
                   \ the user to control playback"
+                nullable: true
                 type: "boolean"
             type: "object"
           - description: "Values used for a BUTTON type widget block"
@@ -4846,12 +5125,16 @@ components:
                     description: "A color code to use for displaying the icon"
                     type: "string"
                   name:
-                    description: "A material UI icon name."
+                    description: "Material UI icon name (web); prefer semanticName"
                     type: "string"
                   path:
                     description: "A path to an image file that can be requested from\
                       \ the server, to serve as the icon image instead of a material\
                       \ UI icon."
+                    type: "string"
+                  semanticName:
+                    description: "Client-neutral kebab-case icon token; null when\
+                      \ unmapped."
                     type: "string"
                 type: "object"
               label:
@@ -4864,12 +5147,16 @@ components:
                     description: "A color code to use for displaying the icon"
                     type: "string"
                   name:
-                    description: "A material UI icon name."
+                    description: "Material UI icon name (web); prefer semanticName"
                     type: "string"
                   path:
                     description: "A path to an image file that can be requested from\
                       \ the server, to serve as the icon image instead of a material\
                       \ UI icon."
+                    type: "string"
+                  semanticName:
+                    description: "Client-neutral kebab-case icon token; null when\
+                      \ unmapped."
                     type: "string"
                 type: "object"
             type: "object"
@@ -4884,6 +5171,7 @@ components:
               autoFocus:
                 description: "Indicate whether this field should auto-focus when it\
                   \ is rendered"
+                nullable: true
                 type: "boolean"
               fieldMetaData:
                 description: "Metadata to define the field that this block controls"
@@ -5021,19 +5309,24 @@ components:
                     type: "object"
                   isEditable:
                     description: "Indicate if user may edit the value in this field."
+                    nullable: true
                     type: "boolean"
                   isHeavy:
                     description: "Indicator of 'heavy' fields, which are not loaded\
                       \ by default.  e.g., some blobs or long-texts"
+                    nullable: true
                     type: "boolean"
                   isHidden:
                     description: "Indicate if this field should be hidden from users"
+                    nullable: true
                     type: "boolean"
                   isRequired:
                     description: "Indicate if a value in this field is required."
+                    nullable: true
                     type: "boolean"
                   isSortable:
                     description: "False for restricted fields; omitted means sortable."
+                    nullable: true
                     type: "boolean"
                   label:
                     description: "User-facing name for this field"
@@ -5117,6 +5410,7 @@ components:
               hideSoftKeyboard:
                 description: "Indicate if the frontend uses a software/on-screen keyboard,\
                   \ if the application should try to hide it (e.g., upon auto-focus)."
+                nullable: true
                 type: "boolean"
               placeholder:
                 description: "Optional placeholder text to display in the input box."
@@ -5124,6 +5418,7 @@ components:
               submitOnEnter:
                 description: "Indicate whether the form that this field is on should\
                   \ be submitted when Enter is pressed"
+                nullable: true
                 type: "boolean"
             type: "object"
           - description: "Values used for a TEXT type widget block"
@@ -5135,12 +5430,16 @@ components:
                     description: "A color code to use for displaying the icon"
                     type: "string"
                   name:
-                    description: "A material UI icon name."
+                    description: "Material UI icon name (web); prefer semanticName"
                     type: "string"
                   path:
                     description: "A path to an image file that can be requested from\
                       \ the server, to serve as the icon image instead of a material\
                       \ UI icon."
+                    type: "string"
+                  semanticName:
+                    description: "Client-neutral kebab-case icon token; null when\
+                      \ unmapped."
                     type: "string"
                 type: "object"
               startIcon:
@@ -5150,12 +5449,16 @@ components:
                     description: "A color code to use for displaying the icon"
                     type: "string"
                   name:
-                    description: "A material UI icon name."
+                    description: "Material UI icon name (web); prefer semanticName"
                     type: "string"
                   path:
                     description: "A path to an image file that can be requested from\
                       \ the server, to serve as the icon image instead of a material\
                       \ UI icon."
+                    type: "string"
+                  semanticName:
+                    description: "Client-neutral kebab-case icon token; null when\
+                      \ unmapped."
                     type: "string"
                 type: "object"
               text:
@@ -5169,6 +5472,7 @@ components:
         autoPlay:
           description: "Control if the file should automatically play when the block\
             \ is rendered"
+          nullable: true
           type: "boolean"
         path:
           description: "The path to the audio file on the server"
@@ -5176,6 +5480,7 @@ components:
         showControls:
           description: "Control if on-screen controls should be shown to allow the\
             \ user to control playback"
+          nullable: true
           type: "boolean"
       type: "object"
     WidgetBlockBaseStyles:
@@ -5267,6 +5572,7 @@ components:
       properties:
         autoFocus:
           description: "Indicate whether this field should auto-focus when it is rendered"
+          nullable: true
           type: "boolean"
         fieldMetaData:
           $ref: "#/components/schemas/FieldMetaData"
@@ -5274,6 +5580,7 @@ components:
         hideSoftKeyboard:
           description: "Indicate if the frontend uses a software/on-screen keyboard,\
             \ if the application should try to hide it (e.g., upon auto-focus)."
+          nullable: true
           type: "boolean"
         placeholder:
           description: "Optional placeholder text to display in the input box."
@@ -5281,6 +5588,7 @@ components:
         submitOnEnter:
           description: "Indicate whether the form that this field is on should be\
             \ submitted when Enter is pressed"
+          nullable: true
           type: "boolean"
       type: "object"
     WidgetBlockStyles:
@@ -5396,6 +5704,7 @@ components:
           - "ERROR"
           - "SUCCESS"
           - "WARNING"
+          nullable: true
           type: "string"
         bulletList:
           type: "array"
@@ -5437,19 +5746,29 @@ components:
         footerHTML:
           description: "Footer, as HTML. Non-web clients render it as plain text."
           type: "string"
+        footerText:
+          description: "Plain text equivalent of footerHTML, preserving link text\
+            \ and line breaks."
+          type: "string"
         hasPermission:
           description: "False when the user may not see this widget's data; show the\
             \ label and a permission message only."
           type: "boolean"
         hideWidget:
+          nullable: true
           type: "boolean"
         html:
+          nullable: true
           type: "string"
         label:
           description: "Title of the widget (overrides the metadata label when present)."
           type: "string"
         sublabel:
           description: "Secondary title."
+          type: "string"
+        text:
+          description: "Plain text equivalent of html, preserving link text and line\
+            \ breaks."
           type: "string"
         type:
           description: "The widget type this data is for."
@@ -5462,10 +5781,69 @@ components:
         \ widgets."
       properties:
         chartData:
-          additionalProperties: true
+          properties:
+            datasets:
+              items:
+                properties:
+                  backgroundColor:
+                    type: "string"
+                  backgroundColors:
+                    description: "Colors per data point."
+                    items:
+                      type: "string"
+                    type: "array"
+                  color:
+                    type: "string"
+                  data:
+                    items:
+                      nullable: true
+                      type: "number"
+                    type: "array"
+                  label:
+                    type: "string"
+                  urls:
+                    description: "Links per data point."
+                    items:
+                      type: "string"
+                    type: "array"
+                type: "object"
+              type: "array"
+            labels:
+              description: "Labels per data point."
+              items:
+                type: "string"
+              type: "array"
+            lineLabels:
+              description: "Labels of the lines."
+              items:
+                type: "string"
+              type: "array"
+            urls:
+              description: "Links per data point."
+              items:
+                type: "string"
+              type: "array"
           type: "object"
         chartSubheaderData:
-          additionalProperties: true
+          properties:
+            isGoodVsPrevious:
+              nullable: true
+              type: "boolean"
+            isUpVsPrevious:
+              nullable: true
+              type: "boolean"
+            mainNumber:
+              type: "number"
+            mainNumberUrl:
+              type: "string"
+            previousNumberUrl:
+              type: "string"
+            vsDescription:
+              type: "string"
+            vsPreviousNumber:
+              type: "number"
+            vsPreviousPercent:
+              type: "number"
           type: "object"
         csvData:
           description: "Rows (each a list of cells) for exporting the widget as CSV."
@@ -5474,6 +5852,7 @@ components:
             type: "array"
           type: "array"
         description:
+          nullable: true
           type: "string"
         dropdownDataList:
           description: "Options of each dropdown filter: a list per dropdown of {id,\
@@ -5507,16 +5886,18 @@ components:
         footerHTML:
           description: "Footer, as HTML. Non-web clients render it as plain text."
           type: "string"
+        footerText:
+          description: "Plain text equivalent of footerHTML, preserving link text\
+            \ and line breaks."
+          type: "string"
         hasPermission:
           description: "False when the user may not see this widget's data; show the\
             \ label and a permission message only."
           type: "boolean"
         height:
-          additionalProperties: true
-          type: "object"
+          type: "integer"
         isCurrency:
-          additionalProperties: true
-          type: "object"
+          type: "boolean"
         label:
           description: "Title of the widget (overrides the metadata label when present)."
           type: "string"
@@ -5524,6 +5905,7 @@ components:
           description: "Secondary title."
           type: "string"
         title:
+          nullable: true
           type: "string"
         type:
           description: "The widget type this data is for."
@@ -5538,17 +5920,18 @@ components:
       description: "Data of childRecordList widgets."
       properties:
         allowRecordDelete:
+          nullable: true
           type: "boolean"
         allowRecordEdit:
+          nullable: true
           type: "boolean"
         canAddChildRecord:
-          additionalProperties: true
-          type: "object"
+          type: "boolean"
         childFrontendTableMetaData:
-          additionalProperties: true
+          $ref: "#/components/schemas/TableMetaData"
           type: "object"
         childTableMetaData:
-          additionalProperties: true
+          $ref: "#/components/schemas/TableMetaData"
           type: "object"
         csvData:
           description: "Rows (each a list of cells) for exporting the widget as CSV."
@@ -5561,10 +5944,13 @@ components:
         defaultValuesForNewChildRecordsFromParentFields:
           type: "object"
         disableRowClick:
+          nullable: true
           type: "boolean"
         disabledFieldsForNewChildRecords:
-          additionalProperties: true
-          type: "object"
+          description: "Fields disabled when adding a child record."
+          items:
+            type: "string"
+          type: "array"
         dropdownDataList:
           description: "Options of each dropdown filter: a list per dropdown of {id,\
             \ label} objects."
@@ -5597,6 +5983,10 @@ components:
         footerHTML:
           description: "Footer, as HTML. Non-web clients render it as plain text."
           type: "string"
+        footerText:
+          description: "Plain text equivalent of footerHTML, preserving link text\
+            \ and line breaks."
+          type: "string"
         hasPermission:
           description: "False when the user may not see this widget's data; show the\
             \ label and a permission message only."
@@ -5604,6 +5994,7 @@ components:
         includeExposedJoinTables:
           type: "array"
         isInProcess:
+          nullable: true
           type: "boolean"
         label:
           description: "Title of the widget (overrides the metadata label when present)."
@@ -5613,18 +6004,26 @@ components:
         onlyIncludeFieldNames:
           type: "array"
         queryOutput:
-          additionalProperties: true
+          properties:
+            records:
+              items:
+                $ref: "#/components/schemas/OutputRecord"
+              type: "array"
           type: "object"
         sublabel:
           description: "Secondary title."
           type: "string"
         tableName:
+          nullable: true
           type: "string"
         tablePath:
+          nullable: true
           type: "string"
         title:
+          nullable: true
           type: "string"
         totalRows:
+          nullable: true
           type: "number"
         type:
           description: "The widget type this data is for."
@@ -5632,16 +6031,19 @@ components:
           - "childRecordList"
           type: "string"
         viewAllLink:
+          nullable: true
           type: "string"
       type: "object"
     WidgetDataComposite:
       description: "Data of composite widgets."
       properties:
         blockId:
+          nullable: true
           type: "string"
         blocks:
           type: "array"
         conditional:
+          nullable: true
           type: "string"
         csvData:
           description: "Rows (each a list of cells) for exporting the widget as CSV."
@@ -5680,6 +6082,10 @@ components:
           type: "string"
         footerHTML:
           description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        footerText:
+          description: "Plain text equivalent of footerHTML, preserving link text\
+            \ and line breaks."
           type: "string"
         hasPermission:
           description: "False when the user may not see this widget's data; show the\
@@ -5697,30 +6103,91 @@ components:
           - "FLEX_ROW_CENTER"
           - "TABLE_SUB_ROW_DETAILS"
           - "BADGES_WRAPPER"
+          nullable: true
           type: "string"
         link:
-          additionalProperties: true
+          properties:
+            href:
+              type: "string"
           type: "object"
         linkMap:
           type: "object"
         modalMode:
           enum:
           - "MODAL"
+          nullable: true
           type: "string"
         overlayHtml:
+          nullable: true
           type: "string"
         overlayStyleOverrides:
           type: "object"
+        overlayText:
+          description: "Plain text equivalent of overlayHtml, preserving link text\
+            \ and line breaks."
+          type: "string"
         styleOverrides:
           type: "object"
         styles:
-          additionalProperties: true
+          properties:
+            backgroundColor:
+              nullable: true
+              type: "string"
+            padding:
+              properties:
+                bottom:
+                  nullable: true
+                  type: "string"
+                left:
+                  nullable: true
+                  type: "string"
+                right:
+                  nullable: true
+                  type: "string"
+                top:
+                  nullable: true
+                  type: "string"
+              type: "object"
           type: "object"
         sublabel:
           description: "Secondary title."
           type: "string"
         tooltip:
-          additionalProperties: true
+          properties:
+            blockData:
+              properties:
+                blocks:
+                  type: "array"
+                layout:
+                  enum:
+                  - "FLEX_COLUMN"
+                  - "FLEX_ROW"
+                  - "FLEX_ROW_WRAPPED"
+                  - "FLEX_ROW_SPACE_BETWEEN"
+                  - "FLEX_ROW_CENTER"
+                  - "TABLE_SUB_ROW_DETAILS"
+                  - "BADGES_WRAPPER"
+                  type: "string"
+                modalMode:
+                  enum:
+                  - "MODAL"
+                  type: "string"
+                overlayHtml:
+                  type: "string"
+                overlayStyleOverrides:
+                  type: "object"
+                styleOverrides:
+                  type: "object"
+              type: "object"
+            placement:
+              enum:
+              - "BOTTOM"
+              - "LEFT"
+              - "RIGHT"
+              - "TOP"
+              type: "string"
+            title:
+              type: "string"
           type: "object"
         tooltipMap:
           type: "object"
@@ -5730,13 +6197,14 @@ components:
           - "composite"
           type: "string"
         values:
-          additionalProperties: true
+          description: "Composite BaseValues has no predefined members."
           type: "object"
       type: "object"
     WidgetDataCronUI:
       description: "Data of cronUI widgets."
       properties:
         cronDescription:
+          nullable: true
           type: "string"
         csvData:
           description: "Rows (each a list of cells) for exporting the widget as CSV."
@@ -5774,9 +6242,14 @@ components:
           description: "Message to show until every dropdown has a value."
           type: "string"
         error:
+          nullable: true
           type: "string"
         footerHTML:
           description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        footerText:
+          description: "Plain text equivalent of footerHTML, preserving link text\
+            \ and line breaks."
           type: "string"
         hasPermission:
           description: "False when the user may not see this widget's data; show the\
@@ -5834,6 +6307,10 @@ components:
           type: "string"
         footerHTML:
           description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        footerText:
+          description: "Plain text equivalent of footerHTML, preserving link text\
+            \ and line breaks."
           type: "string"
         hasPermission:
           description: "False when the user may not see this widget's data; show the\
@@ -5894,6 +6371,10 @@ components:
         footerHTML:
           description: "Footer, as HTML. Non-web clients render it as plain text."
           type: "string"
+        footerText:
+          description: "Plain text equivalent of footerHTML, preserving link text\
+            \ and line breaks."
+          type: "string"
         hasPermission:
           description: "False when the user may not see this widget's data; show the\
             \ label and a permission message only."
@@ -5902,11 +6383,13 @@ components:
           description: "Title of the widget (overrides the metadata label when present)."
           type: "string"
         mergedDynamicFormValuesIntoFieldName:
+          nullable: true
           type: "string"
         noFieldsMessage:
+          nullable: true
           type: "string"
         recordOfFieldValues:
-          additionalProperties: true
+          $ref: "#/components/schemas/OutputRecord"
           type: "object"
         sublabel:
           description: "Secondary title."
@@ -5966,6 +6449,10 @@ components:
         footerHTML:
           description: "Footer, as HTML. Non-web clients render it as plain text."
           type: "string"
+        footerText:
+          description: "Plain text equivalent of footerHTML, preserving link text\
+            \ and line breaks."
+          type: "string"
         hasPermission:
           description: "False when the user may not see this widget's data; show the\
             \ label and a permission message only."
@@ -5974,7 +6461,7 @@ components:
           description: "Title of the widget (overrides the metadata label when present)."
           type: "string"
         record:
-          additionalProperties: true
+          $ref: "#/components/schemas/OutputRecord"
           type: "object"
         sublabel:
           description: "Secondary title."
@@ -5989,14 +6476,19 @@ components:
       description: "Data of filterAndColumnsSetup widgets."
       properties:
         allowVariables:
+          nullable: true
           type: "boolean"
         apiName:
+          nullable: true
           type: "string"
         apiPath:
+          nullable: true
           type: "string"
         apiVersion:
+          nullable: true
           type: "string"
         columnFieldName:
+          nullable: true
           type: "string"
         csvData:
           description: "Rows (each a list of cells) for exporting the widget as CSV."
@@ -6034,41 +6526,54 @@ components:
           description: "Message to show until every dropdown has a value."
           type: "string"
         editButtonLabel:
+          nullable: true
           type: "string"
         filterDefaultFieldNameSourceFieldNames:
           type: "object"
         filterDefaultFieldNames:
           type: "array"
         filterFieldName:
+          nullable: true
           type: "string"
         footerHTML:
           description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        footerText:
+          description: "Plain text equivalent of footerHTML, preserving link text\
+            \ and line breaks."
           type: "string"
         hasPermission:
           description: "False when the user may not see this widget's data; show the\
             \ label and a permission message only."
           type: "boolean"
         hideColumns:
+          nullable: true
           type: "boolean"
         hidePreview:
+          nullable: true
           type: "boolean"
         hideSortBy:
+          nullable: true
           type: "boolean"
         isApiVersioned:
+          nullable: true
           type: "boolean"
         label:
           description: "Title of the widget (overrides the metadata label when present)."
           type: "string"
         modalHeader:
+          nullable: true
           type: "string"
         omitExposedJoins:
           type: "array"
         overrideIsEditable:
+          nullable: true
           type: "boolean"
         sublabel:
           description: "Secondary title."
           type: "string"
         tableName:
+          nullable: true
           type: "string"
         type:
           description: "The widget type this data is for."
@@ -6084,6 +6589,9 @@ components:
       properties:
         label:
           description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        footerText:
+          description: "Plain-text footer, preserving link text and line breaks."
           type: "string"
         sublabel:
           description: "Secondary title."
@@ -6144,7 +6652,48 @@ components:
       description: "Data of lineChart and smallLineChart widgets."
       properties:
         chartData:
-          additionalProperties: true
+          properties:
+            datasets:
+              items:
+                properties:
+                  backgroundColor:
+                    type: "string"
+                  backgroundColors:
+                    description: "Colors per data point."
+                    items:
+                      type: "string"
+                    type: "array"
+                  color:
+                    type: "string"
+                  data:
+                    items:
+                      nullable: true
+                      type: "number"
+                    type: "array"
+                  label:
+                    type: "string"
+                  urls:
+                    description: "Links per data point."
+                    items:
+                      type: "string"
+                    type: "array"
+                type: "object"
+              type: "array"
+            labels:
+              description: "Labels per data point."
+              items:
+                type: "string"
+              type: "array"
+            lineLabels:
+              description: "Labels of the lines."
+              items:
+                type: "string"
+              type: "array"
+            urls:
+              description: "Links per data point."
+              items:
+                type: "string"
+              type: "array"
           type: "object"
         csvData:
           description: "Rows (each a list of cells) for exporting the widget as CSV."
@@ -6184,13 +6733,16 @@ components:
         footerHTML:
           description: "Footer, as HTML. Non-web clients render it as plain text."
           type: "string"
+        footerText:
+          description: "Plain text equivalent of footerHTML, preserving link text\
+            \ and line breaks."
+          type: "string"
         hasPermission:
           description: "False when the user may not see this widget's data; show the\
             \ label and a permission message only."
           type: "boolean"
         isYAxisCurrency:
-          additionalProperties: true
-          type: "object"
+          type: "boolean"
         label:
           description: "Title of the widget (overrides the metadata label when present)."
           type: "string"
@@ -6198,6 +6750,7 @@ components:
           description: "Secondary title."
           type: "string"
         title:
+          nullable: true
           type: "string"
         type:
           description: "The widget type this data is for."
@@ -6216,6 +6769,7 @@ components:
             type: "array"
           type: "array"
         description:
+          nullable: true
           type: "string"
         dropdownDataList:
           description: "Options of each dropdown filter: a list per dropdown of {id,\
@@ -6250,22 +6804,27 @@ components:
           description: "Footer, as HTML. Non-web clients render it as plain text."
           type: "string"
         footerText:
+          description: "Plain text equivalent of footerHTML, preserving link text\
+            \ and line breaks."
           type: "string"
         hasPermission:
           description: "False when the user may not see this widget's data; show the\
             \ label and a permission message only."
           type: "boolean"
         imageUrl:
+          nullable: true
           type: "string"
         label:
           description: "Title of the widget (overrides the metadata label when present)."
           type: "string"
         location:
+          nullable: true
           type: "string"
         sublabel:
           description: "Secondary title."
           type: "string"
         title:
+          nullable: true
           type: "string"
         type:
           description: "The widget type this data is for."
@@ -6314,6 +6873,10 @@ components:
         footerHTML:
           description: "Footer, as HTML. Non-web clients render it as plain text."
           type: "string"
+        footerText:
+          description: "Plain text equivalent of footerHTML, preserving link text\
+            \ and line breaks."
+          type: "string"
         hasPermission:
           description: "False when the user may not see this widget's data; show the\
             \ label and a permission message only."
@@ -6327,6 +6890,7 @@ components:
           description: "Secondary title."
           type: "string"
         title:
+          nullable: true
           type: "string"
         type:
           description: "The widget type this data is for."
@@ -6374,6 +6938,10 @@ components:
           type: "string"
         footerHTML:
           description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        footerText:
+          description: "Plain text equivalent of footerHTML, preserving link text\
+            \ and line breaks."
           type: "string"
         hasPermission:
           description: "False when the user may not see this widget's data; show the\
@@ -6436,13 +7004,16 @@ components:
         footerHTML:
           description: "Footer, as HTML. Non-web clients render it as plain text."
           type: "string"
+        footerText:
+          description: "Plain text equivalent of footerHTML, preserving link text\
+            \ and line breaks."
+          type: "string"
         hasPermission:
           description: "False when the user may not see this widget's data; show the\
             \ label and a permission message only."
           type: "boolean"
         isLabelPageTitle:
-          additionalProperties: true
-          type: "object"
+          type: "boolean"
         label:
           description: "Title of the widget (overrides the metadata label when present)."
           type: "string"
@@ -6450,6 +7021,7 @@ components:
           enum:
           - "GRID"
           - "TABS"
+          nullable: true
           type: "string"
         sublabel:
           description: "Secondary title."
@@ -6464,10 +7036,69 @@ components:
       description: "Data of pieChart widgets."
       properties:
         chartData:
-          additionalProperties: true
+          properties:
+            datasets:
+              items:
+                properties:
+                  backgroundColor:
+                    type: "string"
+                  backgroundColors:
+                    description: "Colors per data point."
+                    items:
+                      type: "string"
+                    type: "array"
+                  color:
+                    type: "string"
+                  data:
+                    items:
+                      nullable: true
+                      type: "number"
+                    type: "array"
+                  label:
+                    type: "string"
+                  urls:
+                    description: "Links per data point."
+                    items:
+                      type: "string"
+                    type: "array"
+                type: "object"
+              type: "array"
+            labels:
+              description: "Labels per data point."
+              items:
+                type: "string"
+              type: "array"
+            lineLabels:
+              description: "Labels of the lines."
+              items:
+                type: "string"
+              type: "array"
+            urls:
+              description: "Links per data point."
+              items:
+                type: "string"
+              type: "array"
           type: "object"
         chartSubheaderData:
-          additionalProperties: true
+          properties:
+            isGoodVsPrevious:
+              nullable: true
+              type: "boolean"
+            isUpVsPrevious:
+              nullable: true
+              type: "boolean"
+            mainNumber:
+              type: "number"
+            mainNumberUrl:
+              type: "string"
+            previousNumberUrl:
+              type: "string"
+            vsDescription:
+              type: "string"
+            vsPreviousNumber:
+              type: "number"
+            vsPreviousPercent:
+              type: "number"
           type: "object"
         csvData:
           description: "Rows (each a list of cells) for exporting the widget as CSV."
@@ -6476,6 +7107,7 @@ components:
             type: "array"
           type: "array"
         description:
+          nullable: true
           type: "string"
         dropdownDataList:
           description: "Options of each dropdown filter: a list per dropdown of {id,\
@@ -6509,16 +7141,18 @@ components:
         footerHTML:
           description: "Footer, as HTML. Non-web clients render it as plain text."
           type: "string"
+        footerText:
+          description: "Plain text equivalent of footerHTML, preserving link text\
+            \ and line breaks."
+          type: "string"
         hasPermission:
           description: "False when the user may not see this widget's data; show the\
             \ label and a permission message only."
           type: "boolean"
         height:
-          additionalProperties: true
-          type: "object"
+          type: "integer"
         isCurrency:
-          additionalProperties: true
-          type: "object"
+          type: "boolean"
         label:
           description: "Title of the widget (overrides the metadata label when present)."
           type: "string"
@@ -6526,6 +7160,7 @@ components:
           description: "Secondary title."
           type: "string"
         title:
+          nullable: true
           type: "string"
         type:
           description: "The widget type this data is for."
@@ -6576,6 +7211,10 @@ components:
         footerHTML:
           description: "Footer, as HTML. Non-web clients render it as plain text."
           type: "string"
+        footerText:
+          description: "Plain text equivalent of footerHTML, preserving link text\
+            \ and line breaks."
+          type: "string"
         hasPermission:
           description: "False when the user may not see this widget's data; show the\
             \ label and a permission message only."
@@ -6584,7 +7223,7 @@ components:
           description: "Title of the widget (overrides the metadata label when present)."
           type: "string"
         processMetaData:
-          additionalProperties: true
+          $ref: "#/components/schemas/ProcessMetaData"
           type: "object"
         sublabel:
           description: "Secondary title."
@@ -6636,6 +7275,10 @@ components:
         footerHTML:
           description: "Footer, as HTML. Non-web clients render it as plain text."
           type: "string"
+        footerText:
+          description: "Plain text equivalent of footerHTML, preserving link text\
+            \ and line breaks."
+          type: "string"
         hasPermission:
           description: "False when the user may not see this widget's data; show the\
             \ label and a permission message only."
@@ -6644,6 +7287,7 @@ components:
           description: "Title of the widget (overrides the metadata label when present)."
           type: "string"
         name:
+          nullable: true
           type: "string"
         sublabel:
           description: "Secondary title."
@@ -6654,6 +7298,7 @@ components:
           - "quickSightChart"
           type: "string"
         url:
+          nullable: true
           type: "string"
       type: "object"
     WidgetDataRawHTML:
@@ -6697,11 +7342,16 @@ components:
         footerHTML:
           description: "Footer, as HTML. Non-web clients render it as plain text."
           type: "string"
+        footerText:
+          description: "Plain text equivalent of footerHTML, preserving link text\
+            \ and line breaks."
+          type: "string"
         hasPermission:
           description: "False when the user may not see this widget's data; show the\
             \ label and a permission message only."
           type: "boolean"
         html:
+          nullable: true
           type: "string"
         label:
           description: "Title of the widget (overrides the metadata label when present)."
@@ -6709,7 +7359,12 @@ components:
         sublabel:
           description: "Secondary title."
           type: "string"
+        text:
+          description: "Plain text equivalent of html, preserving link text and line\
+            \ breaks."
+          type: "string"
         title:
+          nullable: true
           type: "string"
         type:
           description: "The widget type this data is for."
@@ -6760,6 +7415,10 @@ components:
         footerHTML:
           description: "Footer, as HTML. Non-web clients render it as plain text."
           type: "string"
+        footerText:
+          description: "Plain text equivalent of footerHTML, preserving link text\
+            \ and line breaks."
+          type: "string"
         hasPermission:
           description: "False when the user may not see this widget's data; show the\
             \ label and a permission message only."
@@ -6784,13 +7443,17 @@ components:
       description: "Data of statistics widgets."
       properties:
         count:
-          additionalProperties: true
-          type: "object"
+          description: "Numeric statistic displayed by this widget."
+          nullable: true
+          type: "number"
         countContext:
+          nullable: true
           type: "string"
         countFontSize:
+          nullable: true
           type: "string"
         countURL:
+          nullable: true
           type: "string"
         csvData:
           description: "Rows (each a list of cells) for exporting the widget as CSV."
@@ -6830,25 +7493,29 @@ components:
         footerHTML:
           description: "Footer, as HTML. Non-web clients render it as plain text."
           type: "string"
+        footerText:
+          description: "Plain text equivalent of footerHTML, preserving link text\
+            \ and line breaks."
+          type: "string"
         hasPermission:
           description: "False when the user may not see this widget's data; show the\
             \ label and a permission message only."
           type: "boolean"
         increaseIsGood:
-          additionalProperties: true
-          type: "object"
+          type: "boolean"
         isCurrency:
-          additionalProperties: true
-          type: "object"
+          type: "boolean"
         label:
           description: "Title of the widget (overrides the metadata label when present)."
           type: "string"
         percentageAmount:
-          additionalProperties: true
-          type: "object"
+          nullable: true
+          type: "number"
         percentageLabel:
+          nullable: true
           type: "string"
         percentageURL:
+          nullable: true
           type: "string"
         sublabel:
           description: "Secondary title."
@@ -6863,8 +7530,7 @@ components:
       description: "Data of stepper widgets."
       properties:
         activeStep:
-          additionalProperties: true
-          type: "object"
+          type: "integer"
         csvData:
           description: "Rows (each a list of cells) for exporting the widget as CSV."
           items:
@@ -6903,6 +7569,10 @@ components:
         footerHTML:
           description: "Footer, as HTML. Non-web clients render it as plain text."
           type: "string"
+        footerText:
+          description: "Plain text equivalent of footerHTML, preserving link text\
+            \ and line breaks."
+          type: "string"
         hasPermission:
           description: "False when the user may not see this widget's data; show the\
             \ label and a permission message only."
@@ -6916,6 +7586,7 @@ components:
           description: "Secondary title."
           type: "string"
         title:
+          nullable: true
           type: "string"
         type:
           description: "The widget type this data is for."
@@ -6964,30 +7635,41 @@ components:
           description: "Message to show until every dropdown has a value."
           type: "string"
         fixedHeight:
+          nullable: true
           type: "number"
         fixedStickyLastRow:
+          nullable: true
           type: "boolean"
         footerHTML:
           description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        footerText:
+          description: "Plain text equivalent of footerHTML, preserving link text\
+            \ and line breaks."
           type: "string"
         hasPermission:
           description: "False when the user may not see this widget's data; show the\
             \ label and a permission message only."
           type: "boolean"
         hidePaginationDropdown:
+          nullable: true
           type: "boolean"
         label:
           description: "Title of the widget (overrides the metadata label when present)."
           type: "string"
         linkText:
+          nullable: true
           type: "string"
         linkURL:
+          nullable: true
           type: "string"
         noRowsFoundHTML:
+          nullable: true
           type: "string"
         rows:
           type: "array"
         rowsPerPage:
+          nullable: true
           type: "number"
         sublabel:
           description: "Secondary title."
@@ -7039,11 +7721,16 @@ components:
         footerHTML:
           description: "Footer, as HTML. Non-web clients render it as plain text."
           type: "string"
+        footerText:
+          description: "Plain text equivalent of footerHTML, preserving link text\
+            \ and line breaks."
+          type: "string"
         hasPermission:
           description: "False when the user may not see this widget's data; show the\
             \ label and a permission message only."
           type: "boolean"
         height:
+          nullable: true
           type: "string"
         label:
           description: "Title of the widget (overrides the metadata label when present)."
@@ -7677,6 +8364,7 @@ paths:
                       - children:
                         - icon:
                             name: "person_add"
+                            semanticName: "person-add"
                           label: "Sample Person Process"
                           name: "samplePersonProcess"
                           type: "PROCESS"
@@ -7692,6 +8380,7 @@ paths:
                         type: "TABLE"
                       icon:
                         name: "home"
+                        semanticName: "home"
                       label: "Home App"
                       name: "homeApp"
                       type: "APP"
@@ -7723,6 +8412,7 @@ paths:
                           type: "TABLE"
                         icon:
                           name: "home"
+                          semanticName: "home"
                         label: "Home App"
                         name: "homeApp"
                         sections:
@@ -7737,12 +8427,14 @@ paths:
                           samplePersonProcess:
                             icon:
                               name: "person_add"
+                              semanticName: "person-add"
                             label: "Sample Person Process"
                             name: "samplePersonProcess"
                             type: "PROCESS"
                         children:
                         - icon:
                             name: "person_add"
+                            semanticName: "person-add"
                           label: "Sample Person Process"
                           name: "samplePersonProcess"
                           type: "PROCESS"
@@ -7765,7 +8457,9 @@ paths:
                         hasPermission: true
                         icon:
                           name: "library_add"
+                          semanticName: "library-add"
                         iconName: "library_add"
+                        iconSemanticName: "library-add"
                         isHidden: true
                         label: "Person Bulk Insert"
                         name: "person.bulkInsert"
@@ -7786,7 +8480,9 @@ paths:
                         hasPermission: true
                         icon:
                           name: "person_add"
+                          semanticName: "person-add"
                         iconName: "person_add"
+                        iconSemanticName: "person-add"
                         isHidden: false
                         label: "Sample Person Process"
                         name: "samplePersonProcess"

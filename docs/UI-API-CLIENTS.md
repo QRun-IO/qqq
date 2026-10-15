@@ -62,10 +62,10 @@ selections, go in the JSON body; query parameters are also accepted.
 
 | type | Meaning | Web | CLI | TUI | iOS |
 |---|---|---|---|---|---|
-| statistics | one headline number (`count`), with an optional comparison (`percentageAmount`, `increaseIsGood`) | stat tile | `label: count (±x%)` | boxed number | stat cell |
+| statistics | one headline number (`count`), with an optional comparison (`percentageAmount`, `increaseIsGood`) | stat tile | `label: count (Â±x%)` | boxed number | stat cell |
 | multiStatistics | several statistics groups | tiles row | one line per stat | grid of boxes | grouped cells |
 | table, multiTable | columns plus rows; a column of type `hidden` is not shown | data table | aligned text table, or CSV with `--csv` | scrollable table | list with detail rows |
-| chart, barChart, horizontalBarChart, stackedBarChart, lineChart, smallLineChart, pieChart | `chartData.labels` plus `chartData.datasets[]` (label and data) | chart | table of labels × datasets | sparkline or bar chart in characters | Swift Charts |
+| chart, barChart, horizontalBarChart, stackedBarChart, lineChart, smallLineChart, pieChart | `chartData.labels` plus `chartData.datasets[]` (label and data) | chart | table of labels Ã— datasets | sparkline or bar chart in characters | Swift Charts |
 | html | `html` content | rendered HTML | text (tags stripped) | text | attributed string |
 | alert | `alertType` (severity) plus `html` or `bulletList` | banner | prefixed line (`[WARN] ...`) | coloured line | inline banner |
 | divider | a visual break | rule | blank line | rule | separator |
@@ -106,6 +106,11 @@ offer `POST .../cancel`.
 
 ## 4. Field adornments
 
+Adornment `values` lists optional typed keys for each adornment type. CHIP's dynamic
+`color.{value}` and `icon.{value}` keys remain supported. For icon objects, prefer
+`semanticName`; process and report metadata offer `iconSemanticName` beside `iconName`.
+These are client-neutral kebab-case tokens; an unmapped Material name has no semantic token.
+
 `fieldMetaData.adornments[]` gives each field's semantic display hints. The `values` keys are
 documented in the `FieldAdornment` schema.
 
@@ -128,6 +133,14 @@ Per-record dynamic values use display-value keys of the form `{fieldName}:{key}`
 `email:tooltipDynamic`.
 
 ## 5. Metadata hints
+
+Use `supplementalInstanceMetaData.uiSettings` for shared process names, record-view action
+placement and weekday criteria. Its `theme` contains configured colors and font family.
+`materialDashboard` and `materialDashboardTheme` remain available but are deprecated in the schema.
+
+Non-web clients can use the server-computed plain-text siblings: widget `footerText`, raw-HTML
+and alert `text`, help `contentAsText`, and composite `overlayText`. They retain link text and
+line breaks. The original HTML fields remain available for web clients.
 
 Hints describe meaning, never markup:
 - **Sections.** `tier` T1 is the identity and primary section; T2 and T3 are secondary. A small screen

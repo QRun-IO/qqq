@@ -33,6 +33,7 @@ import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIExc
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIHasAdditionalProperties;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIMapValueType;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.HelpContentV1;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.utils.HtmlText;
 
 
 /*******************************************************************************
@@ -254,4 +255,14 @@ public class WidgetMetaData implements ToSchema
       return (wrapped.getHasPermission());
    }
 
+
+
+   /*******************************************************************************
+    ** Plain-text widget footer for non-web clients.
+    *******************************************************************************/
+   @OpenAPIDescription("Plain-text footer, preserving link text and line breaks.")
+   public String getFooterText()
+   {
+      return (HtmlText.fromHtml(getFooterHTML()));
+   }
 }

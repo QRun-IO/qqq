@@ -31,6 +31,7 @@ import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIExclude;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIListItems;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.utils.HtmlText;
 
 
 /*******************************************************************************
@@ -140,5 +141,15 @@ public class HelpContentV1 implements ToSchema
       Map<String, List<HelpContentV1>> result = new LinkedHashMap<>();
       contents.forEach((slot, values) -> result.put(slot, of(values)));
       return (result);
+   }
+
+
+   /*******************************************************************************
+    ** Client-neutral representation for non-web clients.
+    *******************************************************************************/
+   @OpenAPIDescription("Plain-text help, preserving link text and line breaks.")
+   public String getContentAsText()
+   {
+      return (HtmlText.fromHtml(getContentAsHtml()));
    }
 }

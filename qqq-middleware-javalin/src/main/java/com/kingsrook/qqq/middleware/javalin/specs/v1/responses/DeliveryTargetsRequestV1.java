@@ -64,6 +64,6 @@ public class DeliveryTargetsRequestV1 implements ToSchema
    @Override
    public Schema toSchema()
    {
-      return (new Schema().withType(Type.OBJECT).withProperty("chosen", new Schema().withType(Type.OBJECT).withAdditionalProperties(true)));
+      return (new Schema().withType(Type.OBJECT).withProperty("chosen", new Schema().withType(Type.OBJECT).withDescription("Selections by delivery target step name; values are provider-defined target identifiers.").withAdditionalProperties(true)));
    }
 }

@@ -29,6 +29,7 @@ import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDes
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIExclude;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIMapKnownEntries;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIMapValueType;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.utils.SemanticIcons;
 
 
 /***************************************************************************
@@ -165,7 +166,7 @@ public class ProcessMetaDataLight implements ToSchema
    /***************************************************************************
     **
     ***************************************************************************/
-   @OpenAPIDescription("Name of the process's icon.")
+   @OpenAPIDescription("Material UI icon name (web); prefer iconSemanticName")
    public String getIconName()
    {
       return (this.wrapped.getIconName());
@@ -203,5 +204,15 @@ public class ProcessMetaDataLight implements ToSchema
    public Map<String, List<HelpContentV1>> getHelpContents()
    {
       return (HelpContentV1.of(wrapped.getHelpContents()));
+   }
+
+
+   /*******************************************************************************
+    ** Client-neutral representation for non-web clients.
+    *******************************************************************************/
+   @OpenAPIDescription("Client-neutral kebab-case icon token; null when unmapped.")
+   public String getIconSemanticName()
+   {
+      return (SemanticIcons.semanticName(getIconName()));
    }
 }

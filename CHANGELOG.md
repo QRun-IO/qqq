@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- `QMetaDataVariableInterpreter` has an explicit trusted/untrusted input mode (`setTrustedInput`). An interpreter that handles user-supplied values (one with value maps, such as the ones for query filter criteria and report formulas, which now set it explicitly) does not resolve `${env.X}`, `${prop.X}` or `${file.PATH}` references; they stay literal text. Metadata-time interpretation is unchanged, and `${input.X}` and the other value-map references behave as before. Applications that relied on env or prop references in filter or report values must resolve them in trusted code instead.
 - Durable jobs can no longer be launched (or auto-diverted) from an access-token session: a scoped credential (`QCredentialScope`, e.g. a PAT) or a bearer request. A worker could not hold the job to the token's scope, expiry or revocation, so a scoped token could otherwise start work that ran with the user's full permissions and outlived the token (review finding N1). Launch from an interactive sign-in instead; that path uses job grants.
 
 ### Added

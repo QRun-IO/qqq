@@ -32,6 +32,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.actions.ai.tools.AiHelpText;
+import com.kingsrook.qqq.backend.core.actions.customizers.AbstractPostQueryCustomizer;
+import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.actions.metadata.TableMetaDataAction;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
@@ -210,6 +212,107 @@ class HelpBundlesTest extends BaseTest
       assertEquals("CORE", row().getValueString("source"));
       assertEquals("v2", row().getValueString("bundleId"));
       assertEquals(1, sync.execute().unchanged());
+   }
+
+
+
+   /*******************************************************************************
+    ** A new bundle version with the same text writes nothing: no update, no new
+    ** modify date, no audit. The row keeps the version that last seeded its text.
+    *******************************************************************************/
+   @Test
+   void versionBumpWithSameTextIsNotAWrite() throws Exception
+   {
+      registerVersion("v1", "1.0", "First summary", "First text");
+      sync.execute();
+      QRecord first = row();
+      assertEquals("1.0", first.getValueString("bundleVersion"));
+      registerVersion("v1", "2.0", "First summary", "First text");
+      assertEquals(1, sync.preview().unchanged());
+      assertEquals(1, sync.execute().unchanged());
+      assertEquals(first.getValue("modifyDate"), row().getValue("modifyDate"));
+      assertEquals("1.0", row().getValueString("bundleVersion"));
+      registerVersion("v1", "3.0", "First summary", "Changed text");
+      assertEquals(1, sync.execute().updated());
+      assertEquals("3.0", row().getValueString("bundleVersion"));
+      assertEquals("Changed text", row().getValueString("content"));
+
+      edit("Mine");
+      registerVersion("v1", "4.0", "First summary", "Upstream text");
+      assertEquals(1, sync.execute().upstreamChanged());
+      QRecord pending = row();
+      registerVersion("v1", "5.0", "First summary", "Upstream text");
+      assertEquals(1, sync.execute().upstreamChanged());
+      assertEquals(pending.getValue("modifyDate"), row().getValue("modifyDate"), "same upstream text under a new version is not rewritten");
+      sync.acceptUpstream(List.of(pending.getValue("id")));
+      assertEquals("Upstream text", row().getValueString("content"));
+      assertEquals("5.0", row().getValueString("bundleVersion"));
+   }
+
+
+
+   /*******************************************************************************
+    ** A second instance that syncs the same change first (replicas starting
+    ** together) leaves this one nothing to write: decisions are made again from
+    ** freshly read rows just before each batch is written.
+    *******************************************************************************/
+   @Test
+   void concurrentSyncWritesEachChangeOnce() throws Exception
+   {
+      sync.execute();
+      register("v1", "CORE", "First summary", "Changed by both replicas");
+      QContext.getQInstance().getTable("helpContent").withCustomizer(TableCustomizers.POST_QUERY_RECORD, new QCodeReference(OtherReplica.class));
+      OtherReplica.armed = true;
+      try
+      {
+         HelpBundleSyncAction.Result result = sync.execute();
+         assertEquals(1, OtherReplica.result.updated(), "the other replica applied the change");
+         assertEquals(0, result.updated(), "this replica found it already applied");
+         assertEquals(1, result.unchanged());
+         assertEquals("Changed by both replicas", row().getValueString("content"));
+      }
+      finally
+      {
+         OtherReplica.armed = false;
+         QContext.getQInstance().getTable("helpContent").getCustomizers().remove(TableCustomizers.POST_QUERY_RECORD.getRole());
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Simulates another replica: on the first per-batch read of a sync, runs a
+    ** complete sync, then returns the rows as they are after it.
+    *******************************************************************************/
+   public static class OtherReplica extends AbstractPostQueryCustomizer
+   {
+      static volatile boolean armed;
+      static volatile HelpBundleSyncAction.Result result;
+
+
+
+      /*******************************************************************************
+       ** Interpose once, on a key-filtered (write-phase) read.
+       *******************************************************************************/
+      @Override
+      public List<QRecord> apply(List<QRecord> records)
+      {
+         QueryInput queryInput = (QueryInput) getInput();
+         if(!armed || queryInput.getFilter() == null || queryInput.getFilter().getCriteria() == null || queryInput.getFilter().getCriteria().isEmpty())
+         {
+            return (records);
+         }
+         armed = false;
+         try
+         {
+            result = new HelpBundleSyncAction().execute();
+            return (new QueryAction().execute(new QueryInput("helpContent").withFilter(queryInput.getFilter())).getRecords());
+         }
+         catch(QException e)
+         {
+            throw new IllegalStateException(e);
+         }
+      }
    }
 
 
@@ -494,6 +597,18 @@ class HelpBundlesTest extends BaseTest
 
    /*******************************************************************************
     ** Register synthetic classpath content through the same parser as production.
+    *******************************************************************************/
+   private void registerVersion(String id, String version, String summary, String content)
+   {
+      HelpBundles.register(QContext.getQInstance(), "test.yaml", loader("bundle: " + id + "\nversion: " + version + "\nlayer: CORE"
+         + "\nentries:\n  - key: table:person;slot:help\n    summary: " + summary + "\n    content: " + content + "\n"));
+   }
+
+
+
+
+   /*******************************************************************************
+    ** Register one single-entry bundle.
     *******************************************************************************/
    private void register(String id, String layer, String summary, String content)
    {

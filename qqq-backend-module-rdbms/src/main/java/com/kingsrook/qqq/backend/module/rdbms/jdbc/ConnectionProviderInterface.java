@@ -23,6 +23,7 @@ package com.kingsrook.qqq.backend.module.rdbms.jdbc;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.Map;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSBackendMetaData;
 import org.json.JSONObject;
@@ -53,5 +54,30 @@ public interface ConnectionProviderInterface
       rs.put("nothingToReport", true);
       return (rs);
    }
-}
 
+
+
+   /*******************************************************************************
+    ** Pool gauges for health and metrics (e.g. connectionsTotal, connectionsBusy,
+    ** connectionsIdle, threadsAwaitingCheckout, maxPoolSize). Empty for providers
+    ** without a pool.
+    *******************************************************************************/
+   default Map<String, Number> getPoolMetrics()
+   {
+      return (Map.of());
+   }
+
+
+
+   /*******************************************************************************
+    ** Release the provider's resources (close a pool's connections). Call it after
+    ** the work that uses the backend has stopped; later getConnection calls fail.
+    *******************************************************************************/
+   default void close()
+   {
+      ///////////////////////////////////
+      // nothing to release by default //
+      ///////////////////////////////////
+   }
+
+}

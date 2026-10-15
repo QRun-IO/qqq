@@ -28,10 +28,12 @@ import com.kingsrook.qqq.backend.core.model.metadata.branding.QBrandingMetaData;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.middleware.javalin.executors.io.AuthenticationMetaDataOutputInterface;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.NextDashboardCspSources;
+import com.kingsrook.qqq.middleware.javalin.schemabuilder.SchemaBuilder;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIOneOf;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.PublicBranding;
+import com.kingsrook.qqq.openapi.model.Schema;
 
 
 /*******************************************************************************
@@ -75,6 +77,25 @@ public class AuthenticationMetaDataResponseV1 implements AuthenticationMetaDataO
    public sealed interface Values permits EmptyValues, Auth0Values, OAuth2Values
    {
 
+   }
+
+
+
+   /***************************************************************************
+    ** values is one of several shapes, but the empty shape matches any object,
+    ** so it is an anyOf (a oneOf would refuse every non-empty values object).
+    ***************************************************************************/
+   @Override
+   public Schema toSchema()
+   {
+      Schema schema = new SchemaBuilder().classToSchema(getClass());
+      Schema values = schema.getProperties() == null ? null : schema.getProperties().get("values");
+      if(values != null && values.getOneOf() != null)
+      {
+         values.setAnyOf(values.getOneOf());
+         values.setOneOf(null);
+      }
+      return (schema);
    }
 
 
@@ -226,6 +247,15 @@ public class AuthenticationMetaDataResponseV1 implements AuthenticationMetaDataO
       @OpenAPIDescription("OAuth2 scopes to request (space-separated)")
       private String scopes;
 
+      @OpenAPIDescription("The public OAuth2 client for native clients (CLI, TUI, mobile): use it with auth-code + PKCE or the device-authorization grant, then send the access token as Authorization: Bearer. Absent when the app has no native client. Since 1.6.0.")
+      private String nativeClientId;
+
+      @OpenAPIDescription("The issuer (OIDC discovery base URL) of nativeClientId, when it differs from baseUrl. Since 1.6.0.")
+      private String nativeClientBaseUrl;
+
+      @OpenAPIDescription("True when the server accepts the provider's access tokens as Authorization: Bearer <JWT>. Since 1.6.0.")
+      private Boolean bearerTokensAccepted;
+
 
 
       /*******************************************************************************
@@ -319,6 +349,66 @@ public class AuthenticationMetaDataResponseV1 implements AuthenticationMetaDataO
          return (this);
       }
 
+
+
+      /*******************************************************************************
+       ** Getter for nativeClientId
+       *******************************************************************************/
+      public String getNativeClientId()
+      {
+         return nativeClientId;
+      }
+
+
+
+      /*******************************************************************************
+       ** Setter for nativeClientId
+       *******************************************************************************/
+      public void setNativeClientId(String nativeClientId)
+      {
+         this.nativeClientId = nativeClientId;
+      }
+
+
+
+      /*******************************************************************************
+       ** Getter for nativeClientBaseUrl
+       *******************************************************************************/
+      public String getNativeClientBaseUrl()
+      {
+         return nativeClientBaseUrl;
+      }
+
+
+
+      /*******************************************************************************
+       ** Setter for nativeClientBaseUrl
+       *******************************************************************************/
+      public void setNativeClientBaseUrl(String nativeClientBaseUrl)
+      {
+         this.nativeClientBaseUrl = nativeClientBaseUrl;
+      }
+
+
+
+      /*******************************************************************************
+       ** Getter for bearerTokensAccepted
+       *******************************************************************************/
+      public Boolean getBearerTokensAccepted()
+      {
+         return bearerTokensAccepted;
+      }
+
+
+
+      /*******************************************************************************
+       ** Setter for bearerTokensAccepted
+       *******************************************************************************/
+      public void setBearerTokensAccepted(Boolean bearerTokensAccepted)
+      {
+         this.bearerTokensAccepted = bearerTokensAccepted;
+      }
+
    }
 
 
@@ -339,6 +429,12 @@ public class AuthenticationMetaDataResponseV1 implements AuthenticationMetaDataO
          oauth2Values.setClientId(oauth2MetaData.getClientId());
          oauth2Values.setBaseUrl(StringUtils.hasContent(oauth2MetaData.getExternalBaseUrl()) ? oauth2MetaData.getExternalBaseUrl() : oauth2MetaData.getBaseUrl());
          oauth2Values.setScopes(oauth2MetaData.getScopes());
+         oauth2Values.setNativeClientId(StringUtils.hasContent(oauth2MetaData.getNativeClientId()) ? oauth2MetaData.getNativeClientId() : null);
+         if(StringUtils.hasContent(oauth2MetaData.getNativeClientId()) && StringUtils.hasContent(oauth2MetaData.getNativeClientBaseUrl()))
+         {
+            oauth2Values.setNativeClientBaseUrl(oauth2MetaData.getNativeClientBaseUrl());
+         }
+         oauth2Values.setBearerTokensAccepted(Boolean.TRUE.equals(oauth2MetaData.getBearerTokensEnabled()));
       }
       else if(qAuthenticationMetaData instanceof Auth0AuthenticationMetaData auth0MetaData)
       {

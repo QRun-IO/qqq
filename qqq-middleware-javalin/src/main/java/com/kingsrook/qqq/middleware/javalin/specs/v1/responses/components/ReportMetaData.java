@@ -28,6 +28,7 @@ import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIExclude;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIMapValueType;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.utils.SemanticIcons;
 
 
 /*******************************************************************************
@@ -96,7 +97,7 @@ public class ReportMetaData implements ToSchema
    /*******************************************************************************
     ** Getter for iconName
     *******************************************************************************/
-   @OpenAPIDescription("Name of the report's icon.")
+   @OpenAPIDescription("Material UI icon name (web); prefer iconSemanticName")
    public String getIconName()
    {
       return (wrapped.getIconName());
@@ -123,5 +124,15 @@ public class ReportMetaData implements ToSchema
    public Map<String, List<HelpContentV1>> getHelpContents()
    {
       return (HelpContentV1.of(wrapped.getHelpContents()));
+   }
+
+
+   /*******************************************************************************
+    ** Client-neutral representation for non-web clients.
+    *******************************************************************************/
+   @OpenAPIDescription("Client-neutral kebab-case icon token; null when unmapped.")
+   public String getIconSemanticName()
+   {
+      return (SemanticIcons.semanticName(getIconName()));
    }
 }

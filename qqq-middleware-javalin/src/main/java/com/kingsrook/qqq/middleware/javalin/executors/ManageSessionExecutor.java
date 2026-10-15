@@ -26,11 +26,13 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.Auth0AuthenticationModule;
+import com.kingsrook.qqq.backend.core.modules.authentication.implementations.OAuth2AuthenticationModule;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.middleware.javalin.executors.io.ManageSessionInput;
 import com.kingsrook.qqq.middleware.javalin.executors.io.ManageSessionOutputInterface;
@@ -78,6 +80,14 @@ public class ManageSessionExecutor extends AbstractMiddlewareExecutor<ManageSess
       // (try to) create the session //
       /////////////////////////////////
       QSession session = authenticationModule.createSession(QContext.getQInstance(), authContext);
+
+      ////////////////////////////////////////////////////////////////////////////
+      // a stateless bearer-token session never becomes a cookie session        //
+      ////////////////////////////////////////////////////////////////////////////
+      if("true".equals(session.getValue(OAuth2AuthenticationModule.BEARER_SESSION_VALUE_KEY)))
+      {
+         throw (new QAuthenticationException("Bearer access tokens cannot create a stored session; send them as Authorization: Bearer"));
+      }
 
       //////////////////
       // build output //

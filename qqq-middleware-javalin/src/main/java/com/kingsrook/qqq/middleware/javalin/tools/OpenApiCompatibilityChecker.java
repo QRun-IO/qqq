@@ -193,10 +193,121 @@ public class OpenApiCompatibilityChecker
 
 
    /*******************************************************************************
+    ** Every local $ref (#/components/...) must name a component of the document -
+    ** client generators refuse a document with a dangling reference.
+    *******************************************************************************/
+   public static List<String> findDanglingRefs(Map<String, Object> document)
+   {
+      List<String> problems = new ArrayList<>();
+      findDanglingRefs(document, document, "", problems);
+      return (problems);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @SuppressWarnings("unchecked")
+   private static void findDanglingRefs(Map<String, Object> document, Object node, String where, List<String> problems)
+   {
+      if(node instanceof Map<?, ?> map)
+      {
+         for(Map.Entry<?, ?> entry : map.entrySet())
+         {
+            if("$ref".equals(entry.getKey()))
+            {
+               String ref = String.valueOf(entry.getValue());
+               if(!ref.startsWith("#/"))
+               {
+                  continue;
+               }
+
+               Object target = document;
+               for(String part : ref.substring(2).split("/"))
+               {
+                  target = target instanceof Map<?, ?> m ? ((Map<String, Object>) m).get(part.replace("~1", "/").replace("~0", "~")) : null;
+               }
+               if(target == null)
+               {
+                  problems.add(where + ": dangling $ref " + ref);
+               }
+            }
+            else
+            {
+               findDanglingRefs(document, entry.getValue(), where + "/" + entry.getKey(), problems);
+            }
+         }
+      }
+      else if(node instanceof Collection<?> collection)
+      {
+         int i = 0;
+         for(Object item : collection)
+         {
+            findDanglingRefs(document, item, where + "[" + i++ + "]", problems);
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Every operation must have an operationId: unique in the document, and a
+    ** camelCase identifier (so every client generator can use it as a name).
+    *******************************************************************************/
+   public static List<String> findOperationIdProblems(Map<String, Object> document)
+   {
+      List<String>        problems = new ArrayList<>();
+      Map<String, String> seen     = new java.util.HashMap<>();
+      for(Map.Entry<String, Object> pathEntry : asMap(document.get("paths")).entrySet())
+      {
+         for(Map.Entry<String, Object> operationEntry : asMap(pathEntry.getValue()).entrySet())
+         {
+            if(!HTTP_METHODS.contains(operationEntry.getKey()))
+            {
+               continue;
+            }
+
+            String where       = operationEntry.getKey().toUpperCase() + " " + pathEntry.getKey();
+            Object operationId = asMap(operationEntry.getValue()).get("operationId");
+            if(!(operationId instanceof String id) || id.isBlank())
+            {
+               problems.add(where + ": no operationId");
+            }
+            else if(!id.matches("[a-z][A-Za-z0-9]*"))
+            {
+               problems.add(where + ": operationId is not a camelCase identifier: " + id);
+            }
+            else if(seen.containsKey(id))
+            {
+               problems.add(where + ": duplicate operationId " + id + " (also " + seen.get(id) + ")");
+            }
+            else
+            {
+               seen.put(id, where);
+            }
+         }
+      }
+      return (problems);
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    private static void compareOperation(String where, Map<String, Object> oldOperation, Map<String, Object> newOperation, List<String> problems)
    {
+      /////////////////////////////////////////////////////////////////////////
+      // generated clients name methods after operationIds: once published, //
+      // an operationId is part of the contract                             //
+      /////////////////////////////////////////////////////////////////////////
+      Object oldOperationId = oldOperation.get("operationId");
+      if(oldOperationId != null && !oldOperationId.equals(newOperation.get("operationId")))
+      {
+         problems.add(where + ": operationId changed: " + oldOperationId + " -> " + newOperation.get("operationId"));
+      }
+
       ////////////////
       // parameters //
       ////////////////

@@ -232,13 +232,30 @@ public abstract class AbstractEndpointSpec<
 
 
    /***************************************************************************
+    ** The OpenAPI operationId of this spec (e.g. `queryTable`).  A credential
+    ** scope may name an operation by either this or getOperationId().
+    ***************************************************************************/
+   public String getOpenApiOperationId()
+   {
+      ////////////////////////////////////////////////////////////////////////////
+      // the same id the document publishes: the spec's own, else the derived  //
+      // one (a spec that builds its Method itself may leave it unset)         //
+      ////////////////////////////////////////////////////////////////////////////
+      CompleteOperation operation = defineCompleteOperation();
+      String            explicit  = operation.getMethod() == null ? null : operation.getMethod().getOperationId();
+      return (explicit != null ? explicit : UiApiOperationIds.of(operation.getHttpMethod(), operation.getPath()));
+   }
+
+
+
+   /***************************************************************************
     ** Refuse an operation outside the session's credential scope (if any).
     ***************************************************************************/
    protected void checkCredentialScopeOperation() throws QPermissionDeniedException
    {
       QSession         session = QContext.getQSession();
       QCredentialScope scope   = session == null ? null : session.getCredentialScope();
-      if(scope != null && !QCredentialScope.allows(scope.getOperationIds(), getOperationId()))
+      if(scope != null && !QCredentialScope.allows(scope.getOperationIds(), getOperationId()) && !QCredentialScope.allows(scope.getOperationIds(), getOpenApiOperationId()))
       {
          throw (new QPermissionDeniedException("Permission denied."));
       }
@@ -264,6 +281,7 @@ public abstract class AbstractEndpointSpec<
       BasicOperation basicOperation = defineBasicOperation();
 
       Method method = new Method()
+         .withOperationId(basicOperation.getOperationId() != null ? basicOperation.getOperationId() : UiApiOperationIds.of(basicOperation.getHttpMethod(), basicOperation.getPath()))
          .withSummary(basicOperation.getShortSummary())
          .withDescription(basicOperation.getLongDescription())
          .withParameters(defineRequestParameters())
@@ -367,6 +385,15 @@ public abstract class AbstractEndpointSpec<
       {
          Response responseObject = rs.computeIfAbsent(basicResponse.status().getCode(), (k) -> new Response());
          responseObject.withDescription(basicResponse.description());
+
+         ///////////////////////////////////////////////////////////////////////
+         // a response without a schema (e.g. 204 No Content) has no content //
+         ///////////////////////////////////////////////////////////////////////
+         if(basicResponse.schemaRefName() == null)
+         {
+            continue;
+         }
+
          Map<String, Content> content = responseObject.getContent();
          if(content == null)
          {

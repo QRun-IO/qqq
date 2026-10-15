@@ -205,7 +205,7 @@ class RecordDeveloperModeSpecV1Test extends SpecTestBase
       HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/table/person/1/developer").asString();
       assertEquals(HttpStatus.FORBIDDEN_403, response.getStatus());
       JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
-      assertEquals(Set.of("error"), jsonObject.keySet());
+      assertEquals(Set.of("error", "code", "message", "traceId"), jsonObject.keySet());
       assertThat(jsonObject.getString("error")).contains("Permission denied");
 
       ///////////////////////////////////////////////

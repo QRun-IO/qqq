@@ -33,6 +33,7 @@ import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIEnu
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIExclude;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIListItems;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIOneOf;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.utils.HtmlText;
 
 
 /*******************************************************************************
@@ -250,4 +251,36 @@ public class WidgetBlock implements Serializable, ToSchema
       return (this.wrapped.getBlockTypeName());
    }
 
+
+
+   /*******************************************************************************
+    ** Add client-neutral display fields while preserving the original payload.
+    *******************************************************************************/
+   @OpenAPIDescription("Footer as plain text.")
+   public String getFooterText()
+   {
+      return (HtmlText.fromHtml(wrapped.getFooterHTML()));
+   }
+
+
+
+   /*******************************************************************************
+    ** Add client-neutral display fields while preserving the original payload.
+    *******************************************************************************/
+   @OpenAPIDescription("Composite overlay as HTML.")
+   public String getOverlayHtml()
+   {
+      return (wrapped instanceof CompositeWidgetData composite ? composite.getOverlayHtml() : null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Add client-neutral display fields while preserving the original payload.
+    *******************************************************************************/
+   @OpenAPIDescription("Composite overlay as plain text.")
+   public String getOverlayText()
+   {
+      return (HtmlText.fromHtml(getOverlayHtml()));
+   }
 }

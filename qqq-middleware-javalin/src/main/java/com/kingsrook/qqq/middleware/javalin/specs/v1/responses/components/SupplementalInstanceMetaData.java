@@ -97,11 +97,13 @@ public class SupplementalInstanceMetaData implements ToSchema
    @OpenAPIExclude()
    public static final List<String> THEME_PROPERTY_NAMES = buildThemePropertyNames();
 
-   @OpenAPIDescription("Settings from the instance's `materialDashboard` supplemental meta-data, when the instance defines it.")
+   @OpenAPIDescription("Use uiSettings; kept for Next UI until it migrates")
+   @Deprecated
    private MaterialDashboardInstanceSettings materialDashboard;
 
-   @OpenAPIDescription("The application theme from the instance's MaterialDashboardThemeMetaData supplemental meta-data, when the instance defines it.  Keys are MaterialDashboardThemeMetaData property names (for example primaryColor, fontFamily, typographyH1FontSize, borderRadiusGlobal, density, customCss, brandedHeaderEnabled, sidebarBackgroundColor, tableHeaderBackgroundColor); values are strings, numbers or booleans.  An explicit allow-list of the theme's visual properties; properties without a value are omitted.")
+   @OpenAPIDescription("Use uiSettings; kept for Next UI until it migrates. The application theme from the instance's MaterialDashboardThemeMetaData supplemental meta-data, when the instance defines it.  Keys are MaterialDashboardThemeMetaData property names (for example primaryColor, fontFamily, typographyH1FontSize, borderRadiusGlobal, density, customCss, brandedHeaderEnabled, sidebarBackgroundColor, tableHeaderBackgroundColor); values are strings, numbers or booleans.  An explicit allow-list of the theme's visual properties; properties without a value are omitted.")
    @OpenAPIHasAdditionalProperties()
+   @Deprecated
    private Map<String, Object> materialDashboardTheme;
 
    @OpenAPIDescription("Present (an object) when the instance has the assistant QBit's `assistant` supplemental meta-data - that is, when the assistant is installed and enabled, so a frontend may probe its routes.  Always has `available: true`, plus the strings, numbers and booleans the QBit publishes for frontends.")
@@ -490,5 +492,15 @@ public class SupplementalInstanceMetaData implements ToSchema
    {
       this.assistant = assistant;
       return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Client-neutral representation for non-web clients.
+    *******************************************************************************/
+   @OpenAPIDescription("Client-neutral process, query, record-view and theme settings.")
+   public UiSettings getUiSettings()
+   {
+      return (materialDashboard == null && materialDashboardTheme == null ? null : new UiSettings(materialDashboard, materialDashboardTheme));
    }
 }

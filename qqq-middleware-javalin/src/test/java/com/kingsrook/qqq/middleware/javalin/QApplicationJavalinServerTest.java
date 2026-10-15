@@ -2416,6 +2416,13 @@ class QApplicationJavalinServerTest
       assertEquals(200, rootDeepLink.getStatus());
       assertThat(rootDeepLink.getBody()).containsIgnoringCase("<base href=\"/\"");
 
+      //////////////////////////////////////////////////////////////////
+      // an unknown UI API path is a JSON 404, never the SPA's page   //
+      //////////////////////////////////////////////////////////////////
+      HttpResponse<String> unknownApi = Unirest.get("http://localhost:" + PORT + "/qqq/v1/no/such/operation").asString();
+      assertEquals(404, unknownApi.getStatus());
+      assertThat(unknownApi.getBody()).contains("\"code\":\"NOT_FOUND\"");
+
       /////////////////////////////////////
       // Root SPA's /api exclusion works //
       /////////////////////////////////////

@@ -39,7 +39,7 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
     ** and PATCH for fixes (UiApiContractTest enforces it); a breaking change
     ** needs a new URL version (/qqq/v2).
     ***************************************************************************/
-   public static final String SEMANTIC_VERSION = "1.5.0";
+   public static final String SEMANTIC_VERSION = "1.6.0";
 
    /***************************************************************************
     ** Optional core features, published by GET /version.
@@ -51,12 +51,24 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
 
    private final List<AbstractEndpointSpec<?, ?, ?>> list = new ArrayList<>();
 
+
+
+   /***************************************************************************
+    ** Subclasses (e.g. the API-aware version) share this version's components.
+    ***************************************************************************/
+   @Override
+   protected String getComponentsBasePackage()
+   {
+      return (MiddlewareVersionV1.class.getPackageName());
+   }
+
    {
       list.add(new VersionSpecV1());
       RealtimeStreamSpecV1 realtime = new RealtimeStreamSpecV1();
       list.add(realtime);
       list.add(new RealtimeSubscriptionsSpecV1(realtime::getHub));
       list.add(new AuthenticationMetaDataSpecV1());
+      list.add(new BrandingAssetSpecV1());
       list.add(new ManageSessionSpecV1());
       list.add(new LogoutSpecV1());
       list.add(new BackChannelLogoutSpecV1());

@@ -187,7 +187,7 @@ class RecordAssociatedScriptLogsSpecV1Test extends SpecTestBase
       HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + LOGS_PATH).asString();
       assertEquals(HttpStatus.FORBIDDEN_403, response.getStatus());
       JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
-      assertEquals(Set.of("error"), jsonObject.keySet());
+      assertEquals(Set.of("error", "code", "message", "traceId"), jsonObject.keySet());
       assertThat(jsonObject.getString("error")).contains("Permission denied");
 
       serverQInstance.getAuthentication().setCustomizer(new QCodeReference(PersonReadPermission.class));

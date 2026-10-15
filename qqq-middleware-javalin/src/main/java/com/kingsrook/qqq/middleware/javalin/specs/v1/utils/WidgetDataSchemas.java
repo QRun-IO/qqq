@@ -162,7 +162,7 @@ public class WidgetDataSchemas
             properties.putAll(schema.getProperties());
          }
          properties.putAll(commonProperties());
-         properties = shallow(properties);
+         properties = typed(properties);
          properties.put("type", new Schema().withType(Type.STRING).withDescription("The widget type this data is for.").withEnumValues(types));
          schema.withProperties(properties);
 
@@ -196,26 +196,87 @@ public class WidgetDataSchemas
 
 
    /*******************************************************************************
-    ** Keep the top-level properties typed, but describe nested objects only as
-    ** objects: the reflected shapes of nested backend classes (table metadata,
-    ** records) are not part of the widget contract, and would otherwise pull in
-    ** internals.  Sorted by name, so the document is stable.
+    ** Publish nested widget payloads using the public UI API types rather than
+    ** backend metadata internals. Chart and block value types retain their
+    ** documented nested properties.
+    ** Sorted by name, so the document is stable.
     *******************************************************************************/
-   private static Map<String, Schema> shallow(Map<String, Schema> properties)
+   private static Map<String, Schema> typed(Map<String, Schema> properties)
    {
-      Map<String, Schema> rs = new TreeMap<>();
+      Map<String, Schema> rs = new TreeMap<>(properties);
       for(Map.Entry<String, Schema> entry : properties.entrySet())
       {
+         String name = entry.getKey();
          Schema property = entry.getValue();
-         if(property.getProperties() != null)
+         if(property instanceof SchemaBuilder.SchemaFromBuilder reflected && !reflected.getOriginalClass().isPrimitive()
+            && (List.of("number", "string", "boolean").contains(property.getType())))
          {
-            property = new Schema().withType(Type.OBJECT).withDescription(property.getDescription()).withAdditionalProperties(true);
+            property.withNullable(true);
          }
-         else if(property.getItems() != null && property.getItems().getProperties() != null)
+         if(name.equals("count"))
          {
-            property = new Schema().withType(Type.ARRAY).withDescription(property.getDescription()).withItems(new Schema().withType(Type.OBJECT).withAdditionalProperties(true));
+            property = new Schema().withType(Type.NUMBER).withNullable(true).withDescription("Numeric statistic displayed by this widget.");
          }
-         rs.put(entry.getKey(), property);
+         else if(name.equals("childTableMetaData") || name.equals("childFrontendTableMetaData"))
+         {
+            property = new Schema().withType(Type.OBJECT).withRefToSchema("TableMetaData");
+         }
+         else if(name.equals("processMetaData"))
+         {
+            property = new Schema().withType(Type.OBJECT).withRefToSchema("ProcessMetaData");
+         }
+         else if(name.equals("record") || name.equals("recordOfFieldValues"))
+         {
+            property = new Schema().withType(Type.OBJECT).withRefToSchema("OutputRecord");
+         }
+         else if(name.equals("queryOutput"))
+         {
+            property = new Schema().withType(Type.OBJECT).withProperties(new TreeMap<>(Map.of("records",
+               new Schema().withType(Type.ARRAY).withItems(new Schema().withRefToSchema("OutputRecord")))));
+         }
+         else if(name.equals("disabledFieldsForNewChildRecords"))
+         {
+            property = stringList("Fields disabled when adding a child record.");
+         }
+         else if(name.equals("chartData"))
+         {
+            Map<String, Schema> dataset = new TreeMap<>();
+            dataset.put("label", new Schema().withType(Type.STRING));
+            dataset.put("data", new Schema().withType(Type.ARRAY).withItems(new Schema().withType(Type.NUMBER).withNullable(true)));
+            dataset.put("color", new Schema().withType(Type.STRING));
+            dataset.put("backgroundColor", new Schema().withType(Type.STRING));
+            dataset.put("backgroundColors", stringList("Colors per data point."));
+            dataset.put("urls", stringList("Links per data point."));
+            property = new Schema().withType(Type.OBJECT).withProperties(new TreeMap<>(Map.of(
+               "labels", stringList("Labels per data point."),
+               "lineLabels", stringList("Labels of the lines."),
+               "urls", stringList("Links per data point."),
+               "datasets", new Schema().withType(Type.ARRAY).withItems(new Schema().withType(Type.OBJECT).withProperties(dataset)))));
+         }
+         else if(name.equals("values"))
+         {
+            property = new Schema().withType(Type.OBJECT).withDescription("Composite BaseValues has no predefined members.");
+         }
+         else if(name.equals("styles"))
+         {
+            Map<String, Schema> padding = new TreeMap<>();
+            for(String side : List.of("top", "right", "bottom", "left"))
+            {
+               padding.put(side, new Schema().withType(Type.STRING).withNullable(true));
+            }
+            property = new Schema().withType(Type.OBJECT).withProperties(new TreeMap<>(Map.of(
+               "backgroundColor", new Schema().withType(Type.STRING).withNullable(true),
+               "padding", new Schema().withType(Type.OBJECT).withProperties(padding))));
+         }
+         rs.put(name, property);
+      }
+      for(String html : List.of("footerHTML", "html", "overlayHtml"))
+      {
+         if(rs.containsKey(html))
+         {
+            rs.put(html.equals("html") ? "text" : html.equals("footerHTML") ? "footerText" : "overlayText",
+               new Schema().withType(Type.STRING).withDescription("Plain text equivalent of " + html + ", preserving link text and line breaks."));
+         }
       }
       return (rs);
    }
@@ -229,6 +290,7 @@ public class WidgetDataSchemas
    {
       Map<String, Schema> rs = new LinkedHashMap<>();
       rs.put("label", new Schema().withType(Type.STRING).withDescription("Title of the widget (overrides the metadata label when present)."));
+      rs.put("footerText", new Schema().withType(Type.STRING).withDescription("Plain-text footer, preserving link text and line breaks."));
       rs.put("sublabel", new Schema().withType(Type.STRING).withDescription("Secondary title."));
       rs.put("footerHTML", new Schema().withType(Type.STRING).withDescription("Footer, as HTML. Non-web clients render it as plain text."));
       rs.put("hasPermission", new Schema().withType(Type.BOOLEAN).withDescription("False when the user may not see this widget's data; show the label and a permission message only."));

@@ -25,6 +25,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIExclude;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.utils.SemanticIcons;
 
 
 /***************************************************************************
@@ -61,7 +62,7 @@ public class Icon implements ToSchema
    /***************************************************************************
     **
     ***************************************************************************/
-   @OpenAPIDescription("A material UI icon name.")
+   @OpenAPIDescription("Material UI icon name (web); prefer semanticName")
    public String getName()
    {
       return (this.wrapped.getName());
@@ -87,5 +88,15 @@ public class Icon implements ToSchema
    public String getPath()
    {
       return (this.wrapped.getPath());
+   }
+
+
+   /*******************************************************************************
+    ** Client-neutral representation for non-web clients.
+    *******************************************************************************/
+   @OpenAPIDescription("Client-neutral kebab-case icon token; null when unmapped.")
+   public String getSemanticName()
+   {
+      return (SemanticIcons.semanticName(getName()));
    }
 }

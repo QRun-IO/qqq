@@ -330,4 +330,48 @@ class ExecutorSessionUtilsTest
       assertNotNull(session);
    }
 
+
+
+   /*******************************************************************************
+    ** Authorization schemes are case-insensitive; a bearer JWT is never taken
+    ** from the form-parameter fallback.
+    *******************************************************************************/
+   @Test
+   void testAuthorizationSchemes()
+   {
+      java.util.Map<String, String> context = new java.util.HashMap<>();
+      ExecutorSessionUtils.processAuthorizationValue(context, "bearer abc.def.ghi");
+      org.junit.jupiter.api.Assertions.assertEquals("abc.def.ghi", context.get(com.kingsrook.qqq.backend.core.modules.authentication.implementations.Auth0AuthenticationModule.ACCESS_TOKEN_KEY));
+
+      context.clear();
+      ExecutorSessionUtils.processAuthorizationValue(context, "BASIC dXNlcjpwYXNz");
+      org.junit.jupiter.api.Assertions.assertEquals("dXNlcjpwYXNz", context.get(com.kingsrook.qqq.backend.core.modules.authentication.implementations.Auth0AuthenticationModule.BASIC_AUTH_KEY));
+
+      context.clear();
+      ExecutorSessionUtils.processAuthorizationValue(context, "Digest something");
+      org.junit.jupiter.api.Assertions.assertTrue(context.isEmpty());
+
+      org.junit.jupiter.api.Assertions.assertTrue(ExecutorSessionUtils.isBearerJwt("Bearer a.b.c"));
+      org.junit.jupiter.api.Assertions.assertTrue(ExecutorSessionUtils.isBearerJwt("bearer a.b.c"));
+      org.junit.jupiter.api.Assertions.assertFalse(ExecutorSessionUtils.isBearerJwt("Bearer 1b4e28ba-2fa1-11d2-883f-0016d3cca427"));
+      org.junit.jupiter.api.Assertions.assertFalse(ExecutorSessionUtils.isBearerJwt("Basic a.b.c"));
+   }
+
+
+
+   /*******************************************************************************
+    ** A bearer JWT in the Authorization form parameter is ignored.
+    *******************************************************************************/
+   @Test
+   void testFormParamBearerJwtIgnored() throws Exception
+   {
+      when(mockContext.cookie(anyString())).thenReturn(null);
+      when(mockContext.header(anyString())).thenReturn(null);
+      when(mockContext.queryParam(anyString())).thenReturn(null);
+      when(mockContext.formParam("Authorization")).thenReturn("Bearer a.b.c");
+      when(mockContext.cookie(anyString(), anyString(), anyInt())).thenReturn(mockContext);
+
+      QSession session = ExecutorSessionUtils.setupSession(mockContext, qInstance);
+      assertNotNull(session);
+   }
 }

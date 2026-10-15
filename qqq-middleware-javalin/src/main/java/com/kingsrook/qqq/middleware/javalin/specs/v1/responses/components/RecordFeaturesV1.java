@@ -110,7 +110,7 @@ public class RecordFeaturesV1 implements ToSchema
    {
       Map<String, Schema> properties = new TreeMap<>();
       properties.put("features", new Schema().withType(Type.ARRAY).withItems(new Schema().withType(Type.STRING).withEnumValues(Arrays.stream(RecordFeature.values()).map(Enum::name).toList())));
-      properties.put("settings", new Schema().withType(Type.OBJECT).withAdditionalProperties(new Schema().withType(Type.OBJECT).withAdditionalProperties(true)));
+      properties.put("settings", new Schema().withType(Type.OBJECT).withAdditionalProperties(new Schema().withType(Type.OBJECT).withDescription("Feature-provider settings, keyed by provider-defined setting names.").withAdditionalProperties(true)));
       properties.put("ownership", new Schema().withType(Type.OBJECT).withProperties(new TreeMap<>(Map.of(
          "ownerFieldName", new Schema().withType(Type.STRING),
          "assigneeFieldName", new Schema().withType(Type.STRING)))));

@@ -23,6 +23,7 @@ package com.kingsrook.qqq.middleware.javalin;
 
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
@@ -37,6 +38,7 @@ import com.kingsrook.qqq.backend.core.utils.ExceptionUtils;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.BasicErrorResponseV1;
 import io.javalin.http.Context;
 import org.eclipse.jetty.http.HttpStatus;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
@@ -48,6 +50,9 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 public class QJavalinUtils
 {
    private static final QLogger LOG = QLogger.getLogger(QJavalinUtils.class);
+
+   public static final String TRACE_ID_HEADER    = "X-QQQ-Trace-Id";
+   public static final String TRACE_ID_ATTRIBUTE = "qqq.traceId";
 
 
 
@@ -222,7 +227,7 @@ public class QJavalinUtils
          }
          else
          {
-            LOG.info("User-facing exception", e);
+            LOG.info("User-facing exception", e, logPair("traceId", getTraceId(context)));
             statusCode = Objects.requireNonNullElse(statusCode, HttpStatus.Code.INTERNAL_SERVER_ERROR); // 500
             respondWithError(context, statusCode, userFacingException.getMessage());
          }
@@ -244,7 +249,7 @@ public class QJavalinUtils
          ////////////////////////////////
          // default exception handling //
          ////////////////////////////////
-         LOG.warn("Exception in javalin request", e);
+         LOG.warn("Exception in javalin request", e, logPair("traceId", getTraceId(context)));
          respondWithError(context, HttpStatus.Code.INTERNAL_SERVER_ERROR, e.getClass().getSimpleName() + " (" + e.getMessage() + ")"); // 500
       }
    }
@@ -257,7 +262,31 @@ public class QJavalinUtils
    public static void respondWithError(Context context, HttpStatus.Code statusCode, String errorMessage)
    {
       context.status(statusCode.getCode());
-      context.result(JsonUtils.toJson(Map.of("error", errorMessage)));
+      context.result(JsonUtils.toJson(new BasicErrorResponseV1()
+         .withError(errorMessage)
+         .withCode(BasicErrorResponseV1.codeForStatus(statusCode.getCode()))
+         .withTraceId(getTraceId(context))
+         .toMap()));
+   }
+
+
+
+   /*******************************************************************************
+    ** The trace id of a request: the client's X-Request-Id (when it is a short,
+    ** safe token), else a new one.  It is set as the X-QQQ-Trace-Id response
+    ** header, and is the error body's traceId.
+    *******************************************************************************/
+   public static String getTraceId(Context context)
+   {
+      String traceId = context.attribute(TRACE_ID_ATTRIBUTE);
+      if(traceId == null)
+      {
+         String requested = context.header("X-Request-Id");
+         traceId = requested != null && requested.matches("[A-Za-z0-9._:-]{1,64}") ? requested : UUID.randomUUID().toString();
+         context.attribute(TRACE_ID_ATTRIBUTE, traceId);
+         context.header(TRACE_ID_HEADER, traceId);
+      }
+      return (traceId);
    }
 
 

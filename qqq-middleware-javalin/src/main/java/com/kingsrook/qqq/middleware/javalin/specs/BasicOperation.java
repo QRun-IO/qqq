@@ -34,6 +34,7 @@ public class BasicOperation
    private TagsInterface tag;
    private String        shortSummary;
    private String        longDescription;
+   private String        operationId;
 
 
 
@@ -187,6 +188,38 @@ public class BasicOperation
    public BasicOperation withLongDescription(String longDescription)
    {
       this.longDescription = longDescription;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for operationId - the OpenAPI operationId; when null, one is chosen
+    ** by UiApiOperationIds.
+    *******************************************************************************/
+   public String getOperationId()
+   {
+      return (this.operationId);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for operationId
+    *******************************************************************************/
+   public void setOperationId(String operationId)
+   {
+      this.operationId = operationId;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for operationId
+    *******************************************************************************/
+   public BasicOperation withOperationId(String operationId)
+   {
+      this.operationId = operationId;
       return (this);
    }
 

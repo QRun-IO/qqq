@@ -118,6 +118,8 @@ Ready for CLI, TUI and native clients (see `UI-API-CLIENTS.md`).
   bulk-load schemas were missing, and the `$ref: null` that content-less responses (204) had.
 - Fixed: `GET /metaData/authentication` `values` is an `anyOf` (was `oneOf`, which no OAuth2 or
   Auth0 answer could satisfy, because the empty shape matches every object).
+- An unknown path under `/qqq/v1` answers a JSON 404 (`BasicErrorResponseV1`, code `NOT_FOUND`)
+  instead of the single-page app's HTML, so API clients can parse every answer.
 - Extensions esb and health 1.1.0: operationIds, tags and the standard error responses.
 - **Typed table capabilities.** `GET /metaData/table/{tableName}` adds `clientCapabilities`
   (`TableCapabilitiesV1`): `savedViews` (query/store/delete process names), `audits` (level, and the

@@ -609,7 +609,12 @@ public final class EsbOutboxRelay
    {
       String  errorText    = getErrorText(throwable);
       String  providerName = getProviderName(destinationName);
-      boolean connected    = providerName != null && EsbConnectionManager.getInstance().isConnected(providerName);
+      //////////////////////////////////////////////////////////////////////
+      // only a known provider can be "unreachable": a row whose destination //
+      // is no longer configured counts attempts (and goes DEAD) instead of   //
+      // waiting forever                                                      //
+      //////////////////////////////////////////////////////////////////////
+      boolean connected    = providerName == null || EsbConnectionManager.getInstance().isConnected(providerName);
 
       List<QRecord> updates = new ArrayList<>();
       for(QRecord row : rows)
@@ -625,7 +630,7 @@ public final class EsbOutboxRelay
       headUpdate.setValue(EsbOutboxTable.FIELD_LAST_ERROR, errorText);
       if(!connected)
       {
-         if(providerName == null || failingProviders.add(providerName))
+         if(failingProviders.add(providerName))
          {
             LOG.warn("The ESB outbox can't reach its broker; rows will wait for it", logPair("destinationName", destinationName), logPair("providerName", providerName), logPair("error", errorText));
          }

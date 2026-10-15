@@ -172,7 +172,7 @@ class MetaDataSpecV1Test extends SpecTestBase
       assertThat(jsonObject.getJSONObject("processes").has(TestUtils.PROCESS_NAME_SIMPLE_SLEEP)).isFalse();
 
       JSONObject supplemental = jsonObject.getJSONObject("supplementalInstanceMetaData");
-      assertEquals(Set.of("materialDashboard"), supplemental.keySet());
+      assertEquals(Set.of("materialDashboard", "uiSettings"), supplemental.keySet());
       JSONObject materialDashboard = supplemental.getJSONObject("materialDashboard");
       assertEquals(Set.of("processNamesToAddToAllQueryAndViewScreens"), materialDashboard.keySet());
       assertThat(materialDashboard.getJSONArray("processNamesToAddToAllQueryAndViewScreens").toList())
@@ -274,7 +274,7 @@ class MetaDataSpecV1Test extends SpecTestBase
 
       String     body         = getMetaDataBody();
       JSONObject supplemental = JsonUtils.toJSONObject(body).getJSONObject("supplementalInstanceMetaData");
-      assertEquals(Set.of("materialDashboardTheme"), supplemental.keySet());
+      assertEquals(Set.of("materialDashboardTheme", "uiSettings"), supplemental.keySet());
 
       JSONObject theme = supplemental.getJSONObject("materialDashboardTheme");
       assertEquals(Set.of("primaryColor", "preferInfoColorToPrimaryColor", "fontWeightBold", "typographyButtonTextTransform", "borderRadiusScale",
@@ -332,7 +332,7 @@ class MetaDataSpecV1Test extends SpecTestBase
       serverQInstance.withSupplementalMetaData(new TestMaterialDashboardThemeMetaData());
 
       JSONObject supplemental = JsonUtils.toJSONObject(getMetaDataBody()).getJSONObject("supplementalInstanceMetaData");
-      assertEquals(Set.of("materialDashboard", "materialDashboardTheme"), supplemental.keySet());
+      assertEquals(Set.of("materialDashboard", "materialDashboardTheme", "uiSettings"), supplemental.keySet());
       assertThat(supplemental.getJSONObject("materialDashboard").getJSONArray("processNamesToAddToAllQueryAndViewScreens").toList())
          .containsExactly(TestUtils.PROCESS_NAME_GREET_PEOPLE_INTERACTIVE);
       assertEquals("#0f766e", supplemental.getJSONObject("materialDashboardTheme").getString("primaryColor"));

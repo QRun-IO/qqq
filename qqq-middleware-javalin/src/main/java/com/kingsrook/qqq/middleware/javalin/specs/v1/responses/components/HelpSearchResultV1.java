@@ -25,6 +25,7 @@ import com.kingsrook.qqq.backend.core.actions.help.HelpSearchResult;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIExclude;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.utils.HtmlText;
 
 
 /*******************************************************************************
@@ -162,5 +163,15 @@ public class HelpSearchResultV1 implements ToSchema
    public String getHref()
    {
       return (wrapped.getHref());
+   }
+
+
+   /*******************************************************************************
+    ** Client-neutral representation for non-web clients.
+    *******************************************************************************/
+   @OpenAPIDescription("Plain-text help, preserving link text and line breaks.")
+   public String getContentAsText()
+   {
+      return (HtmlText.fromHtml(getContentAsHtml()));
    }
 }

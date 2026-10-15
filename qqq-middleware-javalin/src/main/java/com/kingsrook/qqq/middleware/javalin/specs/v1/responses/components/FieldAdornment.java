@@ -126,7 +126,7 @@ public class FieldAdornment implements ToSchema
       Schema values = schema.getProperties() == null ? null : schema.getProperties().get("values");
       if(values != null)
       {
-         values.withProperties(knownValueSchemas());
+         values.withProperties(knownValueSchemas()).withAdditionalProperties(new Schema());
          values.withDescription("""
             Values associated with this adornment.  Keys and the meanings of their values differ by type; the known
             keys are listed (each names the type(s) it applies to).  CHIP also uses pattern keys: `color.{fieldValue}`
@@ -156,8 +156,8 @@ public class FieldAdornment implements ToSchema
       rs.put("fileNameFormat", str("FILE_DOWNLOAD: format (with %s placeholders) for the saved file name."));
       rs.put("fileNameFormatFields", new Schema().withType(Type.ARRAY).withItems(new Schema().withType(Type.STRING)).withDescription("FILE_DOWNLOAD: fields whose values fill fileNameFormat, in order."));
       rs.put("width", str("SIZE: display width of the field - one of xsmall, small, medium, medlarge, large, xlarge (semantic widths; each client maps them to its own columns or characters). FILE_UPLOAD: width of the upload control.")
-         .withEnumValues(List.of("xsmall", "small", "medium", "medlarge", "large", "xlarge")));
-      rs.put("format", str("FILE_UPLOAD: accepted file formats (e.g. .csv,.xlsx)."));
+         .withEnumValues(List.of("xsmall", "small", "medium", "medlarge", "large", "xlarge", "full", "half")));
+      rs.put("format", str("FILE_UPLOAD: control style (dragAndDrop or button)."));
       rs.put("languageMode", str("CODE_EDITOR: language of the code (e.g. javascript, sql, json, velocity) - for highlighting; a client without an editor shows it monospaced."));
       rs.put("staticText", str("TOOLTIP: the tooltip text."));
       rs.put("tooltipDynamic", bool("TOOLTIP: the text is per record - read it from the record displayValue `{fieldName}:tooltipDynamic`."));

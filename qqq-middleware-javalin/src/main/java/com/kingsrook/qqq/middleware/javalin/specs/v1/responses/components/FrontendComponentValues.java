@@ -30,7 +30,6 @@ import com.kingsrook.qqq.backend.core.model.dashboard.widgets.blocks.AbstractBlo
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIExclude;
-import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIHasAdditionalProperties;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIListItems;
 
 
@@ -41,7 +40,10 @@ import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPILis
    These are the known values that can appear in the values map under a FrontendComponent, to control
    how that component should be presented to the user.
    
-   Note that additional properties may appear as well.
+   Additional application-defined properties may appear as well. BULK_EDIT_FORM, BULK_LOAD_FILE_MAPPING_FORM,
+   BULK_LOAD_VALUE_MAPPING_FORM, BULK_LOAD_PROFILE_FORM, VALIDATION_REVIEW_SCREEN, VIEW_FORM, DOWNLOAD_FORM,
+   RECORD_LIST, PROCESS_SUMMARY_RESULTS and GOOGLE_DRIVE_SELECT_FOLDER have no fixed component-local keys
+   supplied by the core producers; they consume process values and frontend-step metadata.
    
    In addition, components are expected to use values from an active process's `values` map (e.g., as included in
    a `ProcessStepComplete` object), with the following contract between component-types and expected values:
@@ -52,7 +54,6 @@ import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPILis
    There may also be a process value with key=`previewText`, which, if present, can be shown before the full text is shown, 
    e.g., with a toggle control to hide/show the `text` value.
    """)
-@OpenAPIHasAdditionalProperties()
 public class FrontendComponentValues implements ToSchema
 {
    @OpenAPIExclude()
@@ -85,6 +86,13 @@ public class FrontendComponentValues implements ToSchema
       Components of type=`EDIT_FORM` can specify a user-facing text label to show on screen.
       """)
    private String sectionLabel;
+
+   @OpenAPIDescription("HELP_TEXT: text shown by the component.")
+   private String text;
+
+   @OpenAPIDescription("HELP_TEXT: short text shown before expanding the full text.")
+   private String previewText;
+
 
 
    /***************************************************************************

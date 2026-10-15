@@ -82,6 +82,14 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 
 ### 1.6.0 (next QQQ 4.1.0 RC) - native clients
 Ready for CLI, TUI and native clients (see `UI-API-CLIENTS.md`).
+
+- Typed widget scalars, chart datasets and subheaders, child records and metadata, process metadata, records, and composite styles.
+- Documented adornment and frontend-component values, menu values, weekday arguments and realtime event data.
+- Added `Icon.semanticName` and `iconSemanticName` beside Material UI names; unknown names have no semantic mapping.
+- Added server-computed `footerText`, `text`, `contentAsText` and `overlayText` alongside display HTML.
+- Added `supplementalInstanceMetaData.uiSettings` for process, record-view, weekday and color/font settings; legacy Material Dashboard settings are deprecated in the schema.
+- Retained documented extension maps and added an explicit open-map regression allow-list. [Validation record](UI-API-TYPED-SESSION.md).
+
 - **Bearer authentication.** Every secured operation now accepts any one of three security
   schemes: the `sessionUuidCookie` (web), `bearerAuth` (`Authorization: Bearer <token>`) and
   `oauth2` (documented flows). A bearer token is either an OAuth2 access token (JWT) from the app's

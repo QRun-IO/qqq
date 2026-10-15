@@ -24,6 +24,7 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1.responses;
 import com.kingsrook.qqq.middleware.javalin.executors.io.WidgetOutputInterface;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.utils.WidgetPlainText;
 
 
 /*******************************************************************************
@@ -52,7 +53,7 @@ public class WidgetResponseV1 implements WidgetOutputInterface, ToSchema
     *******************************************************************************/
    public Object getWidgetData()
    {
-      return (this.widgetData);
+      return (WidgetPlainText.enrich(this.widgetData));
    }
 
 

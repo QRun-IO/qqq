@@ -25,7 +25,6 @@ import java.lang.reflect.AccessibleObject;
 import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -72,6 +71,17 @@ public class SchemaBuilder
    public static class SchemaFromBuilder extends Schema
    {
       private Class<?> originalClass;
+      private Boolean  deprecated;
+
+
+
+      /*******************************************************************************
+       ** Whether this schema member is deprecated.
+       *******************************************************************************/
+      public Boolean getDeprecated()
+      {
+         return (deprecated);
+      }
 
 
 
@@ -119,6 +129,7 @@ public class SchemaBuilder
    {
       SchemaFromBuilder schema = new SchemaFromBuilder();
       schema.setOriginalClass(c);
+      schema.deprecated = element.isAnnotationPresent(Deprecated.class) ? true : null;
 
       if(c.isEnum() || (c.equals(String.class) && element.isAnnotationPresent(OpenAPIEnumSubSet.class)))
       {
@@ -147,13 +158,17 @@ public class SchemaBuilder
       {
          schema.withType(Type.STRING);
       }
-      else if(c.equals(Integer.class) || c.equals(Long.class) || c.equals(BigDecimal.class) || c.equals(Double.class))
+      else if(Number.class.isAssignableFrom(c) || c.equals(int.class) || c.equals(long.class) || c.equals(short.class) || c.equals(byte.class) || c.equals(float.class) || c.equals(double.class))
       {
-         schema.withType(Type.NUMBER);
+         schema.withType(c.equals(int.class) || c.equals(long.class) || c.equals(short.class) || c.equals(byte.class) ? Type.INTEGER : Type.NUMBER);
       }
-      else if(c.equals(Boolean.class))
+      else if(c.equals(Boolean.class) || c.equals(boolean.class))
       {
          schema.withType(Type.BOOLEAN);
+         if(!c.isPrimitive())
+         {
+            schema.withNullable(true);
+         }
       }
       else if(c.equals(List.class))
       {

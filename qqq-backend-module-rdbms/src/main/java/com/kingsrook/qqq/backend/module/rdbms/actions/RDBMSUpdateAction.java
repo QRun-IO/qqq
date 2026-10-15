@@ -32,6 +32,8 @@ import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.actions.interfaces.UpdateInterface;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.UpdateActionRecordSplitHelper;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.instrumentation.StatementOperation;
+import com.kingsrook.qqq.backend.core.instrumentation.StatementTimer;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateOutput;
@@ -178,7 +180,8 @@ public class RDBMSUpdateAction extends AbstractRDBMSAction implements UpdateInte
          return;
       }
 
-      Long mark = System.currentTimeMillis();
+      Long           mark           = System.currentTimeMillis();
+      StatementTimer statementTimer = startStatementTimer(table.getName(), StatementOperation.UPDATE);
 
       ////////////////////////////////////////////////////////////////////////////////
       // let query manager do the batch updates - note that it will internally page //
@@ -186,11 +189,13 @@ public class RDBMSUpdateAction extends AbstractRDBMSAction implements UpdateInte
       try
       {
          getActionStrategy().executeBatchUpdate(connection, sql, values);
+         statementTimer.succeeded(recordList.size());
          incrementStatus(updateInput, recordList.size());
       }
       finally
       {
          logSQL(sql, values, mark);
+         statementTimer.finish(sql);
       }
    }
 
@@ -252,7 +257,8 @@ public class RDBMSUpdateAction extends AbstractRDBMSAction implements UpdateInte
             params.add(idValue);
          }
 
-         Long mark = System.currentTimeMillis();
+         Long           mark           = System.currentTimeMillis();
+         StatementTimer statementTimer = startStatementTimer(table.getName(), StatementOperation.UPDATE);
 
          /////////////////////////////////////
          // let query manager do the update //
@@ -260,11 +266,13 @@ public class RDBMSUpdateAction extends AbstractRDBMSAction implements UpdateInte
          try
          {
             getActionStrategy().executeUpdate(connection, sql, params);
+            statementTimer.succeeded(page.size());
             incrementStatus(updateInput, page.size());
          }
          finally
          {
             logSQL(sql, params, mark);
+            statementTimer.finish(sql);
          }
       }
    }

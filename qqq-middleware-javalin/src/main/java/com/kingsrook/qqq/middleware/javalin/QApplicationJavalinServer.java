@@ -342,6 +342,8 @@ public class QApplicationJavalinServer
          }
 
          config.routes.before((Context context) -> context.header("Content-Type", "application/json"));
+         config.routes.before(UnitOfWorkJavalinHandlers::before);
+         config.routes.after(UnitOfWorkJavalinHandlers::after);
          config.routes.after(QJavalinImplementation::clearQContext);
 
          addNullResponseCharsetFixer(config);

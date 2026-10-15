@@ -41,6 +41,9 @@ import java.util.function.Function;
 import com.kingsrook.qqq.backend.core.actions.values.QValueFormatter;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.instrumentation.StatementExecutionListeners;
+import com.kingsrook.qqq.backend.core.instrumentation.StatementOperation;
+import com.kingsrook.qqq.backend.core.instrumentation.StatementTimer;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QueryHint;
@@ -1128,6 +1131,27 @@ public abstract class AbstractRDBMSAction
       {
          return (String.format(groupBy.getFormatString(), fullFieldName));
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Start timing a statement for the core statement execution listeners
+    ** (StatementExecutionListeners). Returns a shared no-op timer when nobody
+    ** listens. Callers mark success with succeeded(rows) and call finish(sql)
+    ** in a finally block.
+    **
+    ** @param tableName the QQQ table name the statement is for
+    ** @param operation the kind of statement
+    ** @return the timer
+    *******************************************************************************/
+   protected StatementTimer startStatementTimer(String tableName, StatementOperation operation)
+   {
+      if(!StatementExecutionListeners.isActive())
+      {
+         return (StatementTimer.NOOP);
+      }
+      return (StatementExecutionListeners.start(backendMetaData == null ? null : backendMetaData.getName(), tableName, operation));
    }
 
 

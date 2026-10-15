@@ -30,6 +30,8 @@ import com.kingsrook.qqq.backend.core.actions.interfaces.DeleteInterface;
 import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.instrumentation.StatementOperation;
+import com.kingsrook.qqq.backend.core.instrumentation.StatementTimer;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteOutput;
@@ -194,11 +196,13 @@ public class RDBMSDeleteAction extends AbstractRDBMSAction implements DeleteInte
          + " WHERE "
          + escapeIdentifier(primaryKeyName) + " = ?";
 
-      Long mark = System.currentTimeMillis();
+      Long           mark           = System.currentTimeMillis();
+      StatementTimer statementTimer = startStatementTimer(table.getName(), StatementOperation.DELETE);
 
       try
       {
          int rowCount = getActionStrategy().executeUpdateForRowCount(connection, sql, primaryKey);
+         statementTimer.succeeded(rowCount);
          deleteOutput.addToDeletedRecordCount(rowCount);
 
          /////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -224,6 +228,7 @@ public class RDBMSDeleteAction extends AbstractRDBMSAction implements DeleteInte
       finally
       {
          logSQL(sql, List.of(primaryKey), mark);
+         statementTimer.finish(sql);
       }
    }
 
@@ -241,7 +246,8 @@ public class RDBMSDeleteAction extends AbstractRDBMSAction implements DeleteInte
 
          for(List<Serializable> page : CollectionUtils.getPages(primaryKeys, PAGE_SIZE))
          {
-            long mark = System.currentTimeMillis();
+            long           mark           = System.currentTimeMillis();
+            StatementTimer statementTimer = startStatementTimer(table.getName(), StatementOperation.DELETE);
             String sql = "DELETE FROM "
                + escapeIdentifier(tableName)
                + " WHERE "
@@ -253,11 +259,13 @@ public class RDBMSDeleteAction extends AbstractRDBMSAction implements DeleteInte
             try
             {
                Integer rowCount = getActionStrategy().executeUpdateForRowCount(connection, sql, page);
+               statementTimer.succeeded(rowCount);
                deleteOutput.addToDeletedRecordCount(rowCount);
             }
             finally
             {
                logSQL(sql, page, mark);
+               statementTimer.finish(sql);
             }
          }
       }
@@ -288,11 +296,13 @@ public class RDBMSDeleteAction extends AbstractRDBMSAction implements DeleteInte
          + " WHERE "
          + whereClause;
 
-      Long mark = System.currentTimeMillis();
+      Long           mark           = System.currentTimeMillis();
+      StatementTimer statementTimer = startStatementTimer(table.getName(), StatementOperation.DELETE);
 
       try
       {
          int rowCount = getActionStrategy().executeUpdateForRowCount(connection, sql, params);
+         statementTimer.succeeded(rowCount);
          deleteOutput.setDeletedRecordCount(rowCount);
       }
       catch(Exception e)
@@ -302,6 +312,7 @@ public class RDBMSDeleteAction extends AbstractRDBMSAction implements DeleteInte
       finally
       {
          logSQL(sql, params, mark);
+         statementTimer.finish(sql);
       }
    }
 

@@ -43,6 +43,8 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
+import com.kingsrook.qqq.backend.core.instrumentation.UnitOfWorkKind;
+import com.kingsrook.qqq.backend.core.instrumentation.UnitsOfWork;
 import com.kingsrook.qqq.backend.core.jobs.DurableJobDiversion;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.processes.ProcessState;
@@ -124,7 +126,8 @@ public class RunProcessAction
          CorePermissionEnforcer.checkProcessPermission(runProcessInput, runProcessInput.getProcessName(), runProcessInput.getValues());
       }
 
-      try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope())
+      try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope();
+         UnitsOfWork.Scope unitOfWork = UnitsOfWork.begin(UnitOfWorkKind.PROCESS, runProcessInput.getProcessName()))
       {
          return (executeInAuthorizedScope(runProcessInput));
       }

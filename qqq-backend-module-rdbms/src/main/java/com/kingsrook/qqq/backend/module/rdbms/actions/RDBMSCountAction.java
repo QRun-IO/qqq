@@ -34,6 +34,8 @@ import com.kingsrook.qqq.backend.core.actions.tables.helpers.ActionTimeoutHelper
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
+import com.kingsrook.qqq.backend.core.instrumentation.StatementOperation;
+import com.kingsrook.qqq.backend.core.instrumentation.StatementTimer;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountOutput;
@@ -87,6 +89,7 @@ public class RDBMSCountAction extends AbstractRDBMSAction implements CountInterf
 
          CountOutput rs = new CountOutput();
          long mark = System.currentTimeMillis();
+         StatementTimer statementTimer = startStatementTimer(table.getName(), StatementOperation.COUNT);
 
          Connection connection;
          boolean    needToCloseConnection = false;
@@ -138,10 +141,12 @@ public class RDBMSCountAction extends AbstractRDBMSAction implements CountInterf
                setQueryStatFirstResultTime();
 
             }), params);
+            statementTimer.succeeded(1);
          }
          finally
          {
             logSQL(sql, params, mark);
+            statementTimer.finish(sql);
 
             if(needToCloseConnection)
             {

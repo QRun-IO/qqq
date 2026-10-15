@@ -37,6 +37,8 @@ import com.kingsrook.qqq.backend.core.actions.tables.helpers.ActionTimeoutHelper
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
+import com.kingsrook.qqq.backend.core.instrumentation.StatementOperation;
+import com.kingsrook.qqq.backend.core.instrumentation.StatementTimer;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.Aggregate;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateCapability;
@@ -142,6 +144,7 @@ public class RDBMSAggregateAction extends AbstractRDBMSAction implements Aggrega
          rs.setSamplePercent(sampled ? aggregateInput.getSamplePercent() : null);
 
          Long mark = System.currentTimeMillis();
+         StatementTimer statementTimer = startStatementTimer(table.getName(), StatementOperation.AGGREGATE);
 
          Connection connection;
          boolean    needToCloseConnection = false;
@@ -229,10 +232,12 @@ public class RDBMSAggregateAction extends AbstractRDBMSAction implements Aggrega
                setQueryStatFirstResultTime();
 
             }), params);
+            statementTimer.succeeded(null);
          }
          finally
          {
             logSQL(sql, params, mark);
+            statementTimer.finish(sql);
 
             if(needToCloseConnection)
             {

@@ -239,7 +239,12 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
             // if session store is enabled, try to load cached session first         //
             // this avoids re-deriving security keys and other expensive operations  //
             ///////////////////////////////////////////////////////////////////////////
-            if(Boolean.TRUE.equals(oauth2MetaData.getSessionStoreEnabled()))
+            ////////////////////////////////////////////////////////////////////////
+            // a durable job's worker asks for a fresh session (bypassSessionStore) //
+            // so the user's current permissions apply (JobSessions)               //
+            ////////////////////////////////////////////////////////////////////////
+            boolean useSessionStore = Boolean.TRUE.equals(oauth2MetaData.getSessionStoreEnabled()) && !"true".equals(context.get("bypassSessionStore"));
+            if(useSessionStore)
             {
                Optional<QSession> cachedSession = QSessionStoreHelper.loadAndTouchSession(uuid);
                if(cachedSession.isPresent())
@@ -270,7 +275,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
             // if session store is enabled, store the session for future use    //
             // this happens after finalCustomizeSession so security keys cached //
             ///////////////////////////////////////////////////////////////////////
-            if(Boolean.TRUE.equals(oauth2MetaData.getSessionStoreEnabled()))
+            if(useSessionStore)
             {
                QSessionStoreHelper.storeSession(uuid, session, QSessionStoreHelper.getDefaultTtl());
             }

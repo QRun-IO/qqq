@@ -133,8 +133,8 @@ public class TableStateProvider implements StateProviderInterface
          .withField(new QFieldMetaData(FIELD_STATE_TYPE, QFieldType.STRING).withBackendName("state_type").withMaxLength(40))
          .withField(new QFieldMetaData(FIELD_PAYLOAD, QFieldType.TEXT).withBackendName("payload"))
          .withField(new QFieldMetaData(FIELD_NODE_ID, QFieldType.STRING).withBackendName("node_id").withMaxLength(250))
-         .withField(new QFieldMetaData(FIELD_CREATE_DATE, QFieldType.DATE_TIME).withBackendName("created_at"))
-         .withField(new QFieldMetaData(FIELD_MODIFY_DATE, QFieldType.DATE_TIME).withBackendName("updated_at"))
+         .withField(new QFieldMetaData(FIELD_CREATE_DATE, QFieldType.DATE_TIME).withBackendName("create_date"))
+         .withField(new QFieldMetaData(FIELD_MODIFY_DATE, QFieldType.DATE_TIME).withBackendName("modify_date"))
          .withField(new QFieldMetaData(FIELD_EXPIRES_AT, QFieldType.DATE_TIME).withBackendName("expires_at")));
    }
 

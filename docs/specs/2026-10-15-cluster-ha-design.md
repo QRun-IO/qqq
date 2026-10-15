@@ -1,6 +1,21 @@
 # QQQ on N nodes: cluster, HA, DR and scaling
 
-Status: P1 in progress (2026-10-15). Owner: James Maes. Test bed: kof22 website.
+Status: v1 in progress (2026-10-15). Owner: James Maes. Test bed: kof22 website.
+
+## Owner decisions (2026-10-15)
+
+1. Cache invalidation across nodes is fixed in v1: a ClusterBus SPI in core, carried on the ESB topic
+   `qqq.cluster.control` (events session-ended, metadata-overlay-changed, setting-changed and
+   memo-invalidate). Every static cache registers with ClusterCaches. Short TTLs remain as a safety net.
+2. The realtime and cluster buses use ESB topics. The transactional ESB outbox ships in v1.
+3. Artemis HA: QQQ supports both single-broker and HA through config only (a failover URL, reconnect,
+   idempotent consumers). kof22 runs a primary/backup pair.
+4. Traefik cookie affinity stays as a soft preference for cache locality. Correctness never depends on it.
+5. Autoscaling comes later.
+6. MinIO and OpenSearch HA are not in v1. QQQ only removes anything that would block running them HA.
+7. One-time secrets live in the shared store, encrypted. QQQ_STATE_ENCRYPTION_KEY is required whenever
+   shared state is on (startup fails without it).
+8. Item 6 (job grants) is approved and built in v1 (see below).
 
 ## Goal
 
@@ -58,7 +73,7 @@ host name. It is used for job ownership and the registry.
   | `state_type` | varchar(40) | |
   | `payload` | bytea | Java serialization, gzip, then AES-GCM when a key is configured |
   | `node_id` | varchar(250) | the writer |
-  | `created_at`, `updated_at`, `expires_at` | timestamp | TTL, 12 h by default |
+  | `create_date`, `modify_date`, `expires_at` | timestamp | TTL, 12 h by default |
 
   The table has no FKs and no WORM table. The DDL ships in the host app's
   migrations (kof22 Liquibase), runnable by the app owner role.
@@ -173,7 +188,7 @@ worker Deployments, or exports metrics for HPA/KEDA (queue depth, in-flight).
   first, see below), Artemis primary/backup replication, and k8s scaling in
   qbit-cluster. MinIO and OpenSearch single replicas are noted for P3+.
 
-## Item 6: design direction (for owner sign-off, not implemented)
+## Item 6: job grants (owner approved 2026-10-15; implemented in core `JobGrants`)
 
 A worker must run a job as the launching user, with no more access than at
 launch and with **current** permissions, without a tokenless super-session.
@@ -192,7 +207,16 @@ Proposal:
    is disabled), the job fails with "owner's access could not be confirmed".
    Nothing escalates.
 
-No change to `QAutomatedSession` authorization happens until the owner approves.
+As built: the grant is `g1.<expiry>.<sealed session id>.<signature>` in the job's credential scope.
+Keys derived from QQQ_JOB_GRANT_KEY encrypt the session id (AES-GCM, bound to job and user) and sign
+job, user, sealed session, launch-scope digest and expiry (HMAC-SHA256). The worker verifies the grant
+and rebuilds the launching session through the auth module (`createSession` with `sessionUUID`,
+bypassing the session store). For OAuth2 this uses the stored access and refresh tokens, so a
+sign-out, revoked token or expired lifetime fails the job with "no longer signed in". The worker
+intersects the rebuilt session with the launch scope and audits it on channel `job`. Jobs with no
+user sign-in (scheduled runs owned by `scheduledJobsUserId`, bearer-token API sessions, system
+maintenance) carry no grant and keep the previous automated-session path. They are not unblocked by
+grants.
 
 ## Verification on kof22 (v1 acceptance)
 

@@ -142,6 +142,17 @@ public final class AvatarImageProcessor
     *******************************************************************************/
    public static Map<Integer, byte[]> process(byte[] bytes) throws QBadRequestException
    {
+      return (process(bytes, DECODES));
+   }
+
+
+
+   /*******************************************************************************
+    ** Validate and convert under a given set of decode permits (uploads and the
+    ** Gravatar proxy each have their own, so neither can starve the other).
+    *******************************************************************************/
+   static Map<Integer, byte[]> process(byte[] bytes, Semaphore permits) throws QBadRequestException
+   {
       String format = detectFormat(bytes);
       if(format == null)
       {
@@ -151,7 +162,7 @@ public final class AvatarImageProcessor
       boolean acquired = false;
       try
       {
-         acquired = DECODES.tryAcquire(10, TimeUnit.SECONDS);
+         acquired = permits.tryAcquire(10, TimeUnit.SECONDS);
          if(!acquired)
          {
             throw (new QBadRequestException("Photos are busy being processed. Try again in a moment."));
@@ -167,7 +178,7 @@ public final class AvatarImageProcessor
       {
          if(acquired)
          {
-            DECODES.release();
+            permits.release();
          }
       }
    }

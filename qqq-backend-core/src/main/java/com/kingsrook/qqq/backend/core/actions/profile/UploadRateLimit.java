@@ -36,6 +36,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.profile.UserProfilesMetaDat
 final class UploadRateLimit
 {
    private static final long WINDOW_MILLIS = 60_000;
+   private static final int  MAX_USERS     = 10_000;
 
    private static final Map<String, Deque<Long>> RECENT = new ConcurrentHashMap<>();
 
@@ -55,7 +56,11 @@ final class UploadRateLimit
     *******************************************************************************/
    static void check(String userId) throws QBadRequestException
    {
-      long        now    = System.currentTimeMillis();
+      long now = System.currentTimeMillis();
+      if(RECENT.size() >= MAX_USERS)
+      {
+         prune(now);
+      }
       Deque<Long> recent = RECENT.computeIfAbsent(userId, k -> new ArrayDeque<>());
       synchronized(recent)
       {
@@ -69,6 +74,38 @@ final class UploadRateLimit
          }
          recent.addLast(now);
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Bound the map: drop users with no change in the window (then everyone, if
+    ** still full: a lost count only ever loosens the limit for a minute).
+    *******************************************************************************/
+   private static void prune(long now)
+   {
+      RECENT.entrySet().removeIf(entry ->
+      {
+         synchronized(entry.getValue())
+         {
+            Long last = entry.getValue().peekLast();
+            return (last == null || now - last > WINDOW_MILLIS);
+         }
+      });
+      if(RECENT.size() >= MAX_USERS)
+      {
+         RECENT.clear();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** The number of users tracked (tests).
+    *******************************************************************************/
+   static int trackedUsers()
+   {
+      return (RECENT.size());
    }
 
 

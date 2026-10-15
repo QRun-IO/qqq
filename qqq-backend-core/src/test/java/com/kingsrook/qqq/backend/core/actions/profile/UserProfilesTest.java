@@ -32,10 +32,12 @@ import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.actions.preferences.UserPreferencesAction;
@@ -48,6 +50,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.jobs.DurableJobsTestSupport;
+import com.kingsrook.qqq.backend.core.jobs.SystemScope;
 import com.kingsrook.qqq.backend.core.jobs.uploads.UploadRef;
 import com.kingsrook.qqq.backend.core.jobs.uploads.UploadRefs;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
@@ -389,6 +392,21 @@ class UserProfilesTest extends BaseTest
 
 
    /*******************************************************************************
+    ** The per-user counts stay bounded however many users there are.
+    *******************************************************************************/
+   @Test
+   void testRateLimitBounded() throws Exception
+   {
+      for(int i = 0; i < 10_050; i++)
+      {
+         UploadRateLimit.check("user" + i);
+      }
+      assertThat(UploadRateLimit.trackedUsers()).isLessThanOrEqualTo(10_000);
+   }
+
+
+
+   /*******************************************************************************
     ** A user can't keep the decoder busy: conversions are rate limited.
     *******************************************************************************/
    @Test
@@ -410,12 +428,43 @@ class UserProfilesTest extends BaseTest
    @Test
    void testGravatarProxyAndLookup() throws Exception
    {
-      byte[] gravatar = png(80, 80, Color.MAGENTA);
-      GravatarImages.setFetcher(hash -> hash.equals(UserProfiles.gravatarHash(ALICE)) ? gravatar : null);
+      byte[]                 gravatar = png(80, 80, Color.MAGENTA);
+      AtomicInteger          fetches  = new AtomicInteger();
+      GravatarImages.setFetcher(hash ->
+      {
+         fetches.incrementAndGet();
+         return (hash.equals(UserProfiles.gravatarHash(ALICE)) ? gravatar : null);
+      });
       action.patchSection(UserProfilesMetaData.SECTION_NAME, Map.of("values", Map.of("useGravatar", true)));
-      BufferedImage image = ImageIO.read(new ByteArrayInputStream(GravatarImages.png(UserProfiles.gravatarHash(ALICE), 64)));
+      UserProfiles.Avatar alice = UserProfiles.avatarOf(UserProfiles.find(ALICE));
+      BufferedImage image = ImageIO.read(new ByteArrayInputStream(GravatarImages.png(alice, 64)));
       assertThat(image.getWidth()).isEqualTo(64);
-      assertThat(GravatarImages.png("0000", 64)).isNull();
+
+      //////////////////////////////////////////////////////////////////////
+      // converted once: every size is served from storage afterwards     //
+      //////////////////////////////////////////////////////////////////////
+      for(int i = 0; i < 5; i++)
+      {
+         assertThat(GravatarImages.png(alice, 32)).isNotNull();
+      }
+      assertThat(fetches.get()).isEqualTo(1);
+
+      //////////////////////////////////////////////////////////////////////
+      // no Gravatar: asked once, then remembered                          //
+      //////////////////////////////////////////////////////////////////////
+      UserProfiles.Avatar nobody = new UserProfiles.Avatar("ffffffffffffffffffffffffffffffff", null, "0000", Instant.now());
+      assertThat(GravatarImages.png(nobody, 64)).isNull();
+      assertThat(GravatarImages.png(nobody, 64)).isNull();
+      assertThat(fetches.get()).isEqualTo(2);
+
+      //////////////////////////////////////////////////////////////////////
+      // turning it off removes the cached sizes                           //
+      //////////////////////////////////////////////////////////////////////
+      StorageInput cached32 = new StorageInput(TestUtils.TABLE_NAME_MEMORY_STORAGE).withReference("gravatars/" + alice.avatarId() + "/" + alice.version() + "/32.png");
+      new StorageAction().getInputStream(cached32).close();
+      action.patchSection(UserProfilesMetaData.SECTION_NAME, Map.of("values", Map.of("useGravatar", false)));
+      assertThatThrownBy(() -> new StorageAction().getInputStream(cached32).close()).isInstanceOf(QException.class);
+      action.patchSection(UserProfilesMetaData.SECTION_NAME, Map.of("values", Map.of("useGravatar", true)));
 
       QContext.setQSession(session(BOB));
       setAvatar(upload("bob.png", png(40, 40, Color.BLUE)));
@@ -520,7 +569,7 @@ class UserProfilesTest extends BaseTest
     *******************************************************************************/
    private static List<QRecord> allRows() throws QException
    {
-      return (com.kingsrook.qqq.backend.core.jobs.SystemScope.call(() -> QueryAction.execute(UserProfilesMetaData.DEFAULT_TABLE_NAME, null)));
+      return (SystemScope.call(() -> QueryAction.execute(UserProfilesMetaData.DEFAULT_TABLE_NAME, null)));
    }
 
 

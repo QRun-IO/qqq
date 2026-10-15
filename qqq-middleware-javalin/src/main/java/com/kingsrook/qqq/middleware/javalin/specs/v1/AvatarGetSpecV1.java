@@ -219,7 +219,7 @@ public class AvatarGetSpecV1 extends AbstractEndpointSpec<AbstractMiddlewareInpu
       byte[] bytes;
       try
       {
-         bytes = avatar.avatarKey() == null ? GravatarImages.png(avatar.gravatarHash(), size) : read(avatar.avatarKey(), size);
+         bytes = avatar.avatarKey() == null ? GravatarImages.png(avatar, size) : read(avatar.avatarKey(), size);
          if(bytes == null)
          {
             throw (new QNotFoundException("No avatar."));

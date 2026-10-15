@@ -72,6 +72,7 @@ public final class DeliverySessions
       {
          throw new QPermissionDeniedException("Could not establish the delivery owner's session.");
       }
+      com.kingsrook.qqq.backend.core.actions.profile.UserProfiles.applyIfInstalled(instance, owner);
       return (owner);
    }
 }

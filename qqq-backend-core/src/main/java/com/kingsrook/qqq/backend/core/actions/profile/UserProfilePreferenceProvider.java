@@ -183,10 +183,16 @@ public class UserProfilePreferenceProvider implements UserPreferenceProviderInte
 
       ////////////////////////////////////////////////////////////////////////
       // only once the row names the new photo do the old objects go away  //
+      // (and a Gravatar's cached sizes, once it is turned off or on again) //
       ////////////////////////////////////////////////////////////////////////
       if(oldKey != null && !oldKey.equals(newKey))
       {
          UserProfiles.deleteAvatar(oldKey);
+      }
+      UserProfiles.Avatar oldGravatar = UserProfiles.avatarOf(existing);
+      if(oldGravatar != null && oldGravatar.gravatarHash() != null && values.containsKey(FIELD_USE_GRAVATAR))
+      {
+         GravatarImages.deleteCached(oldGravatar);
       }
    }
 

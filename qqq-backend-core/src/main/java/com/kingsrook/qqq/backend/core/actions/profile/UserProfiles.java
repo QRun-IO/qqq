@@ -141,14 +141,35 @@ public final class UserProfiles
 
 
    /*******************************************************************************
+    ** Stamp the keys on a session the framework just finalized (each UI API
+    ** request, each automated session for jobs, schedules and deliveries), when
+    ** the instance installs profiles. Additive only (a cached session shared by
+    ** concurrent requests never loses its keys midway). Never throws.
+    *******************************************************************************/
+   public static void applyIfInstalled(QInstance qInstance, QSession session)
+   {
+      if(session == null || session instanceof QSystemUserSession || UserProfilesMetaData.of(qInstance) == null)
+      {
+         return;
+      }
+      if(session.getSecurityKeyValues(UserProfilesMetaData.SECURITY_KEY_USER).isEmpty() && session.getUser() != null && StringUtils.hasContent(session.getUser().getIdReference()))
+      {
+         session.withSecurityKeyValue(UserProfilesMetaData.SECURITY_KEY_USER, session.getUser().getIdReference());
+      }
+      if(session.hasPermission(UserProfilesMetaData.PERMISSION_ADMIN) && session.getSecurityKeyValues(UserProfilesMetaData.SECURITY_KEY_USER_ALL_ACCESS).isEmpty())
+      {
+         session.withSecurityKeyValue(UserProfilesMetaData.SECURITY_KEY_USER_ALL_ACCESS, true);
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Apply the keys only when the session has none yet.
     *******************************************************************************/
    public static void ensureSessionKeys(QSession session)
    {
-      if(session != null && !(session instanceof QSystemUserSession) && session.getSecurityKeyValues(UserProfilesMetaData.SECURITY_KEY_USER).isEmpty())
-      {
-         applyToSession(session);
-      }
+      applyIfInstalled(QContext.getQInstance(), session);
    }
 
 
@@ -282,18 +303,28 @@ public final class UserProfiles
    {
       for(Map.Entry<Integer, byte[]> entry : pngBySize.entrySet())
       {
-         try(OutputStream out = new StorageAction().createOutputStream(avatarObject(avatarKey, entry.getKey())))
-         {
-            out.write(entry.getValue());
-         }
-         catch(QException e)
-         {
-            throw (e);
-         }
-         catch(Exception e)
-         {
-            throw (new QException("Error storing avatar", e));
-         }
+         writeObject(avatarObject(avatarKey, entry.getKey()), entry.getValue());
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Write one object to storage.
+    *******************************************************************************/
+   static void writeObject(StorageInput object, byte[] bytes) throws QException
+   {
+      try(OutputStream out = new StorageAction().createOutputStream(object))
+      {
+         out.write(bytes);
+      }
+      catch(QException e)
+      {
+         throw (e);
+      }
+      catch(Exception e)
+      {
+         throw (new QException("Error storing avatar", e));
       }
    }
 

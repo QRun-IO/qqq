@@ -30,6 +30,7 @@ import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.profile.UserProfileMetaDataProvider;
 import com.kingsrook.qqq.backend.core.actions.tables.StorageAction;
@@ -45,6 +46,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.TableBasedAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
@@ -54,6 +57,7 @@ import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
 import com.kingsrook.qqq.middleware.javalin.specs.SpecTestBase;
 import kong.unirest.HttpResponse;
 import kong.unirest.Unirest;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -89,7 +93,7 @@ class AvatarGetSpecV1Test extends SpecTestBase
    @Override
    protected List<AbstractEndpointSpec<?, ?, ?>> getAdditionalSpecs()
    {
-      return (List.of(new ManageSessionSpecV1(), new UploadsSpecV1(), new PreferenceSectionGetSpecV1(), new PreferenceSectionPatchSpecV1(), new AvatarLookupSpecV1()));
+      return (List.of(new ManageSessionSpecV1(), new UploadsSpecV1(), new PreferenceSectionGetSpecV1(), new PreferenceSectionPatchSpecV1(), new AvatarLookupSpecV1(), new TableQuerySpecV1()));
    }
 
 
@@ -125,6 +129,12 @@ class AvatarGetSpecV1Test extends SpecTestBase
          .withField(new QFieldMetaData("contents", QFieldType.BLOB)));
       instance.withSupplementalMetaData(new DurableJobsMetaData().withStorageTableName(STORAGE_TABLE));
       new UserProfileMetaDataProvider().defineAll(instance, TestUtils.BACKEND_NAME_MEMORY, STORAGE_TABLE);
+
+      //////////////////////////////////////////////////////////////////////
+      // table-based test users hold no permissions: open the table rule  //
+      // so the record lock alone decides what a signed-in user sees      //
+      //////////////////////////////////////////////////////////////////////
+      instance.getTable("user_profile").setPermissionRules(new QPermissionRules().withLevel(PermissionLevel.NOT_PROTECTED));
       return (instance);
    }
 
@@ -242,6 +252,30 @@ class AvatarGetSpecV1Test extends SpecTestBase
 
       ok(patch(alice, "{\"values\":{\"avatar\":null}}"));
       assertEquals(404, Unirest.get(getBaseUrlAndPath() + path).header("Cookie", bob).asString().getStatus());
+   }
+
+
+
+   /*******************************************************************************
+    ** Sessions from a real sign-in carry the profile lock keys: through the
+    ** standard table query each user sees exactly their own row (without the
+    ** keys the lock would show nothing at all).
+    *******************************************************************************/
+   @Test
+   void testSignInStampsLockKeys()
+   {
+      String alice = login("alice").cookie();
+      String bob   = login("bob").cookie();
+      ok(patch(alice, "{\"values\":{\"displayName\":\"Alice\"}}"));
+      ok(patch(bob, "{\"values\":{\"displayName\":\"Bob\"}}"));
+
+      for(Map.Entry<String, String> user : Map.of("alice", alice, "bob", bob).entrySet())
+      {
+         JSONArray records = ok(Unirest.post(getBaseUrlAndPath() + "/table/user_profile/query").header("Cookie", user.getValue())
+            .header("Content-Type", "application/json").body("{}").asString()).getJSONArray("records");
+         assertEquals(1, records.length(), user.getKey());
+         assertEquals(user.getKey(), records.getJSONObject(0).getJSONObject("values").getString("userId"));
+      }
    }
 
 

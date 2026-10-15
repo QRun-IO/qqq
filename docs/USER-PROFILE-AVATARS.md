@@ -45,8 +45,11 @@ new UserProfileMetaDataProvider()
 - **Protected.** Table permissions (`user_profile.read/insert/edit/delete`), and a record lock on
   `userId` (security key type `user_profile_user`; `user_profile_admin` holders get the all-access
   key). Through the standard table APIs a user reaches only their own row; administrators see all.
-  Hosts stamp the keys with `UserProfiles.applyToSession(session)` at sign-in (the provider also
-  ensures them before writing). Users never need a table permission to edit their own profile.
+  Core stamps the keys wherever it finalizes a session: every UI API request (and the legacy
+  routes), and every automated session it creates for jobs, scheduled jobs, deliveries and
+  scheduled reports (`UserProfiles.applyIfInstalled`, additive). Hosts that build sessions
+  elsewhere call `UserProfiles.applyToSession`. Users never need a table permission to edit their
+  own profile.
 - `avatarStorageTableName`: a storage (filesystem/S3) table the application defines. Objects are
   written at `avatars/{avatarKey}/{size}.png`.
 - Section `profile` (label "Profile", icon `account_circle`, order 1, no permission, no app):
@@ -83,7 +86,7 @@ never used (no temporary files).
 
 | Operation | Notes |
 |---|---|
-| `GET /avatars/{avatarId}?size=32\|64\|128\|256&v=` | Any signed-in user. 200 `image/png`; 404 when none (clients draw initials). A chosen Gravatar is fetched by the server (3 s timeout, 1 MB) and re-encoded like a photo: no browser contacts Gravatar and no email hash is in any URL. With `v` equal to the current version: `Cache-Control: private, max-age=31536000, immutable`; otherwise `private, max-age=300` with an `ETag` (304 on match). `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'; sandbox`, `Content-Disposition: inline`. A missing object is a 404. |
+| `GET /avatars/{avatarId}?size=32\|64\|128\|256&v=` | Any signed-in user. 200 `image/png`; 404 when none (clients draw initials). A chosen Gravatar is fetched by the server (3 s timeout, 1 MB) and re-encoded like a photo, once per version: the sizes are kept at `gravatars/{avatarId}/{version}/` in the storage table (deleted when the user turns Gravatar off or on), a missing Gravatar is remembered for ten minutes, and conversions use their own permit. No browser contacts Gravatar and no email hash is in any URL. With `v` equal to the current version: `Cache-Control: private, max-age=31536000, immutable`; otherwise `private, max-age=300` with an `ETag` (304 on match). `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'; sandbox`, `Content-Disposition: inline`. A missing object is a 404. |
 | `POST /avatars/lookup` `{userIds: [...]}` | Avatar URLs by user id (at most 200), for any signed-in user; users without one are absent. A POST so user ids (often emails) are never in a URL or access log. |
 | `POST /manageSession` | `values.user.avatarUrl` (when the user has a photo or Gravatar) and `values.user.displayName` (when set). |
 | `GET/PATCH /preferences/profile` | The section above. |

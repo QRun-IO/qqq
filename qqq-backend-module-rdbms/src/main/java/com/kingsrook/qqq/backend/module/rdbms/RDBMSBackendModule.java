@@ -47,7 +47,9 @@ import com.kingsrook.qqq.backend.core.health.HealthCheck;
 import com.kingsrook.qqq.backend.core.health.HealthCheckInput;
 import com.kingsrook.qqq.backend.core.health.HealthCheckOutcome;
 import com.kingsrook.qqq.backend.core.health.HealthDetails;
+import com.kingsrook.qqq.backend.core.health.HealthMetric;
 import com.kingsrook.qqq.backend.core.health.HealthRedactor;
+import com.kingsrook.qqq.backend.core.health.HealthStatus;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistentReadInput;
@@ -119,16 +121,55 @@ public class RDBMSBackendModule implements QBackendModuleInterface
                statement.setQueryTimeout((int) Math.min(Integer.MAX_VALUE, Math.max(1, (remaining + 999) / 1000)));
                try(ResultSet result = statement.executeQuery("SELECT 1"))
                {
-                  return (result.next() ? HealthCheckOutcome.up("Database reachable")
-                     .withDetails(new HealthDetails().withValue("vendor", rdbms.getVendor())) : HealthCheckOutcome.down("Database probe returned no row"));
+                  if(!result.next())
+                  {
+                     return (HealthCheckOutcome.down("Database probe returned no row"));
+                  }
                }
             }
             catch(Exception e)
             {
                return (HealthCheckOutcome.down(HealthRedactor.redactThrowable(e)));
             }
+
+            return (withPoolMetrics(HealthCheckOutcome.up("Database reachable"), rdbms));
          }
       });
+   }
+
+
+
+   /*******************************************************************************
+    ** Add the backend's connection pool gauges (when it has a pool) as metrics
+    ** and details. Threads waiting for a checkout, or suspected leaked
+    ** connections, make a reachable database DEGRADED.
+    *******************************************************************************/
+   public static HealthCheckOutcome withPoolMetrics(HealthCheckOutcome outcome, RDBMSBackendMetaData rdbms)
+   {
+      HealthDetails details = new HealthDetails().withValue("vendor", rdbms.getVendor());
+      outcome.withDetails(details);
+
+      Map<String, Number> pool = ConnectionManager.getPoolMetrics(rdbms);
+      if(pool.isEmpty())
+      {
+         return (outcome);
+      }
+
+      List<HealthMetric> metrics = new ArrayList<>();
+      pool.forEach((name, value) ->
+      {
+         details.withValue("pool." + name, value);
+         metrics.add(new HealthMetric().withName("pool_" + name).withValue(value).withUnit("count"));
+      });
+      outcome.withMetrics(metrics);
+
+      long waiting = pool.getOrDefault("threadsAwaitingCheckout", 0).longValue();
+      long leaks   = pool.getOrDefault("suspectedLeaks", 0).longValue();
+      if(waiting > 0 || leaks > 0)
+      {
+         outcome.withStatus(HealthStatus.DEGRADED).withMessage("Database reachable; connection pool under pressure (" + waiting + " waiting, " + leaks + " suspected leaks)");
+      }
+      return (outcome);
    }
 
 

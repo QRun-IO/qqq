@@ -30,7 +30,9 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.health.HealthCheckKind;
 import com.kingsrook.qqq.backend.core.health.HealthCheckMetaData;
+import com.kingsrook.qqq.backend.core.health.HealthCheckOutcome;
 import com.kingsrook.qqq.backend.core.health.HealthMetaDataProvider;
+import com.kingsrook.qqq.backend.core.health.HealthMetric;
 import com.kingsrook.qqq.backend.core.health.HealthRunner;
 import com.kingsrook.qqq.backend.core.health.HealthStatus;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
@@ -104,12 +106,36 @@ public final class HealthMetrics
          {
             text.append("qqq_health_check_latency_ms").append(labels).append(' ').append(latency).append('\n');
          }
+
+         appendCheckMetrics(text, labels, outcome);
       }
       if(failure.get() != null && text.isEmpty())
       {
          throw failure.get();
       }
       return (text.toString());
+   }
+
+
+
+   /*******************************************************************************
+    ** The check's own gauges (e.g. a database's connection pool), one line per
+    ** metric, from this pod's live outcome only: they describe this process.
+    *******************************************************************************/
+   static void appendCheckMetrics(StringBuilder text, String labels, HealthCheckOutcome outcome)
+   {
+      if(outcome == null || outcome.getMetrics() == null)
+      {
+         return;
+      }
+      for(HealthMetric metric : outcome.getMetrics())
+      {
+         if(metric != null && metric.getName() != null && metric.getValue() != null && Double.isFinite(metric.getValue().doubleValue()))
+         {
+            String metricLabels = labels.substring(0, labels.length() - 1) + ",metric=\"" + escape(metric.getName()) + "\"}";
+            text.append("qqq_health_check_metric").append(metricLabels).append(' ').append(metric.getValue()).append('\n');
+         }
+      }
    }
 
 

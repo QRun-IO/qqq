@@ -260,3 +260,12 @@ configures the table-backed state provider needs no affinity: any replica serves
 call, and a step whose replica died reports a clear error instead of hanging. Durable process jobs
 (`POST /processes/{processName}/jobs`, `/jobs/...`) are database-backed and already work from any
 replica.
+
+### Navigation sections and search aliases
+
+UI API 1.7.0 publishes section `apps`, `role` and `collapsedByDefault`, plus `keywords` on app metadata
+and app tree nodes. PRIMARY items appear without a heading; HISTORY and SETTINGS appear under headings.
+A GROUP section is a heading, never a destination: no page, URL or breadcrumb level. Clients never
+re-sort server order. SETTINGS is collapsed unless the user expands it; honor explicit
+`collapsedByDefault` overrides. Match search on label + keywords + ancestor labels. Keywords are aliases,
+never display labels.

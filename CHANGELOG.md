@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- `QMetaDataVariableInterpreter` has an explicit trusted/untrusted input mode (`setTrustedInput`). An interpreter that handles user-supplied values (one with value maps, such as the ones for query filter criteria and report formulas, which now set it explicitly) does not resolve `${env.X}`, `${prop.X}` or `${file.PATH}` references; they stay literal text. Metadata-time interpretation is unchanged, and `${input.X}` and the other value-map references behave as before. Applications that relied on env or prop references in filter or report values must resolve them in trusted code instead.
 - Durable jobs can no longer be launched (or auto-diverted) from an access-token session: a scoped credential (`QCredentialScope`, e.g. a PAT) or a bearer request. A worker could not hold the job to the token's scope, expiry or revocation, so a scoped token could otherwise start work that ran with the user's full permissions and outlived the token (review finding N1). Launch from an interactive sign-in instead; that path uses job grants.
 
 ### Added
@@ -71,6 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed the per-RC Next waiver owner-approval gate by owner decision on 2026-10-13; releases no longer require a comment on #798. The seven Next-owned successor features report missing/pending acceptance evidence without blocking releases. Failed tests and invalid supplied receipts still block strict coverage; non-Next requirements are unchanged.
 
 ### Fixed
+- The cluster bus, the table state provider and the server's SIGTERM drain hook no longer hold a `QInstance` (or the server) strongly. Dropped instances were kept alive for the life of the JVM, which grew test suites that build many instances.
 - **Cluster:** with shared state, a one-time secret is handed out only once. The producing node used to keep a local copy and could hand the secret out again after another node's status poll had taken it from the shared store.
 - **Cluster:** a cancel requested on another node is no longer lost. The node running an async step re-read the stored cancel flag and then rewrote the status row, so a cancel stored between that read and the write was overwritten. Cancels now also write a separate marker that only cancels write.
 - **ESB outbox:** a row whose destination is no longer configured now counts attempts and goes `DEAD` after `maxAttempts`. Before, it was treated as a broker outage: it stayed `PENDING` forever, blocked its destination and logged a warning on every pass.

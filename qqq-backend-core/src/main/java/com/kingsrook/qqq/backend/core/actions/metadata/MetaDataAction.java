@@ -249,6 +249,7 @@ public class MetaDataAction
          apps.put(appName, frontendAppMetaData);
          treeNodes.put(appName, new AppTreeNode(app));
       }
+      apps.values().forEach(app -> app.filterSectionApps(apps));
       metaDataOutput.setApps(apps);
 
       ////////////////////////////////////////////////

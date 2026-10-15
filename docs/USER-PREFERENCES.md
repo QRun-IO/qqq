@@ -200,6 +200,12 @@ First sections as designed:
   enabled, minimum severity, delivery mode.
 - **Assistant** (qbit-assistant, follow-up): the write-mode default and other per-user settings,
   replacing the bespoke `/assistant/preferences` endpoint.
+- **Keyboard** (core, `KeyboardPreferences`): `keyboard.singleKeyShortcuts` (BOOLEAN, default on).
+  Off turns off every shortcut made of a character key alone (`/`, `?`, `n`, Shift+D, ...), as
+  WCAG 2.1.4 (Level A) requires; Ctrl/Cmd shortcuts keep working. An application registers it with
+  `KeyboardPreferences.register(qInstance)` and the core key-value store
+  (`UserPreferencesKeyValueStoreMetaDataProvider` and its `user_preference` table). Clients read
+  the section and field by these names; when the section is absent they keep the choice locally.
 
 
 ## Sample acceptance section

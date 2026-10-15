@@ -584,7 +584,7 @@ public class QQueryFilter implements Serializable, Cloneable, QMetaDataObject
       ////////////////////////////////////////////////////////////////////////////
       // if process values were passed in, add those to the interpreter as well //
       ////////////////////////////////////////////////////////////////////////////
-      QMetaDataVariableInterpreter variableInterpreter = new QMetaDataVariableInterpreter();
+      QMetaDataVariableInterpreter variableInterpreter = new QMetaDataVariableInterpreter().withTrustedInput(false);
       for(String mapName : valueMap.keySet())
       {
          variableInterpreter.addValueMap(mapName, valueMap.get(mapName));

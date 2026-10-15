@@ -40,6 +40,8 @@ import com.kingsrook.qqq.backend.core.instances.QInstanceHelpContentManager;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
@@ -93,119 +95,213 @@ public class HelpBundleSyncAction
 
 
    /*******************************************************************************
-    ** Serialize local sync/review actions on the per-instance registry.
+    ** Serialize local sync/review actions on the per-instance registry. Decisions
+    ** are planned from one snapshot, then made again per batch from freshly read
+    ** rows just before writing, so a second instance syncing the same bundles at
+    ** the same time (replicas starting together) finds its work already done
+    ** instead of writing, and auditing, every row a second time.
     *******************************************************************************/
    private Result sync(boolean preview) throws QException
    {
       HelpBundles registry = HelpBundles.of(QContext.getQInstance());
       synchronized(registry)
       {
-         Map<EntryKey, WinningEntry> winners = registry.resolveWinningEntries();
+         Map<EntryKey, WinningEntry> winners = new LinkedHashMap<>();
+         registry.resolveWinningEntries().forEach((key, winner) ->
+         {
+            if(!winner.entry().getRetired())
+            {
+               winners.put(key, winner);
+            }
+         });
          Map<EntryKey, QRecord> rows = new LinkedHashMap<>();
-         for(QRecord row : query())
+         for(QRecord row : query(null))
          {
-            rows.put(new EntryKey(row.getValueString("key"), row.getValueString("role")), row);
+            rows.put(key(row), row);
          }
-         List<QRecord> inserts = new ArrayList<>();
-         List<QRecord> updates = new ArrayList<>();
-         List<Serializable> deletes = new ArrayList<>();
-         int updated = 0;
-         int flagged = 0;
-         int retired = 0;
-         int unchanged = 0;
-         for(var item : winners.entrySet())
+         List<EntryKey> keys = new ArrayList<>(winners.keySet());
+         rows.keySet().stream().filter(key -> !winners.containsKey(key)).forEach(keys::add);
+
+         Counts planned = new Counts();
+         for(EntryKey key : keys)
          {
-            WinningEntry winner = item.getValue();
-            HelpBundleEntry entry = winner.entry();
-            if(entry.getRetired())
-            {
-               continue;
-            }
-            QRecord old = rows.remove(item.getKey());
-            String hash = hash(entry);
-            if(old == null)
-            {
-               inserts.add(seed(new QRecord().withValue("key", entry.getKey()).withValue("role", entry.getRole())
-                  .withValue("source", winner.bundle().getLayer().name()), winner));
-            }
-            else if(!hasBundle(old))
-            {
-               unchanged++;
-            }
-            else if(Objects.equals(HelpContentHash.of(old), old.getValueString("lastSeededHash")))
-            {
-               QRecord next = seed(new QRecord(old), winner);
-               if(changed(old, next))
-               {
-                  updates.add(next);
-                  updated++;
-               }
-               else
-               {
-                  unchanged++;
-               }
-            }
-            else if(!Objects.equals(hash, old.getValueString("lastSeededHash")))
-            {
-               QRecord next = new QRecord(old).withValue("upstreamStatus", "UPSTREAM_CHANGED")
-                  .withValue("upstreamSummary", entry.getSummary()).withValue("upstreamContent", entry.getContent())
-                  .withValue("bundleId", winner.bundle().getId()).withValue("bundleVersion", winner.bundle().getVersion());
-               if(changed(old, next))
-               {
-                  updates.add(next);
-               }
-               flagged++;
-            }
-            else
-            {
-               unchanged++;
-            }
+            planned.add(decide(rows.get(key), winners.get(key)));
          }
-         for(QRecord old : rows.values())
+         if(preview)
          {
-            if(!hasBundle(old))
-            {
-               unchanged++;
-            }
-            else if(Objects.equals(HelpContentHash.of(old), old.getValueString("lastSeededHash")))
-            {
-               deletes.add(old.getValue("id"));
-            }
-            else if(!"RETIRED".equals(old.getValueString("upstreamStatus")))
-            {
-               updates.add(new QRecord(old).withValue("upstreamStatus", "RETIRED").withValue("upstreamSummary", null).withValue("upstreamContent", null));
-               retired++;
-            }
-            else
-            {
-               unchanged++;
-            }
+            return (planned.result());
          }
-         Result result = new Result(inserts.size(), updated, flagged, retired, deletes.size(), unchanged);
-         if(!preview)
+
+         Counts applied = new Counts();
+         try(HelpContentSyncContext ignored = new HelpContentSyncContext())
          {
-            try(HelpContentSyncContext ignored = new HelpContentSyncContext())
+            for(int start = 0; start < keys.size(); start += BATCH_SIZE)
             {
-               for(int start = 0; start < inserts.size(); start += BATCH_SIZE)
+               List<EntryKey> batch = keys.subList(start, Math.min(start + BATCH_SIZE, keys.size()));
+               Map<EntryKey, QRecord> current = new LinkedHashMap<>();
+               for(QRecord row : query(batch.stream().map(EntryKey::key).distinct().toList()))
                {
-                  check(new InsertAction().execute(new InsertInput(HelpContent.TABLE_NAME).withRecords(inserts.subList(start, Math.min(start + BATCH_SIZE, inserts.size())))).getRecords());
+                  current.put(key(row), row);
+               }
+               List<QRecord> inserts = new ArrayList<>();
+               List<QRecord> updates = new ArrayList<>();
+               List<Serializable> deletes = new ArrayList<>();
+               for(EntryKey key : batch)
+               {
+                  Decision decision = decide(current.get(key), winners.get(key));
+                  applied.add(decision);
+                  switch(decision.kind())
+                  {
+                     case INSERT -> inserts.add(decision.write());
+                     case DELETE -> deletes.add(decision.write().getValue("id"));
+                     default ->
+                     {
+                        if(decision.write() != null)
+                        {
+                           updates.add(decision.write());
+                        }
+                     }
+                  }
+               }
+               if(!inserts.isEmpty())
+               {
+                  check(new InsertAction().execute(new InsertInput(HelpContent.TABLE_NAME).withRecords(inserts)).getRecords());
                }
                update(updates);
-               for(int start = 0; start < deletes.size(); start += BATCH_SIZE)
+               if(!deletes.isEmpty())
                {
-                  var output = new DeleteAction().execute(new DeleteInput(HelpContent.TABLE_NAME).withPrimaryKeys(deletes.subList(start, Math.min(start + BATCH_SIZE, deletes.size()))));
-                  check(output.getRecordsWithErrors());
+                  check(new DeleteAction().execute(new DeleteInput(HelpContent.TABLE_NAME).withPrimaryKeys(deletes)).getRecordsWithErrors());
                }
             }
-            finally
-            {
-               QInstanceHelpContentManager.reloadHelpContent(QContext.getQInstance());
-            }
-            updateAlert(flagged);
-            LOG.info("Help bundle sync: " + result);
          }
+         finally
+         {
+            QInstanceHelpContentManager.reloadHelpContent(QContext.getQInstance());
+         }
+         Result result = applied.result();
+         updateAlert(result.upstreamChanged());
+         LOG.info("Help bundle sync: " + result);
          return (result);
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** What one key needs: a row to insert, update or delete, or nothing.
+    *******************************************************************************/
+   private enum Kind
+   {
+      INSERT, UPDATE, UPSTREAM_CHANGED, RETIRE, DELETE, UNCHANGED
+   }
+
+
+
+   /*******************************************************************************
+    ** A decision and the record to write, or null when nothing needs writing.
+    *******************************************************************************/
+   private record Decision(Kind kind, QRecord write)
+   {
+   }
+
+
+
+   /*******************************************************************************
+    ** Tally decisions into a result.
+    *******************************************************************************/
+   private static class Counts
+   {
+      private final Map<Kind, Integer> counts = new java.util.EnumMap<>(Kind.class);
+
+
+
+      /*******************************************************************************
+       ** Count one decision.
+       *******************************************************************************/
+      void add(Decision decision)
+      {
+         counts.merge(decision.kind(), 1, Integer::sum);
+      }
+
+
+
+      /*******************************************************************************
+       ** The public result shape.
+       *******************************************************************************/
+      Result result()
+      {
+         return (new Result(get(Kind.INSERT), get(Kind.UPDATE), get(Kind.UPSTREAM_CHANGED), get(Kind.RETIRE), get(Kind.DELETE), get(Kind.UNCHANGED)));
+      }
+
+
+
+      /*******************************************************************************
+       ** A count, zero when absent.
+       *******************************************************************************/
+      private int get(Kind kind)
+      {
+         return (counts.getOrDefault(kind, 0));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Decide one key against its stored row (null when absent) and its winning,
+    ** non-retired bundle entry (null when no bundle provides it any more). Rows are
+    ** written only when their text, upstream state or owning bundle changes: a new
+    ** bundle version with the same text is not a change, so it neither rewrites
+    ** nor audits the row (bundleVersion records the version that last seeded it).
+    *******************************************************************************/
+   private Decision decide(QRecord old, WinningEntry winner)
+   {
+      if(old == null)
+      {
+         return (winner == null ? new Decision(Kind.UNCHANGED, null) : new Decision(Kind.INSERT,
+            seed(new QRecord().withValue("key", winner.entry().getKey()).withValue("role", winner.entry().getRole())
+               .withValue("source", winner.bundle().getLayer().name()), winner)));
+      }
+      if(!hasBundle(old))
+      {
+         return (new Decision(Kind.UNCHANGED, null));
+      }
+      boolean unedited = Objects.equals(HelpContentHash.of(old), old.getValueString("lastSeededHash"));
+      if(winner == null)
+      {
+         if(unedited)
+         {
+            return (new Decision(Kind.DELETE, old));
+         }
+         if(!"RETIRED".equals(old.getValueString("upstreamStatus")))
+         {
+            return (new Decision(Kind.RETIRE, new QRecord(old).withValue("upstreamStatus", "RETIRED").withValue("upstreamSummary", null).withValue("upstreamContent", null)));
+         }
+         return (new Decision(Kind.UNCHANGED, null));
+      }
+      if(unedited)
+      {
+         QRecord next = seed(new QRecord(old), winner);
+         return (changed(old, next) ? new Decision(Kind.UPDATE, next) : new Decision(Kind.UNCHANGED, null));
+      }
+      HelpBundleEntry entry = winner.entry();
+      if(!Objects.equals(hash(entry), old.getValueString("lastSeededHash")))
+      {
+         QRecord next = new QRecord(old).withValue("upstreamStatus", "UPSTREAM_CHANGED")
+            .withValue("upstreamSummary", entry.getSummary()).withValue("upstreamContent", entry.getContent())
+            .withValue("bundleId", winner.bundle().getId()).withValue("bundleVersion", winner.bundle().getVersion());
+         return (new Decision(Kind.UPSTREAM_CHANGED, changed(old, next) ? next : null));
+      }
+      return (new Decision(Kind.UNCHANGED, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** The merge key of a stored row.
+    *******************************************************************************/
+   private static EntryKey key(QRecord row)
+   {
+      return (new EntryKey(row.getValueString("key"), row.getValueString("role")));
    }
 
 
@@ -240,7 +336,7 @@ public class HelpBundleSyncAction
       {
          var winners = registry.resolveWinningEntries();
          List<QRecord> updates = new ArrayList<>();
-         for(QRecord old : query())
+         for(QRecord old : query(null))
          {
             if(!ids.contains(old.getValue("id")) || !"UPSTREAM_CHANGED".equals(old.getValueString("upstreamStatus")))
             {
@@ -251,8 +347,11 @@ public class HelpBundleSyncAction
             {
                throw new QException("Upstream entry is no longer available; sync help again before reviewing " + old.getValueString("key"));
             }
+            //////////////////////////////////////////////////////////////////////
+            // The text is what the reviewer saw; a version bump with the same   //
+            // text is not a change (sync no longer rewrites rows for it).       //
+            //////////////////////////////////////////////////////////////////////
             if(!Objects.equals(old.getValueString("bundleId"), winner.bundle().getId())
-               || !Objects.equals(old.getValueString("bundleVersion"), winner.bundle().getVersion())
                || !Objects.equals(old.getValueString("upstreamSummary"), winner.entry().getSummary())
                || !Objects.equals(old.getValueString("upstreamContent"), winner.entry().getContent()))
             {
@@ -291,7 +390,7 @@ public class HelpBundleSyncAction
     *******************************************************************************/
    private void refreshAlert() throws QException
    {
-      long count = query().stream().filter(row -> "UPSTREAM_CHANGED".equals(row.getValueString("upstreamStatus"))).count();
+      long count = query(null).stream().filter(row -> "UPSTREAM_CHANGED".equals(row.getValueString("upstreamStatus"))).count();
       updateAlert(count);
    }
 
@@ -316,15 +415,20 @@ public class HelpBundleSyncAction
 
 
    /*******************************************************************************
-    ** Read using the caller's normal permissions.
+    ** Read using the caller's normal permissions: every row, or the rows for some keys.
     *******************************************************************************/
-   private List<QRecord> query() throws QException
+   private List<QRecord> query(List<String> keys) throws QException
    {
       List<QRecord> records = new ArrayList<>();
       while(true)
       {
+         QQueryFilter filter = new QQueryFilter().withOrderBy(new QFilterOrderBy("id")).withSkip(records.size()).withLimit(BATCH_SIZE);
+         if(keys != null)
+         {
+            filter.addCriteria(new QFilterCriteria("key", QCriteriaOperator.IN, keys));
+         }
          List<QRecord> page = new QueryAction().execute(new QueryInput(HelpContent.TABLE_NAME).withShouldFetchHeavyFields(true)
-            .withFilter(new QQueryFilter().withOrderBy(new QFilterOrderBy("id")).withSkip(records.size()).withLimit(BATCH_SIZE))).getRecords();
+            .withFilter(filter)).getRecords();
          records.addAll(page);
          if(page.size() < BATCH_SIZE)
          {
@@ -403,10 +507,27 @@ public class HelpBundleSyncAction
 
 
    /*******************************************************************************
-    ** Avoid no-op updates, timestamps and audit entries on repeated runs.
+    ** Fields whose change is a real change to the row. bundleVersion is left out:
+    ** it is recorded whenever the row is written, but never a reason to write.
+    *******************************************************************************/
+   private static final List<String> SIGNIFICANT = List.of("format", "summary", "content", "bundleId", "lastSeededHash",
+      "upstreamStatus", "upstreamSummary", "upstreamContent");
+
+
+
+   /*******************************************************************************
+    ** Avoid no-op updates, timestamps and audit entries on repeated runs. Null and
+    ** empty text compare equal, as they do in the seeded hash.
     *******************************************************************************/
    private boolean changed(QRecord before, QRecord after)
    {
-      return (!before.getValues().equals(after.getValues()));
+      for(String field : SIGNIFICANT)
+      {
+         if(!Objects.equals(Objects.requireNonNullElse(before.getValueString(field), ""), Objects.requireNonNullElse(after.getValueString(field), "")))
+         {
+            return (true);
+         }
+      }
+      return (false);
    }
 }

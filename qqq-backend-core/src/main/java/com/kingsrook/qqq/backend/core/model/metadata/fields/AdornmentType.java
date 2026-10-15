@@ -198,6 +198,15 @@ public enum AdornmentType
       public static String FORMAT = "format";
       public static String WIDTH  = "width";
 
+      /////////////////////////////////////////////////////////////////////////////
+      // the field's value is a ref from POST /uploads (upload first, then send  //
+      // the ref); reading it gives a URL to show (since UI API 1.7.0)           //
+      /////////////////////////////////////////////////////////////////////////////
+      public static String VALUE_IS_UPLOAD_REF = "valueIsUploadRef";
+      public static String ACCEPT              = "accept";
+      public static String MAX_BYTES           = "maxBytes";
+      public static String IMAGE_SHAPE         = "imageShape";
+
 
 
       /***************************************************************************

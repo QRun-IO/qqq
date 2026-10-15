@@ -28,7 +28,7 @@ import java.util.Map;
 /***************************************************************************
  **
  ***************************************************************************/
-public class BulkLoadProfileField
+public class BulkLoadProfileField implements Serializable
 {
    private String                    fieldName;
    private Integer                   columnIndex;

@@ -29,6 +29,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.function.Consumer;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
+import com.kingsrook.qqq.backend.core.cluster.ClusterBus;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QInstanceValidationException;
 import com.kingsrook.qqq.backend.core.health.HealthMonitoringMetaData;
@@ -44,6 +45,7 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
 import com.kingsrook.qqq.middleware.javalin.QJavalinMetaData;
+import com.kingsrook.qqq.middleware.javalin.cluster.JavalinClusterSupport;
 import com.kingsrook.qqq.middleware.javalin.health.HealthJavalinMetaDataProducer;
 import com.kingsrook.qqq.middleware.javalin.health.HealthRuntimeService;
 import com.kingsrook.qqq.middleware.javalin.metadata.JavalinRouteProviderMetaData;
@@ -120,6 +122,9 @@ public class QApplicationJavalinServer
    private Javalin   service;
    private QInstance qInstance;
 
+   private          Thread  drainShutdownHook;
+   private volatile boolean stopped = false;
+
 
 
    /*******************************************************************************
@@ -138,6 +143,7 @@ public class QApplicationJavalinServer
     ***************************************************************************/
    public void start() throws QException
    {
+      stopped = false;
       QInstance qInstance = application.defineValidatedQInstance();
       this.qInstance = qInstance;
       if(qInstance.getSupplementalMetaData(HealthMonitoringMetaData.NAME) != null)
@@ -207,6 +213,12 @@ public class QApplicationJavalinServer
 
       service = Javalin.create(config ->
       {
+         //////////////////////////////////////////////////////////////////////
+         // cluster node: graceful Jetty stop, and (on a node without the    //
+         // web role) 503 for everything but probes - JavalinClusterSupport  //
+         //////////////////////////////////////////////////////////////////////
+         JavalinClusterSupport.configure(config);
+
          config.events.serverStopped(healthRuntimeService::stop);
          if((serveMaterial || serveNext) && getClass().getResource("/material-dashboard-overlay") != null)
          {
@@ -385,6 +397,21 @@ public class QApplicationJavalinServer
       // stop (and on SIGTERM, through the runtime's shutdown hook).   //
       ///////////////////////////////////////////////////////////////////
       DurableJobsRuntime.start(qInstance);
+
+      ////////////////////////////////////////////////////////////////////////
+      // receive cluster control events (cache invalidation, session ends,  //
+      // overlay changes) from other nodes before serving any change       //
+      ////////////////////////////////////////////////////////////////////////
+      ClusterBus.connect(qInstance);
+
+      ////////////////////////////////////////////////////////////////////////
+      // SIGTERM drains this node (not-ready, async steps finish, in-flight //
+      // requests finish) before the server stops                          //
+      ////////////////////////////////////////////////////////////////////////
+      if(drainShutdownHook == null)
+      {
+         drainShutdownHook = JavalinClusterSupport.installShutdownHook(this::stop);
+      }
    }
 
 
@@ -568,6 +595,29 @@ public class QApplicationJavalinServer
       {
          LOG.info("Stop called, but there is no javalin service, so noop.");
          return;
+      }
+
+      synchronized(this)
+      {
+         if(stopped)
+         {
+            return;
+         }
+         stopped = true;
+      }
+
+      if(drainShutdownHook != null && Thread.currentThread() != drainShutdownHook)
+      {
+         try
+         {
+            Runtime.getRuntime().removeShutdownHook(drainShutdownHook);
+         }
+         catch(IllegalStateException e)
+         {
+            /////////////////////////////////////////////
+            // the JVM is already shutting down - fine //
+            /////////////////////////////////////////////
+         }
       }
 
       if(this.qInstance != null)

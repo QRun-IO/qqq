@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.kingsrook.qqq.backend.core.actions.processes.ProcessStateAccess;
@@ -37,13 +38,21 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
  *******************************************************************************/
 public class ProcessState implements Serializable
 {
-   private transient ProcessStateAccess stateAccess;
+   ///////////////////////////////////////////////////////////////////////////
+   // serialized with the state, so a shared (multi-node) state provider    //
+   // keeps the ownership check (ProcessStateAccess) on every node          //
+   ///////////////////////////////////////////////////////////////////////////
+   private ProcessStateAccess stateAccess;
 
    private List<QRecord>             records      = new ArrayList<>();
    private Map<String, Serializable> values       = new HashMap<>();
    private List<String>              stepList     = new ArrayList<>();
-   private Optional<String>          nextStepName = Optional.empty();
-   private Optional<String>          backStepName = Optional.empty();
+   ///////////////////////////////////////////////////////////////////
+   // plain (nullable) strings - Optional is not Serializable; the  //
+   // getters still return Optionals                                //
+   ///////////////////////////////////////////////////////////////////
+   private String                    nextStepName = null;
+   private String                    backStepName = null;
    private boolean                   isStepBack   = false;
 
    private ProcessMetaDataAdjustment processMetaDataAdjustment = null;
@@ -100,7 +109,7 @@ public class ProcessState implements Serializable
     *******************************************************************************/
    public Optional<String> getNextStepName()
    {
-      return nextStepName;
+      return Optional.ofNullable(nextStepName);
    }
 
 
@@ -111,7 +120,7 @@ public class ProcessState implements Serializable
     *******************************************************************************/
    public void setNextStepName(String nextStepName)
    {
-      this.nextStepName = Optional.of(nextStepName);
+      this.nextStepName = Objects.requireNonNull(nextStepName);
    }
 
 
@@ -122,7 +131,7 @@ public class ProcessState implements Serializable
     *******************************************************************************/
    public void clearNextStepName()
    {
-      this.nextStepName = Optional.empty();
+      this.nextStepName = null;
    }
 
 
@@ -133,7 +142,7 @@ public class ProcessState implements Serializable
     *******************************************************************************/
    public Optional<String> getBackStepName()
    {
-      return backStepName;
+      return Optional.ofNullable(backStepName);
    }
 
 
@@ -144,7 +153,7 @@ public class ProcessState implements Serializable
     *******************************************************************************/
    public void setBackStepName(String backStepName)
    {
-      this.backStepName = Optional.of(backStepName);
+      this.backStepName = Objects.requireNonNull(backStepName);
    }
 
 
@@ -155,7 +164,7 @@ public class ProcessState implements Serializable
     *******************************************************************************/
    public void clearBackStepName()
    {
-      this.backStepName = Optional.empty();
+      this.backStepName = null;
    }
 
 

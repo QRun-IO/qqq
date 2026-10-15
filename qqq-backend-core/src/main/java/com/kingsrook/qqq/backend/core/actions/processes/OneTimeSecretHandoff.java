@@ -21,13 +21,22 @@
 package com.kingsrook.qqq.backend.core.actions.processes;
 
 
+import java.io.Serializable;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.secrets.OneTimeSecret;
+import com.kingsrook.qqq.backend.core.state.QStateProviders;
+import com.kingsrook.qqq.backend.core.state.SimpleStateKey;
+import com.kingsrook.qqq.backend.core.state.StateProviderInterface;
+import com.kingsrook.qqq.backend.core.state.TableStateProvider;
 
 
 /*******************************************************************************
@@ -37,32 +46,40 @@ import com.kingsrook.qqq.backend.core.model.secrets.OneTimeSecret;
  ** (3 s by default), so without this a slow key-producing step would lose its
  ** secret.
  **
- ** Held in this JVM's memory only, keyed by process UUID (status polls are
- ** already restricted to the process's own user), never written to process
- ** state, traces or listeners, removed on the first take, and dropped after
- ** a short time-to-live. A poll that reaches another server instance finds
- ** nothing, which is the documented "shown once, else rotate" outcome.
+ ** Keyed by process UUID (status polls are already restricted to the process's
+ ** own user), never written to process state, traces or listeners, removed on
+ ** the first take, and dropped after a short time-to-live.
+ **
+ ** Where it is held: in this JVM's memory - and, when the instance shares state
+ ** across nodes through an ENCRYPTED table store (StateProviderMetaData with
+ ** QQQ_STATE_ENCRYPTION_KEY), also there, so the poll may reach any node. An
+ ** unencrypted shared store is never used for secrets. A poll that finds
+ ** nothing gets the documented "shown once, else rotate" outcome.
  *******************************************************************************/
 public final class OneTimeSecretHandoff
 {
+   private static final QLogger LOG = QLogger.getLogger(OneTimeSecretHandoff.class);
+
    /** How long an untaken secret is kept. */
    public static final Duration TIME_TO_LIVE = Duration.ofMinutes(5);
+
+   private static final String KEY_PREFIX = "oneTimeSecrets:";
 
    private static final Map<String, Entry> ENTRIES = new ConcurrentHashMap<>();
 
 
 
    /*******************************************************************************
-    ** One parked set of secrets.
+    ** The held secrets and when they expire.
     *******************************************************************************/
-   private record Entry(List<OneTimeSecret> secrets, Instant expires)
+   private record Entry(ArrayList<OneTimeSecret> secrets, Instant expires) implements Serializable
    {
    }
 
 
 
    /*******************************************************************************
-    ** Utility class.
+    ** not instantiable
     *******************************************************************************/
    private OneTimeSecretHandoff()
    {
@@ -71,7 +88,7 @@ public final class OneTimeSecretHandoff
 
 
    /*******************************************************************************
-    ** Park a finished run's secrets for its process UUID (no-op when none).
+    ** Hold secrets for the process's next status poll.
     *******************************************************************************/
    public static void offer(String processUUID, List<OneTimeSecret> secrets)
    {
@@ -80,14 +97,27 @@ public final class OneTimeSecretHandoff
       {
          return;
       }
-      ENTRIES.put(processUUID, new Entry(new ArrayList<>(secrets), Instant.now().plus(TIME_TO_LIVE)));
+
+      Entry entry = new Entry(new ArrayList<>(secrets), Instant.now().plus(TIME_TO_LIVE));
+      ENTRIES.put(processUUID, entry);
+
+      encryptedSharedStore().ifPresent(store ->
+      {
+         try
+         {
+            store.put(key(processUUID), entry);
+         }
+         catch(Exception e)
+         {
+            LOG.warn("Could not share one-time secrets across nodes; they stay on this node", e);
+         }
+      });
    }
 
 
 
    /*******************************************************************************
-    ** Take (and forget) the secrets parked for a process UUID; empty when none,
-    ** already taken, or expired.
+    ** Take (and remove) the process's held secrets - empty when none or expired.
     *******************************************************************************/
    public static List<OneTimeSecret> take(String processUUID)
    {
@@ -96,7 +126,26 @@ public final class OneTimeSecretHandoff
       {
          return (List.of());
       }
+
       Entry entry = ENTRIES.remove(processUUID);
+
+      Optional<StateProviderInterface> store = encryptedSharedStore();
+      if(store.isPresent())
+      {
+         try
+         {
+            if(entry == null)
+            {
+               entry = store.get().get(Entry.class, key(processUUID)).orElse(null);
+            }
+            store.get().remove(key(processUUID));
+         }
+         catch(Exception e)
+         {
+            LOG.warn("Could not read one-time secrets from the shared store", e);
+         }
+      }
+
       if(entry == null || entry.expires().isBefore(Instant.now()))
       {
          return (List.of());
@@ -107,7 +156,37 @@ public final class OneTimeSecretHandoff
 
 
    /*******************************************************************************
-    ** Drop anything past its time-to-live.
+    ** The shared store, when the instance has one and it encrypts.
+    *******************************************************************************/
+   private static Optional<StateProviderInterface> encryptedSharedStore()
+   {
+      QInstance instance = QContext.getQInstance();
+      if(instance == null || !QStateProviders.isShared(instance))
+      {
+         return (Optional.empty());
+      }
+      StateProviderInterface provider = QStateProviders.forInstance(instance);
+      if(provider instanceof TableStateProvider table && table.isEncrypted())
+      {
+         return (Optional.of(provider));
+      }
+      return (Optional.empty());
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static SimpleStateKey<String> key(String processUUID)
+   {
+      return (new SimpleStateKey<>(KEY_PREFIX + processUUID));
+   }
+
+
+
+   /*******************************************************************************
+    **
     *******************************************************************************/
    private static void evictExpired()
    {

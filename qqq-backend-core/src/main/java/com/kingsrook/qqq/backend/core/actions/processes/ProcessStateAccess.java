@@ -101,7 +101,13 @@ public final class ProcessStateAccess implements Serializable
    public void requireAccess(String expectedName, String expectedUUID) throws QException
    {
       QSession session = QContext.getQSession();
-      if(instance == null || instance != QContext.getQInstance() || session == null
+      ///////////////////////////////////////////////////////////////////////////
+      // the instance identity check applies when the access was captured in   //
+      // this JVM; an access read back from a shared (multi-node) state store  //
+      // has no instance (it is transient) and is checked by session, variants, //
+      // process and current permissions, exactly as before                    //
+      ///////////////////////////////////////////////////////////////////////////
+      if((instance != null && instance != QContext.getQInstance()) || QContext.getQInstance() == null || session == null
          || !sessionHash.equals(sessionHash(session))
          || !backendVariants.equals(session.getBackendVariants() == null ? Map.of() : session.getBackendVariants())
          || (expectedName != null && !Objects.equals(processName, expectedName))

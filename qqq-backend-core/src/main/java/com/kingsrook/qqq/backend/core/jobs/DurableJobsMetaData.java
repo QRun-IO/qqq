@@ -66,6 +66,8 @@ public class DurableJobsMetaData implements QSupplementalInstanceMetaData
    private Integer assistantMaxActiveJobs = 2;
    private Boolean scheduledRunsAsJobs = true;
    private String scheduledJobsUserId;
+   private String jobGrantKey = "${env.QQQ_JOB_GRANT_KEY}";
+   private Integer jobGrantTtlHours = 168;
    private List<QCodeReference> completionEffectProviders = new ArrayList<>();
    private Set<String> eligibleProcessNames = new HashSet<>();
    private String podId;
@@ -867,4 +869,65 @@ public class DurableJobsMetaData implements QSupplementalInstanceMetaData
       return (this);
    }
 
+
+
+   /*******************************************************************************
+    ** Getter for jobGrantKey
+    *******************************************************************************/
+   public String getJobGrantKey()
+   {
+      return (jobGrantKey);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for jobGrantKey
+    *******************************************************************************/
+   public void setJobGrantKey(String jobGrantKey)
+   {
+      this.jobGrantKey = jobGrantKey;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for jobGrantKey
+    *******************************************************************************/
+   public DurableJobsMetaData withJobGrantKey(String jobGrantKey)
+   {
+      this.jobGrantKey = jobGrantKey;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for jobGrantTtlHours
+    *******************************************************************************/
+   public Integer getJobGrantTtlHours()
+   {
+      return (jobGrantTtlHours);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for jobGrantTtlHours
+    *******************************************************************************/
+   public void setJobGrantTtlHours(Integer jobGrantTtlHours)
+   {
+      this.jobGrantTtlHours = jobGrantTtlHours;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for jobGrantTtlHours
+    *******************************************************************************/
+   public DurableJobsMetaData withJobGrantTtlHours(Integer jobGrantTtlHours)
+   {
+      this.jobGrantTtlHours = jobGrantTtlHours;
+      return (this);
+   }
 }

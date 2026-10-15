@@ -22,7 +22,6 @@
 package com.kingsrook.qqq.backend.core.jobs.runtime;
 
 
-import java.net.InetAddress;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashSet;
@@ -45,6 +44,7 @@ import com.kingsrook.qqq.backend.core.actions.audits.DMLAuditAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
 import com.kingsrook.qqq.backend.core.alerts.QAlerts;
+import com.kingsrook.qqq.backend.core.cluster.QNodeRoles;
 import com.kingsrook.qqq.backend.core.context.CapturedContext;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
@@ -212,7 +212,7 @@ public class DurableJobsRuntime
     *******************************************************************************/
    private void startThreads()
    {
-      int threads = settings.getWorkerThreads() == null ? 0 : settings.getWorkerThreads();
+      int threads = effectiveWorkerThreads();
       scheduler = Executors.newScheduledThreadPool(2, runnable -> daemon(runnable, "qqq-jobs-sched-" + podId));
       workers = Executors.newFixedThreadPool(Math.max(1, threads), runnable -> daemon(runnable, "qqq-jobs-worker-" + podId));
 
@@ -231,6 +231,13 @@ public class DurableJobsRuntime
       // up chunk workers or lease heartbeats                              //
       ////////////////////////////////////////////////////////////////////////
       int effectThreads = settings.getEffectDispatcherThreads() == null ? 0 : settings.getEffectDispatcherThreads();
+      if(!QNodeRoles.has(QNodeRoles.Role.WORKER))
+      {
+         //////////////////////////////////////////////////////////////////
+         // effects are queued in the database: worker nodes deliver them //
+         //////////////////////////////////////////////////////////////////
+         effectThreads = 0;
+      }
       effectWorkers = Executors.newFixedThreadPool(Math.max(1, effectThreads), runnable -> daemon(runnable, "qqq-jobs-effects-" + podId));
       for(int i = 0; i < effectThreads; i++)
       {
@@ -553,14 +560,14 @@ public class DurableJobsRuntime
       {
          SystemScope.call(() -> new InsertAction().execute(new InsertInput(TABLE_WORKER).withRecord(new QRecord()
             .withValue("podId", podId).withValue("startedAt", now).withValue("heartbeatAt", now)
-            .withValue("threads", settings.getWorkerThreads()).withValue("draining", false)
+            .withValue("threads", effectiveWorkerThreads()).withValue("draining", false)
             .withValue("version", Objects.requireNonNullElse(DurableJobsRuntime.class.getPackage().getImplementationVersion(), "dev")))));
       }
       else
       {
          SystemScope.call(() -> new UpdateAction().execute(new UpdateInput(TABLE_WORKER).withRecord(new QRecord()
             .withValue("id", existing.getValue("id")).withValue("startedAt", now).withValue("heartbeatAt", now)
-            .withValue("threads", settings.getWorkerThreads()).withValue("draining", false))));
+            .withValue("threads", effectiveWorkerThreads()).withValue("draining", false))));
       }
    }
 
@@ -673,20 +680,28 @@ public class DurableJobsRuntime
 
 
    /*******************************************************************************
-    **
+    ** Worker threads on this node: QQQ_JOBS_WORKER_THREADS (or 0 on a node
+    ** without the worker role - QNodeRoles), else the instance's setting.
+    *******************************************************************************/
+   private int effectiveWorkerThreads()
+   {
+      Integer nodeThreads = QNodeRoles.get().workerThreads();
+      if(nodeThreads != null)
+      {
+         return (nodeThreads);
+      }
+      return (settings.getWorkerThreads() == null ? 0 : settings.getWorkerThreads());
+   }
+
+
+
+   /*******************************************************************************
+    ** This pod's id when the settings name none: the node id (QNodeRoles), plus
+    ** a random suffix so a restarted pod with the same name is a new worker.
     *******************************************************************************/
    private static String defaultPodId()
    {
-      String host;
-      try
-      {
-         host = InetAddress.getLocalHost().getHostName();
-      }
-      catch(Exception e)
-      {
-         host = "pod";
-      }
-      return (host + "-" + UUID.randomUUID().toString().substring(0, 8));
+      return (QNodeRoles.nodeId() + "-" + UUID.randomUUID().toString().substring(0, 8));
    }
 
 

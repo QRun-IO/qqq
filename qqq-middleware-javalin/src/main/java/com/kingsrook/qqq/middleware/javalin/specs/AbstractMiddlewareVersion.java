@@ -558,7 +558,7 @@ public abstract class AbstractMiddlewareVersion
    {
       for(Response response : method.getResponses().values())
       {
-         for(Content content : response.getContent().values())
+         for(Content content : CollectionUtils.nonNullMap(response.getContent()).values())
          {
             Schema schema = content.getSchema();
             convertSchemaToRefs(schema, componentClasses);

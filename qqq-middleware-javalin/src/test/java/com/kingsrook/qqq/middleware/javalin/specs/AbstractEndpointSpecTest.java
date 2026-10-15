@@ -119,6 +119,38 @@ class AbstractEndpointSpecTest
 
 
    /*******************************************************************************
+    ** A response without a schema (e.g. 204) has no content - no $ref to null -
+    ** and a document with it still generates.
+    *******************************************************************************/
+   @Test
+   void testResponseWithoutSchemaHasNoContent() throws Exception
+   {
+      AuthenticationMetaDataSpecV1 spec = new AuthenticationMetaDataSpecV1()
+      {
+         @Override
+         public java.util.List<BasicResponse> defineAdditionalBasicResponses()
+         {
+            return (java.util.List.of(new BasicResponse(io.javalin.http.HttpStatus.NO_CONTENT, "Done (no body)", null)));
+         }
+      };
+
+      assertNull(spec.defineResponses().get(204).getContent());
+
+      com.kingsrook.qqq.middleware.javalin.specs.v1.MiddlewareVersionV1 version = new com.kingsrook.qqq.middleware.javalin.specs.v1.MiddlewareVersionV1()
+      {
+         @Override
+         public java.util.List<AbstractEndpointSpec<?, ?, ?>> getEndpointSpecs()
+         {
+            return (java.util.List.of(spec));
+         }
+      };
+      String yaml = com.kingsrook.qqq.middleware.javalin.tools.UiApiContract.toYaml(version.generateOpenAPIModel("qqq"));
+      org.assertj.core.api.Assertions.assertThat(yaml).doesNotContain("#/components/schemas/null").contains("Done (no body)");
+   }
+
+
+
+   /*******************************************************************************
     ** Tagged endpoints retain their tag in the OpenAPI method.
     *******************************************************************************/
    @Test

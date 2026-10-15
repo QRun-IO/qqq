@@ -39,6 +39,7 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 import com.auth0.jwt.JWT;
+import com.auth0.jwt.exceptions.JWTDecodeException;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
@@ -408,8 +409,12 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
 
          return true;
       }
-      catch(QAuthenticationException e)
+      catch(QAuthenticationException | JWTDecodeException e)
       {
+         ////////////////////////////////////////////////////////////////////
+         // a session with no stored token (or an undecodable one) is just //
+         // invalid - never an exception that escapes to the caller       //
+         ////////////////////////////////////////////////////////////////////
          return (false);
       }
    }

@@ -141,8 +141,8 @@ new HealthCheckMetaData()
 ### 3.2 `HealthCheckInput` and `HealthCheckOutcome`
 
 - Input: `QInstance`, `Instant deadline`, `boolean onDemand` (Run check now), `Integer attempt`.
-  The check runs under the system's automated session (`health_runner` user) with the
-  `health_check` security keys only.
+  The check runs as a `QSystemUserSession` named `health_runner` (like scheduled processes), so
+  results persist under every authentication module; checks are trusted, code-registered logic.
 - Outcome: `HealthStatus status` (the existing enum, moved to core and re-exported from
   `qqq-middleware-health`), `String message` (one short line), `HealthDetails details`,
   `Long latencyMs` (set by the runner if the check leaves it null), and optional

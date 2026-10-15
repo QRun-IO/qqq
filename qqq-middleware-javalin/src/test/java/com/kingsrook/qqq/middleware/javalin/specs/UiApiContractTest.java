@@ -156,6 +156,12 @@ class UiApiContractTest
       assertThat(UiApiContract.check(badId, badId, null, 1, "x")).anyMatch(p -> p.contains("not a camelCase identifier"));
       String twoOps = base.replace("    get:\n", "    post:\n      operationId: \"getA\"\n      responses: {}\n    get:\n");
       assertThat(OpenApiCompatibilityChecker.findOperationIdProblems(OpenApiCompatibilityChecker.parse(twoOps))).anyMatch(p -> p.contains("duplicate operationId getA"));
+
+      //////////////////////////////////////////////////
+      // a $ref must name a component of the document //
+      //////////////////////////////////////////////////
+      String dangling = base.replace("#/components/schemas/A", "#/components/schemas/null");
+      assertThat(UiApiContract.check(dangling, dangling, null, 1, "x")).anyMatch(p -> p.contains("dangling $ref #/components/schemas/null"));
       assertThat(UiApiContract.check(base.replace("1.0.0", "2.0.0"), base.replace("1.0.0", "2.0.0"), base, 1, "x")).anyMatch(p -> p.contains("MAJOR 1"));
       assertThat(UiApiContract.check(base.replace("1.0.0", "0.9.0"), base.replace("1.0.0", "0.9.0"), base, 1, "x")).anyMatch(p -> p.contains("lower than the baseline"));
       assertThat(UiApiContract.check(base.replace("1.0.0", "v1"), base.replace("1.0.0", "v1"), null, 1, "x")).anyMatch(p -> p.contains("not a semantic version"));

@@ -379,6 +379,15 @@ public abstract class AbstractEndpointSpec<
       {
          Response responseObject = rs.computeIfAbsent(basicResponse.status().getCode(), (k) -> new Response());
          responseObject.withDescription(basicResponse.description());
+
+         ///////////////////////////////////////////////////////////////////////
+         // a response without a schema (e.g. 204 No Content) has no content //
+         ///////////////////////////////////////////////////////////////////////
+         if(basicResponse.schemaRefName() == null)
+         {
+            continue;
+         }
+
          Map<String, Content> content = responseObject.getContent();
          if(content == null)
          {

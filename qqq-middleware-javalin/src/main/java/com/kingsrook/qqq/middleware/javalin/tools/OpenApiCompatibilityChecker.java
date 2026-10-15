@@ -193,6 +193,65 @@ public class OpenApiCompatibilityChecker
 
 
    /*******************************************************************************
+    ** Every local $ref (#/components/...) must name a component of the document -
+    ** client generators refuse a document with a dangling reference.
+    *******************************************************************************/
+   public static List<String> findDanglingRefs(Map<String, Object> document)
+   {
+      List<String> problems = new ArrayList<>();
+      findDanglingRefs(document, document, "", problems);
+      return (problems);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @SuppressWarnings("unchecked")
+   private static void findDanglingRefs(Map<String, Object> document, Object node, String where, List<String> problems)
+   {
+      if(node instanceof Map<?, ?> map)
+      {
+         for(Map.Entry<?, ?> entry : map.entrySet())
+         {
+            if("$ref".equals(entry.getKey()))
+            {
+               String ref = String.valueOf(entry.getValue());
+               if(!ref.startsWith("#/"))
+               {
+                  continue;
+               }
+
+               Object target = document;
+               for(String part : ref.substring(2).split("/"))
+               {
+                  target = target instanceof Map<?, ?> m ? ((Map<String, Object>) m).get(part.replace("~1", "/").replace("~0", "~")) : null;
+               }
+               if(target == null)
+               {
+                  problems.add(where + ": dangling $ref " + ref);
+               }
+            }
+            else
+            {
+               findDanglingRefs(document, entry.getValue(), where + "/" + entry.getKey(), problems);
+            }
+         }
+      }
+      else if(node instanceof Collection<?> collection)
+      {
+         int i = 0;
+         for(Object item : collection)
+         {
+            findDanglingRefs(document, item, where + "[" + i++ + "]", problems);
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Every operation must have an operationId: unique in the document, and a
     ** camelCase identifier (so every client generator can use it as a name).
     *******************************************************************************/

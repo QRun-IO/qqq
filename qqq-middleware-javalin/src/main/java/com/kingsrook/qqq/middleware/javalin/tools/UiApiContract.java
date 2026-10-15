@@ -120,6 +120,7 @@ public class UiApiContract
          String              committedVersion  = OpenApiCompatibilityChecker.getInfoVersion(committedDocument);
 
          problems.addAll(OpenApiCompatibilityChecker.findOperationIdProblems(committedDocument));
+         problems.addAll(OpenApiCompatibilityChecker.findDanglingRefs(committedDocument));
 
          if(committedVersion == null || !committedVersion.matches("\\d+\\.\\d+\\.\\d+"))
          {

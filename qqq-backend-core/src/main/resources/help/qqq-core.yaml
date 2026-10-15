@@ -1,5 +1,5 @@
 bundle: qqq-core
-version: 4.1.0-SNAPSHOT
+version: ${project.version}
 layer: CORE
 entries:
   - key: table:sharedSavedView;slot:help

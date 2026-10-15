@@ -66,9 +66,17 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  **   interpretation (so a rotated secret is picked up), and its contents are
  **   never logged.  Prefer env or a secret manager where they fit; this is for
  **   orchestrator-mounted secret files only, not for application data.
- **   An interpreter with value maps (one that resolves ${input.X} and similar
- **   values from users, e.g., in query filters and report formulas) does not
- **   read files unless setFileReferencesEnabled(true) is called on it.
+ **
+ ** Trusted vs. untrusted input: ${env.X}, ${prop.X} and ${file.PATH} read the
+ ** host (environment, JVM properties, files), so they are resolved only by a
+ ** trusted interpreter - one used on metadata and other values written by the
+ ** application's developers/operators.  An interpreter with value maps (one that
+ ** resolves ${input.X} and similar values from users, e.g., in query filters and
+ ** report formulas) is untrusted by default, as is any on which
+ ** setTrustedInput(false) is called; there, those references are left as literal
+ ** text (never an error, so nothing is revealed about what exists).  Use
+ ** setTrustedInput(true) to override.  setFileReferencesEnabled can still
+ ** override the file case alone.
  ** ${literal.VAR} = get back a literal "VAR" (in case VAR matches some of the other supported syntax in here)
  *******************************************************************************/
 public class QMetaDataVariableInterpreter
@@ -83,6 +91,7 @@ public class QMetaDataVariableInterpreter
    private Map<String, String>                    environmentOverrides;
    private Map<String, Map<String, Serializable>> valueMaps;
    private Boolean                                fileReferencesEnabled;
+   private Boolean                                trustedInput;
 
 
 
@@ -216,8 +225,10 @@ public class QMetaDataVariableInterpreter
          return interpretForObjectNullCoalescingScenario(value, defaultIfLooksLikeVariableButNotFound);
       }
 
+      boolean trusted = isTrustedInput();
+
       String envPrefix = "${env.";
-      if(value.startsWith(envPrefix) && value.endsWith("}"))
+      if(trusted && value.startsWith(envPrefix) && value.endsWith("}"))
       {
          String envVarName = value.substring(envPrefix.length()).replaceFirst("}$", "");
          String result     = getEnvironmentVariable(envVarName);
@@ -225,7 +236,7 @@ public class QMetaDataVariableInterpreter
       }
 
       String propPrefix = "${prop.";
-      if(value.startsWith(propPrefix) && value.endsWith("}"))
+      if(trusted && value.startsWith(propPrefix) && value.endsWith("}"))
       {
          String propertyName = value.substring(propPrefix.length()).replaceFirst("}$", "");
          String result       = System.getProperty(propertyName);
@@ -286,7 +297,11 @@ public class QMetaDataVariableInterpreter
    {
       String[]    split                    = value.split("\\?\\?");
       boolean     anyPartLooksLikeVariable = false;
-      Set<String> allInputMaps             = new HashSet<>(Set.of("env", "prop", "file"));
+      Set<String> allInputMaps             = new HashSet<>();
+      if(isTrustedInput())
+      {
+         allInputMaps.addAll(Set.of("env", "prop", "file"));
+      }
       if(valueMaps != null)
       {
          allInputMaps.addAll(valueMaps.keySet());
@@ -336,12 +351,45 @@ public class QMetaDataVariableInterpreter
 
 
    /*******************************************************************************
-    ** Whether ${file.PATH} references are read: as set, else only when this
-    ** interpreter has no value maps (so values from users are never read as files).
+    ** Whether this interpreter is used on trusted (metadata / operator-written)
+    ** values, and so may resolve ${env.X}, ${prop.X} and ${file.PATH}: as set, else
+    ** only when it has no value maps (so values from users never read the host).
+    *******************************************************************************/
+   public boolean isTrustedInput()
+   {
+      return (trustedInput != null ? trustedInput : valueMaps == null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Explicitly mark this interpreter's input as trusted (true) or untrusted
+    ** (false).  Untrusted interpreters leave env, prop and file references literal.
+    *******************************************************************************/
+   public void setTrustedInput(Boolean trustedInput)
+   {
+      this.trustedInput = trustedInput;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for trustedInput.
+    *******************************************************************************/
+   public QMetaDataVariableInterpreter withTrustedInput(Boolean trustedInput)
+   {
+      this.trustedInput = trustedInput;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether ${file.PATH} references are read: as set, else follows trustedInput.
     *******************************************************************************/
    public boolean isFileReferencesEnabled()
    {
-      return (fileReferencesEnabled != null ? fileReferencesEnabled : valueMaps == null);
+      return (fileReferencesEnabled != null ? fileReferencesEnabled : isTrustedInput());
    }
 
 

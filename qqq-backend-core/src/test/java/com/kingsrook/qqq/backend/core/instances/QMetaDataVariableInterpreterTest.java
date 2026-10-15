@@ -246,6 +246,7 @@ class QMetaDataVariableInterpreterTest extends BaseTest
       interpreter.setEnvironmentOverrides(Map.of("MY_VAR", "ENVV"));
       System.setProperty("my.var", "PROP");
       interpreter.addValueMap("input", Map.of("myVar", "INPUT"));
+      interpreter.setTrustedInput(true);
 
       assertEquals("ENVV", interpreter.interpretForObject("${env.MY_VAR}??${prop.my.var}??${input.myVar}"));
       assertEquals("PROP", interpreter.interpretForObject("${prop.my.var}??${input.myVar}"));
@@ -264,6 +265,7 @@ class QMetaDataVariableInterpreterTest extends BaseTest
       // no env override for MY_OTHER
       System.setProperty("my.other", "PROP_ONLY");
       interpreter.addValueMap("input", Map.of("myOther", "INPUT_ONLY"));
+      interpreter.setTrustedInput(true);
 
       assertEquals("PROP_ONLY", interpreter.interpretForObject("${env.MY_OTHER}??${prop.my.other}??${input.myOther}"));
       assertEquals("INPUT_ONLY", interpreter.interpretForObject("${env.MY_OTHER}??${input.myOther}"));

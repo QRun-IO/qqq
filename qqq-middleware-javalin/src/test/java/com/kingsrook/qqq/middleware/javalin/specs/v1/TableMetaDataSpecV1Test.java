@@ -34,6 +34,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QSupplementalFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.ValuePatternBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.ValueRangeBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.ValueTooLongBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.WhiteSpaceBehavior;
@@ -121,6 +122,58 @@ class TableMetaDataSpecV1Test extends SpecTestBase
       JSONObject firstNameField = fields.getJSONObject("firstName");
       assertEquals("firstName", firstNameField.getString("name"));
       assertEquals("First Name", firstNameField.getString("label"));
+   }
+
+
+
+   /*******************************************************************************
+    ** typed client capabilities (UI API 1.6.0): saved views and the bulk processes
+    ** by name, so a client never hard-codes them; validation rules per field.
+    *******************************************************************************/
+   @Test
+   void testClientCapabilitiesAndValidation()
+   {
+      QFieldMetaData firstName = serverQInstance.getTable("person").getField("firstName");
+      Integer        original  = firstName.getMaxLength();
+      try
+      {
+         firstName.withMaxLength(25).withBehavior(ValueTooLongBehavior.ERROR)
+            .withBehavior(new ValuePatternBehavior("[A-Za-z' -]+", "Letters only"));
+
+         HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/metaData/table/person").asString();
+         assertEquals(200, response.getStatus());
+         JSONObject table = JsonUtils.toJSONObject(response.getBody());
+
+         JSONObject capabilities = table.getJSONObject("clientCapabilities");
+         JSONObject savedViews   = capabilities.getJSONObject("savedViews");
+         assertTrue(savedViews.getBoolean("available"));
+         assertEquals("querySavedView", savedViews.getString("queryProcessName"));
+         assertEquals("storeSavedView", savedViews.getString("storeProcessName"));
+         assertEquals("deleteSavedView", savedViews.getString("deleteProcessName"));
+
+         JSONObject bulkEdit = capabilities.getJSONObject("bulkEdit");
+         assertTrue(bulkEdit.getBoolean("available"));
+         assertEquals("person.bulkEdit", bulkEdit.getString("processName"));
+         assertEquals("person.bulkInsert", capabilities.getJSONObject("bulkInsert").getString("processName"));
+         assertEquals("person.bulkDelete", capabilities.getJSONObject("bulkDelete").getString("processName"));
+
+         JSONObject audits = capabilities.getJSONObject("audits");
+         assertFalse(audits.getBoolean("available"));
+         assertEquals("NONE", audits.getString("level"));
+         assertFalse(capabilities.has("sharing"));
+
+         JSONObject validation = table.getJSONObject("fields").getJSONObject("firstName").getJSONObject("validation");
+         assertEquals(25, validation.getInt("maxLength"));
+         assertEquals("ERROR", validation.getString("tooLongBehavior"));
+         assertEquals("[A-Za-z' -]+", validation.getString("pattern"));
+         assertEquals("Letters only", validation.getString("patternMessage"));
+         assertFalse(table.getJSONObject("fields").getJSONObject("birthDate").has("validation"));
+      }
+      finally
+      {
+         firstName.setMaxLength(original);
+         firstName.getBehaviors().removeIf(b -> b instanceof ValuePatternBehavior || b instanceof ValueTooLongBehavior);
+      }
    }
 
 

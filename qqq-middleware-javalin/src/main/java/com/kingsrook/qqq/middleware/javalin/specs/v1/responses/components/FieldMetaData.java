@@ -38,6 +38,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QSupplementalFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendFieldValidation;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.PossibleValueDependencyBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValuePicker;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
@@ -344,6 +345,18 @@ public class FieldMetaData implements ToSchema
    public String getMaxValue()
    {
       return (rangeBound(this.wrappedFull != null ? new QFrontendFieldMetaData(this.wrappedFull).getMaxValue() : this.wrappedFrontend.getMaxValue()));
+   }
+
+
+
+   /***************************************************************************
+    ** The field's validation rules in one place (UI API 1.6.0).
+    ***************************************************************************/
+   @OpenAPIDescription("The field's validation rules, as the server enforces them on insert and update (required, maxLength and tooLongBehavior, min/max value, pattern).  Absent when the field has none.  Since 1.6.0.")
+   public FieldValidationV1 getValidation()
+   {
+      QFrontendFieldValidation validation = this.wrappedFull != null ? QFrontendFieldValidation.of(this.wrappedFull) : this.wrappedFrontend.getValidation();
+      return (validation == null ? null : new FieldValidationV1(validation));
    }
 
 

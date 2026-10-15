@@ -103,6 +103,16 @@ Ready for CLI, TUI and native clients (see `UI-API-CLIENTS.md`).
   `traceId` (also the `X-QQQ-Trace-Id` response header; a safe client `X-Request-Id` is reused).
   Every operation declares 400, 404, 409 and 429, and secured operations 401 and 403, with this
   schema. Every extension document carries the schema.
+- **Typed table capabilities.** `GET /metaData/table/{tableName}` adds `clientCapabilities`
+  (`TableCapabilitiesV1`): `savedViews` (query/store/delete process names), `audits` (level, and the
+  process or the audit tables to read them with), `sharing` (list/insert/edit/delete process
+  names, for shareable tables) and `bulkInsert`/`bulkEdit`/`bulkEditWithFile`/`bulkDelete`
+  (`ProcessCapabilityV1`). Each is computed for the current user, so clients no longer hard-code
+  process names. (The existing `capabilities` list of backend capabilities is unchanged.)
+- **Field validation rules.** Each field adds `validation` (`FieldValidationV1`): `required`,
+  `maxLength` with `tooLongBehavior`, `minValue`/`maxValue` with `minInclusive`/`maxInclusive`
+  (only ranges the server refuses), and `pattern` with `patternMessage`. Core adds
+  `ValuePatternBehavior` (a field must match a regular expression), enforced on insert and update.
 
 ### 1.5.0 (QQQ 4.1.0-RC.9)
 - Fixed: `GET /table/{tableName}/apis` answered 500 on a server, because `GET /table/{tableName}/{primaryKey}`

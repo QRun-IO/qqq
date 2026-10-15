@@ -2360,6 +2360,124 @@ components:
           items:
             type: "string"
           type: "array"
+        clientCapabilities:
+          description: "What a client may offer on this table beyond plain CRUD -\
+            \ saved views, audits, sharing and the bulk processes - with the process\
+            \ or table to use for each, for the current user.  Clients use these instead\
+            \ of hard-coded process names.  Since 1.6.0."
+          properties:
+            SAVED_VIEW_DELETE_PROCESS:
+              type: "string"
+            SAVED_VIEW_QUERY_PROCESS:
+              type: "string"
+            SAVED_VIEW_STORE_PROCESS:
+              type: "string"
+            audits:
+              description: "Audit history of this table's records."
+              properties:
+                available:
+                  description: "True when the table is audited and the user can read\
+                    \ its audits one of the two ways."
+                  type: "boolean"
+                detailTableName:
+                  description: "The audit detail table (field changes), joined to\
+                    \ tableName."
+                  type: "string"
+                level:
+                  description: "The table's audit level: NONE, RECORD or FIELD."
+                  type: "string"
+                processName:
+                  description: "The process that returns a record's audits (inputs\
+                    \ tableName, recordId); absent when the user may not run it."
+                  type: "string"
+                tableName:
+                  description: "The audit table, when the user may query it directly."
+                  type: "string"
+              type: "object"
+            bulkDelete:
+              description: "Bulk delete of selected records."
+              properties:
+                available:
+                  description: "True when the process exists and the user may run\
+                    \ it."
+                  type: "boolean"
+                processName:
+                  description: "The process to run (present only when available)."
+                  type: "string"
+              type: "object"
+            bulkEdit:
+              description: "Bulk edit of selected records."
+              properties:
+                available:
+                  description: "True when the process exists and the user may run\
+                    \ it."
+                  type: "boolean"
+                processName:
+                  description: "The process to run (present only when available)."
+                  type: "string"
+              type: "object"
+            bulkEditWithFile:
+              description: "Bulk edit from a file."
+              properties:
+                available:
+                  description: "True when the process exists and the user may run\
+                    \ it."
+                  type: "boolean"
+                processName:
+                  description: "The process to run (present only when available)."
+                  type: "string"
+              type: "object"
+            bulkInsert:
+              description: "Bulk insert (load a file into the table)."
+              properties:
+                available:
+                  description: "True when the process exists and the user may run\
+                    \ it."
+                  type: "boolean"
+                processName:
+                  description: "The process to run (present only when available)."
+                  type: "string"
+              type: "object"
+            savedViews:
+              description: "Saved views of this table."
+              properties:
+                available:
+                  description: "True when the user may list saved views (queryProcessName\
+                    \ can run)."
+                  type: "boolean"
+                deleteProcessName:
+                  description: "Deletes a view; absent when the user may not delete\
+                    \ views."
+                  type: "string"
+                queryProcessName:
+                  description: "Lists the views (input tableName; output savedViewList)."
+                  type: "string"
+                storeProcessName:
+                  description: "Stores (inserts or updates) a view; absent when the\
+                    \ user may not store views."
+                  type: "string"
+              type: "object"
+            sharing:
+              description: "Record sharing, for a shareable table."
+              properties:
+                available:
+                  description: "True when the table is shareable and the user may\
+                    \ list shares."
+                  type: "boolean"
+                deleteProcessName:
+                  description: "Removes a share."
+                  type: "string"
+                editProcessName:
+                  description: "Changes a share's scope."
+                  type: "string"
+                insertProcessName:
+                  description: "Adds a share (the record owner only; the server checks)."
+                  type: "string"
+                listProcessName:
+                  description: "Lists a record's shares."
+                  type: "string"
+              type: "object"
+          type: "object"
         deletePermission:
           description: "Boolean to indicate if the user has delete permission for\
             \ the table."
@@ -5723,6 +5841,24 @@ paths:
                       - "TABLE_UPDATE"
                       - "TABLE_DELETE"
                       - "TABLE_EXPORT"
+                      clientCapabilities:
+                        audits:
+                          available: false
+                          level: "NONE"
+                        bulkDelete:
+                          available: true
+                          processName: "person.bulkDelete"
+                        bulkEdit:
+                          available: true
+                          processName: "person.bulkEdit"
+                        bulkEditWithFile:
+                          available: true
+                          processName: "person.bulkEditWithFile"
+                        bulkInsert:
+                          available: true
+                          processName: "person.bulkInsert"
+                        savedViews:
+                          available: false
                       deletePermission: true
                       editPermission: true
                       fields:
@@ -8791,6 +8927,8 @@ paths:
                           displayFormat: "%s"
                           type: "STRING"
                           isHeavy: false
+                          validation:
+                            required: true
                           isHidden: false
                       updatedFrontendStepList:
                       - components:
@@ -8983,6 +9121,8 @@ paths:
                           displayFormat: "%s"
                           type: "STRING"
                           isHeavy: false
+                          validation:
+                            required: true
                           isHidden: false
                       updatedFrontendStepList:
                       - components:
@@ -9140,6 +9280,8 @@ paths:
                           displayFormat: "%s"
                           type: "STRING"
                           isHeavy: false
+                          validation:
+                            required: true
                           isHidden: false
                       updatedFrontendStepList:
                       - components:

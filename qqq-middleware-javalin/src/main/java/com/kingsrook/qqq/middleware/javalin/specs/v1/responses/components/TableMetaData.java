@@ -24,6 +24,8 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.sharing.ShareableTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QSupplementalTableMetaData;
@@ -239,6 +241,18 @@ public class TableMetaData extends TableMetaDataLight implements ToSchema
    public List<BuiltInViewV1> getBuiltInViews()
    {
       return (wrapped.getBuiltInViews() == null ? null : wrapped.getBuiltInViews().stream().map(BuiltInViewV1::new).toList());
+   }
+
+
+
+   /*******************************************************************************
+    ** Typed capabilities (saved views, audits, sharing, bulk processes).
+    *******************************************************************************/
+   @OpenAPIDescription("What a client may offer on this table beyond plain CRUD - saved views, audits, sharing and the bulk processes - with the process or table to use for each, for the current user.  Clients use these instead of hard-coded process names.  Since 1.6.0.")
+   public TableCapabilitiesV1 getClientCapabilities()
+   {
+      QInstance instance = QContext.getQInstance();
+      return (instance == null || wrapped == null ? null : TableCapabilitiesV1.of(instance.getTable(wrapped.getName())));
    }
 
 

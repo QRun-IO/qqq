@@ -141,6 +141,18 @@ Hints describe meaning, never markup:
   thumbnail fields to use. Search with `POST /table/{t}/possibleValues/{field}`.
 - **App home.** Apps list `widgets` (the home dashboard) and `sections` (groups of tables, processes
   and reports). Render the widgets first, then the sections.
+- **Table capabilities.** `clientCapabilities` on table metadata says what to offer beyond CRUD, for
+  this user, and how: `savedViews` (run `queryProcessName` with `tableName`; store and delete only
+  when their process names are present), `audits` (run `processName`, or query `tableName` joined to
+  `detailTableName`), `sharing` (the four sharing processes) and the bulk processes
+  (`bulkInsert`, `bulkEdit`, `bulkEditWithFile`, `bulkDelete`: run `processName` with the selected
+  records). A capability that is absent or `available: false` is not offered. Never hard-code these
+  process names.
+- **Validation.** `fields.{name}.validation` lists the rules the server enforces: `required`,
+  `maxLength` (`tooLongBehavior` ERROR refuses, TRUNCATE trims), `minValue`/`maxValue` (with
+  `minInclusive`/`maxInclusive`) and `pattern` (a whole-value regular expression, with
+  `patternMessage`). Check them before saving; still show the server's record errors, since the
+  server is the authority.
 
 ## 7. Authentication for CLI, TUI and native clients
 
@@ -207,7 +219,6 @@ replica.
 These still need typed schemas or v1 operations before a non-web client can match the web UI:
 - the alerts, assistant and sql-workbench payloads, until those qbits ship as extensions;
 - the `materialDashboard` supplemental settings: go-to fields, quick filters, sidebar, form adjusters;
-- saved views, sharing, audits and bulk-process conventions, which are named by convention today;
 - form adjusters (a legacy route today).
 
 Until they are typed, a non-web client shows these areas as read-only or omits them.

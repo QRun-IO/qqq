@@ -138,6 +138,26 @@ components:
           description: "Exact name used for this group in associatedRecords"
           type: "string"
       type: "object"
+    AuditsCapabilityV1:
+      properties:
+        available:
+          description: "True when the table is audited and the user can read its audits\
+            \ one of the two ways."
+          type: "boolean"
+        detailTableName:
+          description: "The audit detail table (field changes), joined to tableName."
+          type: "string"
+        level:
+          description: "The table's audit level: NONE, RECORD or FIELD."
+          type: "string"
+        processName:
+          description: "The process that returns a record's audits (inputs tableName,\
+            \ recordId); absent when the user may not run it."
+          type: "string"
+        tableName:
+          description: "The audit table, when the user may query it directly."
+          type: "string"
+      type: "object"
     AuthenticationMetaDataResponseV1:
       properties:
         branding:
@@ -1019,6 +1039,49 @@ components:
           type: "object"
         type:
           description: "Data-type for this field"
+          type: "string"
+        validation:
+          $ref: "#/components/schemas/FieldValidationV1"
+          description: "The field's validation rules, as the server enforces them\
+            \ on insert and update (required, maxLength and tooLongBehavior, min/max\
+            \ value, pattern).  Absent when the field has none.  Since 1.6.0."
+      type: "object"
+    FieldValidationV1:
+      properties:
+        maxInclusive:
+          description: "Whether maxValue itself is accepted (false: the value must\
+            \ be less)."
+          type: "boolean"
+        maxLength:
+          description: "For string fields, the most characters the field stores. \
+            \ What happens to a longer value is tooLongBehavior."
+          type: "number"
+        maxValue:
+          description: "For number fields, the largest value accepted (plain digits,\
+            \ exact).  See maxInclusive."
+          type: "string"
+        minInclusive:
+          description: "Whether minValue itself is accepted (false: the value must\
+            \ be greater)."
+          type: "boolean"
+        minValue:
+          description: "For number fields, the smallest value accepted (plain digits,\
+            \ exact).  See minInclusive."
+          type: "string"
+        pattern:
+          description: "A regular expression a non-empty value must match as a whole\
+            \ (written to mean the same in Java and ECMAScript)."
+          type: "string"
+        patternMessage:
+          description: "The message the server gives for a value that does not match\
+            \ pattern."
+          type: "string"
+        required:
+          description: "True when a value is required."
+          type: "boolean"
+        tooLongBehavior:
+          description: "With maxLength: ERROR (a longer value is refused), TRUNCATE\
+            \ or TRUNCATE_ELLIPSIS (it is trimmed on save), PASS_THROUGH (neither)."
           type: "string"
       type: "object"
     FilterCriteria:
@@ -2249,6 +2312,15 @@ components:
           type: "array"
       type: "object"
     ProcessCancelResponseV1:
+      type: "object"
+    ProcessCapabilityV1:
+      properties:
+        available:
+          description: "True when the process exists and the user may run it."
+          type: "boolean"
+        processName:
+          description: "The process to run (present only when available)."
+          type: "string"
       type: "object"
     ProcessJobLaunchResponseV1:
       properties:
@@ -3637,6 +3709,41 @@ components:
             \ it runs from GET /reports/{reportName}."
           type: "string"
       type: "object"
+    SavedViewsCapabilityV1:
+      properties:
+        available:
+          description: "True when the user may list saved views (queryProcessName\
+            \ can run)."
+          type: "boolean"
+        deleteProcessName:
+          description: "Deletes a view; absent when the user may not delete views."
+          type: "string"
+        queryProcessName:
+          description: "Lists the views (input tableName; output savedViewList)."
+          type: "string"
+        storeProcessName:
+          description: "Stores (inserts or updates) a view; absent when the user may\
+            \ not store views."
+          type: "string"
+      type: "object"
+    SharingCapabilityV1:
+      properties:
+        available:
+          description: "True when the table is shareable and the user may list shares."
+          type: "boolean"
+        deleteProcessName:
+          description: "Removes a share."
+          type: "string"
+        editProcessName:
+          description: "Changes a share's scope."
+          type: "string"
+        insertProcessName:
+          description: "Adds a share (the record owner only; the server checks)."
+          type: "string"
+        listProcessName:
+          description: "Lists a record's shares."
+          type: "string"
+      type: "object"
     SupplementalInstanceMetaData:
       properties:
         assistant:
@@ -3712,6 +3819,36 @@ components:
           items:
             $ref: "#/components/schemas/TableApiV1"
           type: "array"
+      type: "object"
+    TableCapabilitiesV1:
+      properties:
+        SAVED_VIEW_DELETE_PROCESS:
+          type: "string"
+        SAVED_VIEW_QUERY_PROCESS:
+          type: "string"
+        SAVED_VIEW_STORE_PROCESS:
+          type: "string"
+        audits:
+          $ref: "#/components/schemas/AuditsCapabilityV1"
+          description: "Audit history of this table's records."
+        bulkDelete:
+          $ref: "#/components/schemas/ProcessCapabilityV1"
+          description: "Bulk delete of selected records."
+        bulkEdit:
+          $ref: "#/components/schemas/ProcessCapabilityV1"
+          description: "Bulk edit of selected records."
+        bulkEditWithFile:
+          $ref: "#/components/schemas/ProcessCapabilityV1"
+          description: "Bulk edit from a file."
+        bulkInsert:
+          $ref: "#/components/schemas/ProcessCapabilityV1"
+          description: "Bulk insert (load a file into the table)."
+        savedViews:
+          $ref: "#/components/schemas/SavedViewsCapabilityV1"
+          description: "Saved views of this table."
+        sharing:
+          $ref: "#/components/schemas/SharingCapabilityV1"
+          description: "Record sharing, for a shareable table."
       type: "object"
     TableCountResponseV1:
       properties:
@@ -3890,6 +4027,12 @@ components:
           items:
             type: "string"
           type: "array"
+        clientCapabilities:
+          $ref: "#/components/schemas/TableCapabilitiesV1"
+          description: "What a client may offer on this table beyond plain CRUD -\
+            \ saved views, audits, sharing and the bulk processes - with the process\
+            \ or table to use for each, for the current user.  Clients use these instead\
+            \ of hard-coded process names.  Since 1.6.0."
         deletePermission:
           description: "Boolean to indicate if the user has delete permission for\
             \ the table."
@@ -4099,6 +4242,124 @@ components:
           items:
             type: "string"
           type: "array"
+        clientCapabilities:
+          description: "What a client may offer on this table beyond plain CRUD -\
+            \ saved views, audits, sharing and the bulk processes - with the process\
+            \ or table to use for each, for the current user.  Clients use these instead\
+            \ of hard-coded process names.  Since 1.6.0."
+          properties:
+            SAVED_VIEW_DELETE_PROCESS:
+              type: "string"
+            SAVED_VIEW_QUERY_PROCESS:
+              type: "string"
+            SAVED_VIEW_STORE_PROCESS:
+              type: "string"
+            audits:
+              description: "Audit history of this table's records."
+              properties:
+                available:
+                  description: "True when the table is audited and the user can read\
+                    \ its audits one of the two ways."
+                  type: "boolean"
+                detailTableName:
+                  description: "The audit detail table (field changes), joined to\
+                    \ tableName."
+                  type: "string"
+                level:
+                  description: "The table's audit level: NONE, RECORD or FIELD."
+                  type: "string"
+                processName:
+                  description: "The process that returns a record's audits (inputs\
+                    \ tableName, recordId); absent when the user may not run it."
+                  type: "string"
+                tableName:
+                  description: "The audit table, when the user may query it directly."
+                  type: "string"
+              type: "object"
+            bulkDelete:
+              description: "Bulk delete of selected records."
+              properties:
+                available:
+                  description: "True when the process exists and the user may run\
+                    \ it."
+                  type: "boolean"
+                processName:
+                  description: "The process to run (present only when available)."
+                  type: "string"
+              type: "object"
+            bulkEdit:
+              description: "Bulk edit of selected records."
+              properties:
+                available:
+                  description: "True when the process exists and the user may run\
+                    \ it."
+                  type: "boolean"
+                processName:
+                  description: "The process to run (present only when available)."
+                  type: "string"
+              type: "object"
+            bulkEditWithFile:
+              description: "Bulk edit from a file."
+              properties:
+                available:
+                  description: "True when the process exists and the user may run\
+                    \ it."
+                  type: "boolean"
+                processName:
+                  description: "The process to run (present only when available)."
+                  type: "string"
+              type: "object"
+            bulkInsert:
+              description: "Bulk insert (load a file into the table)."
+              properties:
+                available:
+                  description: "True when the process exists and the user may run\
+                    \ it."
+                  type: "boolean"
+                processName:
+                  description: "The process to run (present only when available)."
+                  type: "string"
+              type: "object"
+            savedViews:
+              description: "Saved views of this table."
+              properties:
+                available:
+                  description: "True when the user may list saved views (queryProcessName\
+                    \ can run)."
+                  type: "boolean"
+                deleteProcessName:
+                  description: "Deletes a view; absent when the user may not delete\
+                    \ views."
+                  type: "string"
+                queryProcessName:
+                  description: "Lists the views (input tableName; output savedViewList)."
+                  type: "string"
+                storeProcessName:
+                  description: "Stores (inserts or updates) a view; absent when the\
+                    \ user may not store views."
+                  type: "string"
+              type: "object"
+            sharing:
+              description: "Record sharing, for a shareable table."
+              properties:
+                available:
+                  description: "True when the table is shareable and the user may\
+                    \ list shares."
+                  type: "boolean"
+                deleteProcessName:
+                  description: "Removes a share."
+                  type: "string"
+                editProcessName:
+                  description: "Changes a share's scope."
+                  type: "string"
+                insertProcessName:
+                  description: "Adds a share (the record owner only; the server checks)."
+                  type: "string"
+                listProcessName:
+                  description: "Lists a record's shares."
+                  type: "string"
+              type: "object"
+          type: "object"
         deletePermission:
           description: "Boolean to indicate if the user has delete permission for\
             \ the table."
@@ -4673,6 +4934,11 @@ components:
         type:
           description: "Data-type for this field"
           type: "string"
+        validation:
+          $ref: "#/components/schemas/FieldValidationV1"
+          description: "The field's validation rules, as the server enforces them\
+            \ on insert and update (required, maxLength and tooLongBehavior, min/max\
+            \ value, pattern).  Absent when the field has none.  Since 1.6.0."
       type: "object"
     WidgetBlock:
       properties:
@@ -5113,6 +5379,50 @@ components:
                   type:
                     description: "Data-type for this field"
                     type: "string"
+                  validation:
+                    description: "The field's validation rules, as the server enforces\
+                      \ them on insert and update (required, maxLength and tooLongBehavior,\
+                      \ min/max value, pattern).  Absent when the field has none.\
+                      \  Since 1.6.0."
+                    properties:
+                      maxInclusive:
+                        description: "Whether maxValue itself is accepted (false:\
+                          \ the value must be less)."
+                        type: "boolean"
+                      maxLength:
+                        description: "For string fields, the most characters the field\
+                          \ stores.  What happens to a longer value is tooLongBehavior."
+                        type: "number"
+                      maxValue:
+                        description: "For number fields, the largest value accepted\
+                          \ (plain digits, exact).  See maxInclusive."
+                        type: "string"
+                      minInclusive:
+                        description: "Whether minValue itself is accepted (false:\
+                          \ the value must be greater)."
+                        type: "boolean"
+                      minValue:
+                        description: "For number fields, the smallest value accepted\
+                          \ (plain digits, exact).  See minInclusive."
+                        type: "string"
+                      pattern:
+                        description: "A regular expression a non-empty value must\
+                          \ match as a whole (written to mean the same in Java and\
+                          \ ECMAScript)."
+                        type: "string"
+                      patternMessage:
+                        description: "The message the server gives for a value that\
+                          \ does not match pattern."
+                        type: "string"
+                      required:
+                        description: "True when a value is required."
+                        type: "boolean"
+                      tooLongBehavior:
+                        description: "With maxLength: ERROR (a longer value is refused),\
+                          \ TRUNCATE or TRUNCATE_ELLIPSIS (it is trimmed on save),\
+                          \ PASS_THROUGH (neither)."
+                        type: "string"
+                    type: "object"
                 type: "object"
               hideSoftKeyboard:
                 description: "Indicate if the frontend uses a software/on-screen keyboard,\
@@ -11495,6 +11805,8 @@ paths:
                           displayFormat: "%s"
                           type: "STRING"
                           isHeavy: false
+                          validation:
+                            required: true
                           isHidden: false
                       updatedFrontendStepList:
                       - components:
@@ -11687,6 +11999,8 @@ paths:
                           displayFormat: "%s"
                           type: "STRING"
                           isHeavy: false
+                          validation:
+                            required: true
                           isHidden: false
                       updatedFrontendStepList:
                       - components:
@@ -11844,6 +12158,8 @@ paths:
                           displayFormat: "%s"
                           type: "STRING"
                           isHeavy: false
+                          validation:
+                            required: true
                           isHidden: false
                       updatedFrontendStepList:
                       - components:

@@ -79,6 +79,18 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 
 ## Versions
 
+### 1.5.0 (unreleased)
+- Output delivery:
+  - Added `GET /delivery/destinations`, `POST /delivery/destinations/{name}/targets`
+    (`{chosen: {...}}`), and `GET /delivery/output/{logId}`. Discovery and target
+    selection use the authenticated user's permissions; hidden and unknown names
+    both return 404.
+  - Stored output is available only to its owner or `output_delivery.admin`.
+    Responses stream directly from storage, with multiple files streamed as ZIP.
+  - Added the `delivery` feature and reserved core route prefix. Published complete
+    request, destination, target-step and binary-response schemas.
+- `baseline.yaml` is now the RC.8 document (1.4.0).
+
 ### 1.4.0 (QQQ 4.1.0-RC.8)
 - Added `GET /jobs`, `GET /jobs/{jobId}`, `GET /jobs/{jobId}/progress`,
   `POST /jobs/{jobId}/cancel`, `POST /jobs/{jobId}/retry`, and `POST /jobs/track`.
@@ -105,15 +117,6 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
   `GET /health/summary`, `GET /health/components/{name}`, `GET /health/checks/{name}/history` and
   `POST /health/checks/{name}/run`, with `Health...V1` schemas. It is registered when an app adds
   `HealthMonitoringMetaData`; `/health` joins `ESTABLISHED_PREFIXES`. The core document is unchanged.
-- Output delivery:
-  - Added `GET /delivery/destinations`, `POST /delivery/destinations/{name}/targets`
-    (`{chosen: {...}}`), and `GET /delivery/output/{logId}`. Discovery and target
-    selection use the authenticated user's permissions; hidden and unknown names
-    both return 404.
-  - Stored output is available only to its owner or `output_delivery.admin`.
-    Responses stream directly from storage, with multiple files streamed as ZIP.
-  - Added the `delivery` feature and reserved core route prefix. Published complete
-    request, destination, target-step and binary-response schemas.
 - Added `POST /table/{tableName}/formAdjuster/{identifier}/{event}` (tag `Tables`, #1152): runs a
   table form's on-load or on-change adjuster and returns `FormAdjusterOutputV1`. It replaces the
   Material Dashboard module's unversioned `POST /material-dashboard-backend/form-adjuster/...`

@@ -359,7 +359,7 @@ public class GenerateReportAction extends AbstractQActionFunction<ReportInput, R
     *******************************************************************************/
    private void startTableView(ReportInput reportInput, QReportDataSource dataSource, QReportView reportView, ReportFormat reportFormat) throws QException
    {
-      QMetaDataVariableInterpreter variableInterpreter = new QMetaDataVariableInterpreter();
+      QMetaDataVariableInterpreter variableInterpreter = new QMetaDataVariableInterpreter().withTrustedInput(false);
       variableInterpreter.addValueMap("input", reportInput.getInputValues());
 
       ExportInput exportInput = new ExportInput();
@@ -1027,7 +1027,7 @@ public class GenerateReportAction extends AbstractQActionFunction<ReportInput, R
     *******************************************************************************/
    private SummaryOutput computeSummaryRowsForView(ReportInput reportInput, QReportView view, QTableMetaData table) throws QFormulaException
    {
-      QMetaDataVariableInterpreter variableInterpreter = new QMetaDataVariableInterpreter();
+      QMetaDataVariableInterpreter variableInterpreter = new QMetaDataVariableInterpreter().withTrustedInput(false);
       variableInterpreter.addValueMap("input", reportInput.getInputValues());
       variableInterpreter.addValueMap("total", getSummaryValuesForInterpreter(totalAggregates));
 

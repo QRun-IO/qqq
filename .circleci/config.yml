@@ -264,6 +264,42 @@ jobs:
       - persist-sample-evidence:
           shard: sample-core
 
+  sample_multinode_acceptance:
+    # Deployment modes (docs/DEPLOYMENT-MODES.md): the single-node defaults test, and two
+    # packaged sample JVMs sharing an H2 TCP database and node B's embedded Artemis broker
+    # (SAMPLE_CLUSTER_MODE, qqq_state, EsbClusterBus, QQQ_NODE_ROLES web / all / worker).
+    # Sample coverage is gated by sample_acceptance's full run, not by this subset.
+    executor: qqq-orb/java
+    steps:
+      - configure-package-install
+      - qqq-orb/install_java
+      - checkout
+      - qqq-orb/mvn_build
+      - run:
+          name: Build framework dependencies for the sample
+          command: mvn -B -s /tmp/circleci/mvn-settings.xml -Drevision=0.0.0-sample-multinode -DskipTests clean install
+      - run:
+          name: Run single-node defaults and multi-node (HA) acceptance
+          command: |
+            mvn -B -s /tmp/circleci/mvn-settings.xml -Drevision=0.0.0-sample-multinode -f qqq-sample-project/pom.xml -Pacceptance-tests \
+              -Dtest=SampleSingleNodeDefaultsTest -Dsurefire.failIfNoSpecifiedTests=false -Dit.test=SampleMultiNodeIT -Dcoverage.haltOnFailure=false clean verify
+      - run:
+          name: Require both deployment modes to have run
+          command: |
+            python3 - \<<'PY'
+            from pathlib import Path
+            from xml.etree import ElementTree
+
+            target = Path("qqq-sample-project/target")
+            for report, minimum in (("surefire-reports/TEST-com.kingsrook.sampleapp.SampleSingleNodeDefaultsTest.xml", 6),
+                                    ("failsafe-reports/TEST-com.kingsrook.sampleapp.SampleMultiNodeIT.xml", 10)):
+                suite = ElementTree.parse(target / report).getroot()
+                ran = int(suite.get("tests")) - int(suite.get("skipped"))
+                assert ran >= minimum, f"{report}: {ran} tests ran, expected {minimum}"
+                assert int(suite.get("failures")) == 0 and int(suite.get("errors")) == 0, report
+            PY
+      - store-sample-results
+
   sample_consumer_acceptance:
     executor: qqq-orb/java
     steps:
@@ -377,6 +413,13 @@ workflows:
               ignore: /(develop|release/.*|hotfix/.*|integration.*)/
             tags:
               only: []
+      - sample_multinode_acceptance:
+          name: sample_multinode_acceptance
+          filters:
+            branches:
+              ignore: /(develop|release/.*|hotfix/.*|integration.*)/
+            tags:
+              only: []
       - sample_consumer_acceptance:
           name: sample_consumer_acceptance
           filters:
@@ -387,7 +430,7 @@ workflows:
       - sample_coverage_gate:
           name: sample_coverage_gate
           require_complete_coverage: false
-          requires: [sample_acceptance, sample_consumer_acceptance]
+          requires: [sample_acceptance, sample_multinode_acceptance, sample_consumer_acceptance]
           filters:
             branches:
               ignore: /(develop|release/.*|hotfix/.*|integration.*)/
@@ -442,6 +485,12 @@ workflows:
             branches:
               only:
                 - develop
+      - sample_multinode_acceptance:
+          name: snapshot_sample_multinode_acceptance
+          filters:
+            branches:
+              only:
+                - develop
       - sample_consumer_acceptance:
           name: snapshot_sample_consumer_acceptance
           filters:
@@ -451,7 +500,7 @@ workflows:
       - sample_coverage_gate:
           name: snapshot_sample_coverage_gate
           require_complete_coverage: false
-          requires: [snapshot_sample_acceptance, snapshot_sample_consumer_acceptance]
+          requires: [snapshot_sample_acceptance, snapshot_sample_multinode_acceptance, snapshot_sample_consumer_acceptance]
           filters:
             branches:
               only:
@@ -504,6 +553,14 @@ workflows:
                 - feature/.*
             tags:
               only: [/publish.*/]
+      - sample_multinode_acceptance:
+          name: feature_sample_multinode_acceptance
+          filters:
+            branches:
+              only:
+                - feature/.*
+            tags:
+              only: [/publish.*/]
       - sample_consumer_acceptance:
           name: feature_sample_consumer_acceptance
           filters:
@@ -515,7 +572,7 @@ workflows:
       - sample_coverage_gate:
           name: feature_sample_coverage_gate
           require_complete_coverage: false
-          requires: [feature_sample_acceptance, feature_sample_consumer_acceptance]
+          requires: [feature_sample_acceptance, feature_sample_multinode_acceptance, feature_sample_consumer_acceptance]
           filters:
             branches:
               only:
@@ -555,6 +612,12 @@ workflows:
             branches:
               only:
                 - /release\/.*/
+      - sample_multinode_acceptance:
+          name: candidate_sample_multinode_acceptance
+          filters:
+            branches:
+              only:
+                - /release\/.*/
       - sample_consumer_acceptance:
           name: candidate_sample_consumer_acceptance
           filters:
@@ -564,7 +627,7 @@ workflows:
       - sample_coverage_gate:
           name: candidate_sample_coverage_gate
           require_complete_coverage: true
-          requires: [candidate_sample_acceptance, candidate_sample_consumer_acceptance, sample_bootstrap_source]
+          requires: [candidate_sample_acceptance, candidate_sample_multinode_acceptance, candidate_sample_consumer_acceptance, sample_bootstrap_source]
           filters:
             branches:
               only:
@@ -612,6 +675,13 @@ workflows:
               ignore: /.*/
             tags:
               only: /^v[0-9]+\.[0-9]+\.[0-9]+$/
+      - sample_multinode_acceptance:
+          name: release_sample_multinode_acceptance
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v[0-9]+\.[0-9]+\.[0-9]+$/
       - sample_consumer_acceptance:
           name: release_sample_consumer_acceptance
           filters:
@@ -622,7 +692,7 @@ workflows:
       - sample_coverage_gate:
           name: release_sample_coverage_gate
           require_complete_coverage: true
-          requires: [release_sample_acceptance, release_sample_consumer_acceptance, sample_bootstrap_source]
+          requires: [release_sample_acceptance, release_sample_multinode_acceptance, release_sample_consumer_acceptance, sample_bootstrap_source]
           filters:
             branches:
               ignore: /.*/
@@ -670,6 +740,12 @@ workflows:
             branches:
               only:
                 - /hotfix\/.*/
+      - sample_multinode_acceptance:
+          name: hotfix_sample_multinode_acceptance
+          filters:
+            branches:
+              only:
+                - /hotfix\/.*/
       - sample_consumer_acceptance:
           name: hotfix_sample_consumer_acceptance
           filters:
@@ -679,7 +755,7 @@ workflows:
       - sample_coverage_gate:
           name: hotfix_sample_coverage_gate
           require_complete_coverage: true
-          requires: [hotfix_sample_acceptance, hotfix_sample_consumer_acceptance, sample_bootstrap_source]
+          requires: [hotfix_sample_acceptance, hotfix_sample_multinode_acceptance, hotfix_sample_consumer_acceptance, sample_bootstrap_source]
           filters:
             branches:
               only:

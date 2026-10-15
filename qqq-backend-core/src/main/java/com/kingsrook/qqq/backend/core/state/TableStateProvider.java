@@ -22,6 +22,7 @@ package com.kingsrook.qqq.backend.core.state;
 
 
 import java.io.Serializable;
+import java.lang.ref.WeakReference;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Optional;
@@ -92,7 +93,11 @@ public class TableStateProvider implements StateProviderInterface
 
    private static final Set<String> WARNED_CLASSES = ConcurrentHashMap.newKeySet();
 
-   private final QInstance             instance;
+   ////////////////////////////////////////////////////////////////////////
+   // weak: QStateProviders keeps providers in a map that is weak on the   //
+   // instance, and a strong reference here would keep it from collection //
+   ////////////////////////////////////////////////////////////////////////
+   private final WeakReference<QInstance> instance;
    private final StateProviderMetaData metaData;
    private final StateSerialization    serialization;
    private final InMemoryStateProvider  localFallback = InMemoryStateProvider.getInstance();
@@ -106,7 +111,7 @@ public class TableStateProvider implements StateProviderInterface
     *******************************************************************************/
    public TableStateProvider(QInstance instance, StateProviderMetaData metaData) throws QException
    {
-      this.instance = instance;
+      this.instance = new WeakReference<>(instance);
       this.metaData = metaData;
       this.serialization = new StateSerialization(metaData);
    }
@@ -211,7 +216,12 @@ public class TableStateProvider implements StateProviderInterface
    private <T> T asSystem(SystemBody<T> body) throws QException
    {
       Object[] result = new Object[1];
-      QContext.withTemporaryContext(new CapturedContext(instance, new QSystemUserSession(), null, null), () -> result[0] = body.run());
+      QInstance qInstance = instance.get();
+      if(qInstance == null)
+      {
+         throw (new QException("The instance of this state provider is gone"));
+      }
+      QContext.withTemporaryContext(new CapturedContext(qInstance, new QSystemUserSession(), null, null), () -> result[0] = body.run());
       @SuppressWarnings("unchecked")
       T typed = (T) result[0];
       return (typed);

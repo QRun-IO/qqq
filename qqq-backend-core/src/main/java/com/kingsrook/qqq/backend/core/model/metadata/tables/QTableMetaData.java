@@ -67,6 +67,8 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  *******************************************************************************/
 public class QTableMetaData implements QAppChildMetaData, Serializable, MetaDataWithPermissionRules, TopLevelMetaDataInterface, SourceQBitAware, Cloneable
 {
+   private List<String> keywords;
+
    private String recordVersionField;
 
    private static final QLogger LOG = QLogger.getLogger(QTableMetaData.class);
@@ -1725,6 +1727,7 @@ public class QTableMetaData implements QAppChildMetaData, Serializable, MetaData
       try
       {
          QTableMetaData clone = (QTableMetaData) super.clone();
+         clone.keywords = keywords == null ? null : new ArrayList<>(keywords);
 
          if(fields != null)
          {
@@ -2192,6 +2195,53 @@ public class QTableMetaData implements QAppChildMetaData, Serializable, MetaData
    public QRelatedRecordPicker getRelatedRecordPicker(String name)
    {
       return (this.relatedRecordPickers == null ? null : this.relatedRecordPickers.get(name));
+   }
+
+
+
+   /*******************************************************************************
+    ** Search aliases: other words people use for this (old labels, jargon, vendor names).
+    ** Clients match search on label, keywords and ancestor labels. Never displayed as the label.
+    *******************************************************************************/
+   public List<String> getKeywords()
+   {
+      return (this.keywords);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for keywords
+    *******************************************************************************/
+   public void setKeywords(List<String> keywords)
+   {
+      this.keywords = keywords;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for keywords
+    *******************************************************************************/
+   public QTableMetaData withKeywords(List<String> keywords)
+   {
+      this.keywords = keywords;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Append a search alias.
+    *******************************************************************************/
+   public QTableMetaData withKeyword(String keyword)
+   {
+      if(keywords == null)
+      {
+         keywords = new ArrayList<>();
+      }
+      keywords.add(keyword);
+      return (this);
    }
 
 }

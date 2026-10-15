@@ -84,10 +84,7 @@ public class ManageSessionExecutor extends AbstractMiddlewareExecutor<ManageSess
       ////////////////////////////////////////////////////////////////////////////
       // a stateless bearer-token session never becomes a cookie session        //
       ////////////////////////////////////////////////////////////////////////////
-      if("true".equals(session.getValue(OAuth2AuthenticationModule.BEARER_SESSION_VALUE_KEY)))
-      {
-         throw (new QAuthenticationException("Bearer access tokens cannot create a stored session; send them as Authorization: Bearer"));
-      }
+      refuseBearerSession(session);
 
       //////////////////
       // build output //
@@ -98,6 +95,20 @@ public class ManageSessionExecutor extends AbstractMiddlewareExecutor<ManageSess
       {
          LinkedHashMap<String, Serializable> valuesForFrontend = new LinkedHashMap<>(session.getValuesForFrontend());
          output.setValues(valuesForFrontend);
+      }
+   }
+
+
+
+   /***************************************************************************
+    ** A stateless bearer-token session never becomes a stored (cookie)
+    ** session: that would let a page sign a browser in as the token's owner.
+    ***************************************************************************/
+   static void refuseBearerSession(QSession session) throws QAuthenticationException
+   {
+      if(session != null && "true".equals(session.getValue(OAuth2AuthenticationModule.BEARER_SESSION_VALUE_KEY)))
+      {
+         throw (new QAuthenticationException("Bearer access tokens cannot create a stored session; send them as Authorization: Bearer"));
       }
    }
 

@@ -116,4 +116,16 @@ public class AppTreeNode implements ToSchema
       return (this.wrapped.getIcon() == null ? null : new Icon(this.wrapped.getIcon()));
    }
 
+
+
+   /*******************************************************************************
+    ** Search aliases for this navigation item.
+    *******************************************************************************/
+   @OpenAPIDescription("Search aliases (old labels, jargon, vendor names); match search on label, keywords and ancestor labels; never display")
+   @OpenAPIListItems(value = String.class)
+   public List<String> getKeywords()
+   {
+      return (this.wrapped.getKeywords());
+   }
+
 }

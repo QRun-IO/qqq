@@ -29,18 +29,24 @@ import com.kingsrook.qqq.backend.core.actions.metadata.personalization.ExamplePe
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessOutput;
 import com.kingsrook.qqq.backend.core.model.audits.AuditsMetaDataProvider;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.session.QUser;
+import com.kingsrook.qqq.backend.core.utils.ExceptionUtils;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 
 /*******************************************************************************
@@ -191,6 +197,51 @@ class GetAuditsForRecordProcessTest extends BaseTest
       assertThat(audits).noneMatch(qRecord -> "noSuchField".equals(qRecord.getValue("auditDetail.fieldName")));
       assertThat(audits).anyMatch(qRecord -> "lastName".equals(qRecord.getValue("auditDetail.fieldName")));
       assertThat(audits).anyMatch(qRecord -> qRecord.getValue("auditDetail.fieldName") == null);
+   }
+
+
+
+   /*******************************************************************************
+    ** a record's audits need read permission on its table, and a known table.
+    *******************************************************************************/
+   @Test
+   void testRequiresReadPermissionOnTheAuditedTable() throws QException
+   {
+      AuditAction.execute(TestUtils.TABLE_NAME_PERSON_MEMORY, recordId, Map.of(), "Test Audit", List.of(new QRecord().withValue("message", "My Detail")));
+      QContext.getQInstance().getTable(TestUtils.TABLE_NAME_PERSON_MEMORY).setPermissionRules(new QPermissionRules().withLevel(PermissionLevel.READ_WRITE_PERMISSIONS));
+
+      QContext.init(QContext.getQInstance(), new QSession().withUser(new QUser().withFullName("No Person Read")));
+      assertDenied(auditsInput(TestUtils.TABLE_NAME_PERSON_MEMORY));
+
+      QContext.init(QContext.getQInstance(), new QSession().withPermission(TestUtils.TABLE_NAME_PERSON_MEMORY + ".read"));
+      assertEquals(1, ((List<QRecord>) new RunProcessAction().execute(auditsInput(TestUtils.TABLE_NAME_PERSON_MEMORY)).getValue("audits")).size());
+
+      assertDenied(auditsInput("noSuchTable"));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private RunProcessInput auditsInput(String tableName)
+   {
+      RunProcessInput input = new RunProcessInput();
+      input.setProcessName(GetAuditsForRecordProcess.NAME);
+      input.addValue("tableName", tableName);
+      input.addValue("recordId", recordId);
+      return (input);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private void assertDenied(RunProcessInput input)
+   {
+      assertThatThrownBy(() -> new RunProcessAction().execute(input))
+         .satisfies(e -> assertNotNull(ExceptionUtils.findClassInRootChain(e, QPermissionDeniedException.class)));
    }
 
 }

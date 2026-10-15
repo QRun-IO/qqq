@@ -21,10 +21,13 @@
 package com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components;
 
 
+import java.util.EnumSet;
 import java.util.List;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppSection;
+import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppSectionRole;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
+import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIEnumSubSet;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIExclude;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIListItems;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIMapKnownEntries;
@@ -127,6 +130,58 @@ public class AppSection implements ToSchema
    public List<String> getReports()
    {
       return (this.wrapped.getReports());
+   }
+
+
+
+   /*******************************************************************************
+    ** Child apps grouped by this section.
+    *******************************************************************************/
+   @OpenAPIDescription("List of child app names for the section")
+   @OpenAPIListItems(value = String.class)
+   public List<String> getApps()
+   {
+      return (this.wrapped.getApps());
+   }
+
+
+
+   /*******************************************************************************
+    ** Navigation role for explicit and legacy sections.
+    *******************************************************************************/
+   @OpenAPIDescription("PRIMARY: items shown without a heading; HISTORY: system-written records under a heading; SETTINGS: configuration under a heading, collapsed by default; GROUP: a heading grouping child apps, never navigable")
+   @OpenAPIEnumSubSet(SectionRoles.class)
+   public String getRole()
+   {
+      return (this.wrapped.getEffectiveRole().name());
+   }
+
+
+
+   /*******************************************************************************
+    ** Initial collapsed state.
+    *******************************************************************************/
+   @OpenAPIDescription("Whether the section is collapsed by default; SETTINGS defaults to true")
+   public Boolean getCollapsedByDefault()
+   {
+      return (this.wrapped.getEffectiveCollapsedByDefault());
+   }
+
+
+
+   /*******************************************************************************
+    ** Supported section roles in their string wire representation.
+    *******************************************************************************/
+   public static class SectionRoles implements OpenAPIEnumSubSet.EnumSubSet<QAppSectionRole>
+   {
+      /*******************************************************************************
+       ** All supported section roles.
+       *******************************************************************************/
+      @Override
+      public EnumSet<QAppSectionRole> getSubSet()
+      {
+         return (EnumSet.allOf(QAppSectionRole.class));
+      }
    }
 
 }

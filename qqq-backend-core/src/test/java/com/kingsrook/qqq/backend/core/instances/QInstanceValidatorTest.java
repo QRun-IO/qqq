@@ -86,6 +86,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinType;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.QJoinMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppSection;
+import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppSectionRole;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
 import com.kingsrook.qqq.backend.core.model.metadata.menus.QMenu;
 import com.kingsrook.qqq.backend.core.model.metadata.menus.QMenuSlot;
@@ -3494,4 +3495,61 @@ public class QInstanceValidatorTest extends BaseTest
       {
       }
    }
+
+
+
+   /*******************************************************************************
+    ** Apps-only sections are valid and child apps need not belong to a section.
+    *******************************************************************************/
+   @Test
+   void testAppsOnlySection()
+   {
+      assertValidationSuccess(instance -> instance.addApp(new QAppMetaData().withName("navigation")
+         .withChild(new QAppMetaData().withName("sectionChild"))
+         .withChild(instance.getApp(TestUtils.APP_NAME_MISCELLANEOUS))
+         .withSection(new QAppSection().withName("group").withLabel("Group").withRole(QAppSectionRole.GROUP).withApp("sectionChild"))));
+   }
+
+
+
+   /*******************************************************************************
+    ** Section app references must refer to a child app, not a table or unrelated app.
+    *******************************************************************************/
+   @Test
+   void testSectionAppNotChild()
+   {
+      assertValidationFailureReasons(instance -> instance.addApp(new QAppMetaData().withName("navigation")
+         .withSection(new QAppSection().withName("group").withLabel("Group").withApp("missing"))),
+         "App navigation section group specifies app missing, which is not a child of this app.");
+   }
+
+
+
+   /*******************************************************************************
+    ** An app cannot occur in two sections.
+    *******************************************************************************/
+   @Test
+   void testSectionAppDuplicated()
+   {
+      assertValidationFailureReasons(instance -> instance.addApp(new QAppMetaData().withName("navigation")
+         .withChild(new QAppMetaData().withName("sectionChild"))
+         .withSection(new QAppSection().withName("one").withLabel("One").withApp("sectionChild"))
+         .withSection(new QAppSection().withName("two").withLabel("Two").withApp("sectionChild"))),
+         "has app sectionChild listed more than once in its sections.");
+   }
+
+
+
+   /*******************************************************************************
+    ** GROUP sections cannot contain tables.
+    *******************************************************************************/
+   @Test
+   void testGroupSectionWithTable()
+   {
+      assertValidationFailureReasons(instance -> instance.addApp(new QAppMetaData().withName("navigation")
+         .withChild(instance.getTable(TestUtils.TABLE_NAME_PERSON))
+         .withSection(new QAppSection().withName("group").withLabel("Group").withRole(QAppSectionRole.GROUP).withTable(TestUtils.TABLE_NAME_PERSON))),
+         "App navigation section group is a GROUP section, which may only list apps.");
+   }
+
 }

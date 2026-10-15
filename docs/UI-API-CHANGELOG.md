@@ -80,6 +80,31 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 
 ## Versions
 
+### 1.7.0 (QQQ 4.1.0-RC.16) - navigation sections and search aliases
+
+- Published `AppSection.apps` for child app names.
+- Added `AppSection.role` (PRIMARY/HISTORY/SETTINGS/GROUP) and `collapsedByDefault`.
+- Added `keywords` on `AppTreeNode` and `AppMetaData`.
+- Validator accepts apps-only sections and checks child app membership and uniqueness.
+- Client rules: a GROUP section is a heading, never a destination (no page, URL or breadcrumb level).
+  Clients never re-sort server order. SETTINGS is collapsed unless the user expands it (honor an explicit
+  `collapsedByDefault` override). Match search on label + keywords + ancestor labels; never display keywords as labels.
+- Standard preference section `keyboard` (`singleKeyShortcuts`, default on) for WCAG 2.1.4, served by the
+  existing `/preferences` operations when an application registers it (`KeyboardPreferences`); no new operation.
+
+### Next release (QQQ 4.1.0-RC.16; merges into that release's version entry)
+
+- **Audits capability (behaviour fix, no schema change).** `clientCapabilities.audits.available`
+  no longer requires an audit level other than `NONE`: it requires that the user can read the
+  table, and can run `GetAuditsForRecord` or read the `audit` table. `level` is informational (a
+  table at level `NONE` gets no automatic audits, but code can still write audits for its
+  records).
+- **Security fix: audits required table read permission only on paper.** `GetAuditsForRecord`
+  returned a record's audit rows (who changed it, when, messages) to any user allowed to run
+  the process, even without read permission on the audited table; only field-level details were
+  filtered. It now refuses (permission denied, HTTP 403) a table the user may not read, or an
+  unknown table.
+
 ### 1.6.0 (QQQ 4.1.0-RC.15) - native clients
 Ready for CLI, TUI and native clients (see `UI-API-CLIENTS.md`).
 

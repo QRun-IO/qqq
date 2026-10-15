@@ -207,7 +207,9 @@ issuer's discovery document, `{issuer}.well-known/openid-configuration`, for its
 Use `nativeClientId` with a redirect URI registered at the provider: a loopback URI
 (`http://127.0.0.1:{port}/callback`, any free port, RFC 8252) or a custom scheme
 (`com.example.app://oauth/callback`). Exchange the code at the token endpoint with the
-`code_verifier`. Every redirect URI must be registered on the provider (the kof22 Authentik
+`code_verifier`. Do not send a `nonce` in this authorization request: some providers (Authentik)
+copy it into the access token, and the server refuses tokens with a `nonce` as ID tokens. Every
+redirect URI must be registered on the provider (the kof22 Authentik
 `kof22-admin-cli` provider, for example, allows `http://127.0.0.1:<port>/callback` and
 `http://localhost:<port>/callback`).
 

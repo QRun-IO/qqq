@@ -28,6 +28,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import com.kingsrook.qqq.backend.core.cluster.QNodeRoles;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaData;
@@ -132,6 +133,17 @@ public class QEsbRuntime
       if(running)
       {
          LOG.warn("The ESB runtime is already running; ignoring start");
+         return;
+      }
+
+      ////////////////////////////////////////////////////////////////////////
+      // trigger consumers run only on nodes with the esb role (or with     //
+      // QQQ_ESB_TRIGGERS_ENABLED=true); every node can still publish       //
+      // (QNodeRoles, spec 2026-10-15-cluster-ha-design section A)          //
+      ////////////////////////////////////////////////////////////////////////
+      if(!QNodeRoles.get().esbTriggers())
+      {
+         LOG.info("Not starting the ESB trigger runtime: this node does not run ESB triggers (standby)");
          return;
       }
 

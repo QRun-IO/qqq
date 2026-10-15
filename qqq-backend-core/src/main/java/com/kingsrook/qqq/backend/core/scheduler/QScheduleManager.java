@@ -29,6 +29,7 @@ import java.util.function.Supplier;
 import com.kingsrook.qqq.backend.core.actions.automation.polling.PollingAutomationPerTableRunner;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
+import com.kingsrook.qqq.backend.core.cluster.QNodeRoles;
 import com.kingsrook.qqq.backend.core.context.CapturedContext;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -151,9 +152,14 @@ public class QScheduleManager
       //////////////////////////////////////////////////////////////////////////
       // exit w/o starting schedulers, if schedule manager isn't enabled here //
       //////////////////////////////////////////////////////////////////////////
-      if(!new QMetaDataVariableInterpreter().getBooleanFromPropertyOrEnvironment("qqq.scheduleManager.enabled", "QQQ_SCHEDULE_MANAGER_ENABLED", true))
+      ////////////////////////////////////////////////////////////////////////
+      // the explicit flag wins; otherwise this node's roles decide - a node //
+      // without the scheduler role keeps its schedulers in standby          //
+      // (QNodeRoles, spec 2026-10-15-cluster-ha-design section A)           //
+      ////////////////////////////////////////////////////////////////////////
+      if(!isEnabledOnThisNode())
       {
-         LOG.info("Not starting ScheduleManager per settings.");
+         LOG.info("Not starting ScheduleManager per settings (standby on this node).");
          schedulers.values().forEach(s -> s.doNotStart());
          return;
       }
@@ -172,6 +178,18 @@ public class QScheduleManager
       //////////////////////////
       schedulers.values().forEach(s -> s.start());
       started = true;
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether schedulers start on this node: qqq.scheduleManager.enabled /
+    ** QQQ_SCHEDULE_MANAGER_ENABLED when set, else whether this node has the
+    ** scheduler role (every node does by default).
+    *******************************************************************************/
+   public static boolean isEnabledOnThisNode()
+   {
+      return (new QMetaDataVariableInterpreter().getBooleanFromPropertyOrEnvironment("qqq.scheduleManager.enabled", "QQQ_SCHEDULE_MANAGER_ENABLED", QNodeRoles.has(QNodeRoles.Role.SCHEDULER)));
    }
 
 

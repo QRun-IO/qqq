@@ -34,6 +34,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import com.kingsrook.qqq.esb.health.EsbHealthChecks;
 import com.kingsrook.qqq.esb.publish.EsbProcessLifecycleListener;
 import com.kingsrook.qqq.esb.publish.EsbRecordChangeListener;
 import com.kingsrook.qqq.esb.runtime.EsbRuntimeService;
@@ -110,6 +111,7 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
    @Override
    public void enrich(QInstance qInstance)
    {
+      EsbHealthChecks.register(qInstance);
       QMetaDataVariableInterpreter interpreter = new QMetaDataVariableInterpreter();
       for(QEsbProviderMetaData provider : CollectionUtils.nonNullMap(providers).values())
       {

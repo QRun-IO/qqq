@@ -34,6 +34,7 @@ import com.kingsrook.qqq.backend.core.jobs.effects.EffectStore;
 import com.kingsrook.qqq.backend.core.jobs.model.ChunkStatus;
 import com.kingsrook.qqq.backend.core.jobs.model.JobEventType;
 import com.kingsrook.qqq.backend.core.jobs.model.JobStatus;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobProgressLifecycle;
 import com.kingsrook.qqq.backend.core.jobs.store.DurableJobStore;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
@@ -86,6 +87,10 @@ public class JobFinalizer
          return (status);
       }
 
+      if("INLINE".equals(job.getValueString("sourceType")))
+      {
+         return (status);
+      }
       List<QRecord> chunks = store.refreshCounters(jobId);
       job = store.getJob(jobId);
       JobSignals.progress(job, false);
@@ -231,22 +236,29 @@ public class JobFinalizer
          }
       }
 
-      if(!store.setJobStatus(jobId, from, to, values))
+      ////////////////////////////////////////////////////////////////////////
+      // the status and its event commit together: whoever sees the job in //
+      // its new status also finds the event (e.g., COMPLETED)              //
+      ////////////////////////////////////////////////////////////////////////
+      QRecord expected = new QRecord(job);
+      values.forEach(expected::setValue);
+      if(to.isTerminal() || to == JobStatus.NEEDS_REVIEW)
+      {
+         values.putAll(JobProgressLifecycle.terminalValues(store, expected, to, describe(expected, to)));
+      }
+      if(!store.setJobStatusWithEvent(jobId, from, to, values, eventType, describe(expected, to)))
       {
          QRecord current = store.getJob(jobId);
          return (current == null ? null : JobStatus.valueOf(current.getValueString("status")));
       }
 
       QRecord updated = store.getJob(jobId);
-      if(eventType != null)
-      {
-         store.recordEvent(jobId, null, eventType, null, null, null, describe(updated, to));
-      }
       LOG.info("Durable job status changed", logPair("jobId", jobId), logPair("status", to));
 
       if(to.isTerminal() || to == JobStatus.NEEDS_REVIEW)
       {
-         JobSignals.finished(updated, to);
+         JobProgressLifecycle.finished(store, updated, to, describe(updated, to));
+         JobSignals.finished(store.getJob(jobId), to);
       }
       else
       {

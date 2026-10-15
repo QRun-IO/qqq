@@ -53,6 +53,7 @@ public class MiddlewareSpecExtensionsMetaData implements QSupplementalInstanceMe
     ***************************************************************************/
    public static final Map<String, String> ESTABLISHED_PREFIXES = Map.of(
       "/esb", "esb",
+      "/health", "health",
       "/alerts", "alerts",
       "/assistant", "assistant",
       "/sql-workbench", "sql-workbench");
@@ -62,7 +63,7 @@ public class MiddlewareSpecExtensionsMetaData implements QSupplementalInstanceMe
     ** extension.
     ***************************************************************************/
    public static final Set<String> CORE_RESERVED_ROOTS = Set.of(
-      "metaData", "table", "processes", "possibleValues", "widget", "reports", "download",
+      "jobs", "metaData", "table", "processes", "possibleValues", "widget", "reports", "download",
       "manageSession", "logout", "oidc", "search", "help", "version", "preferences", "openapi.yaml", "openapi.json", "openapi.html");
 
    private static final Pattern NAME_PATTERN    = Pattern.compile("[a-z0-9][a-z0-9-]*");

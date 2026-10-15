@@ -47,6 +47,10 @@ import com.kingsrook.qqq.backend.core.jobs.model.JobEventType;
 import com.kingsrook.qqq.backend.core.jobs.model.JobIdempotency;
 import com.kingsrook.qqq.backend.core.jobs.model.JobLease;
 import com.kingsrook.qqq.backend.core.jobs.model.JobStatus;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobLogWriter;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobProgressLifecycle;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobProgressMath;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobProgressSnapshot;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertOutput;
@@ -212,6 +216,63 @@ public class DurableJobStore
 
 
    /*******************************************************************************
+    ** Compare-and-set a job's status and record its timeline event in one
+    ** transaction, so a reader that sees the new status also sees the event
+    ** (status first and event after left a window where a finished job had no
+    ** COMPLETED event yet). Returns false, writing nothing, when the job was not
+    ** in one of the from-statuses.
+    *******************************************************************************/
+   public boolean setJobStatusWithEvent(Integer jobId, Collection<JobStatus> from, JobStatus to, Map<String, Serializable> extraValues, JobEventType eventType, String detail) throws QException
+   {
+      Map<String, Serializable> values = new LinkedHashMap<>();
+      if(extraValues != null)
+      {
+         values.putAll(extraValues);
+      }
+      values.put("status", to.name());
+      values.put("modifyDate", now());
+
+      return (SystemScope.call(() ->
+      {
+         QBackendTransaction transaction = QBackendTransaction.openFor(new InsertInput(TABLE_JOB));
+         try
+         {
+            boolean changed = cas(TABLE_JOB, values, new QQueryFilter()
+               .withCriteria(new QFilterCriteria("id", QCriteriaOperator.EQUALS, jobId))
+               .withCriteria(new QFilterCriteria("status", QCriteriaOperator.IN, from.stream().map(Enum::name).toList())), transaction) == 1;
+            if(changed && eventType != null)
+            {
+               new InsertAction().execute(new InsertInput(TABLE_EVENT).withTransaction(transaction).withRecord(new QRecord()
+                  .withValue("jobId", jobId)
+                  .withValue("type", eventType.name())
+                  .withValue("detail", StringUtils.safeTruncate(detail, 4000))
+                  .withValue("createDate", Instant.now())));
+            }
+            transaction.commit();
+            return (changed);
+         }
+         catch(Exception e)
+         {
+            try
+            {
+               transaction.rollback();
+            }
+            catch(Exception rollbackException)
+            {
+               e.addSuppressed(rollbackException);
+            }
+            throw (e instanceof QException qe ? qe : new QException("Could not change the status of job " + jobId, e));
+         }
+         finally
+         {
+            transaction.close();
+         }
+      }));
+   }
+
+
+
+   /*******************************************************************************
     ** Set values on a job without a status condition (counters, reasons).
     *******************************************************************************/
    public void updateJob(Integer jobId, Map<String, Serializable> values) throws QException
@@ -292,6 +353,14 @@ public class DurableJobStore
       {
          return (Optional.empty());
       }
+      if(attempt > 1)
+      {
+         QRecord job = getJob(chunk.getValueInteger("jobId"));
+         var snapshot = new JobProgressSnapshot().withUnitLabel("rows");
+         new JobProgressMath().update(snapshot, job, attempt, now);
+         cas(TABLE_JOB, JobLogWriter.progressValues(snapshot),
+            new QQueryFilter(new QFilterCriteria("id", QCriteriaOperator.EQUALS, chunk.getValueInteger("jobId"))), transaction);
+      }
       return (Optional.of(new JobLease(chunk.getValueInteger("id"), chunk.getValueInteger("jobId"), chunk.getValueInteger("seq"), attempt, podId, token, expiresAt)));
    }
 
@@ -302,8 +371,18 @@ public class DurableJobStore
     *******************************************************************************/
    public boolean heartbeat(JobLease lease, int leaseTtlSeconds) throws QException
    {
+      return (heartbeat(lease, leaseTtlSeconds, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Renew under the progress transaction, holding the fence until its commit.
+    *******************************************************************************/
+   public boolean heartbeat(JobLease lease, int leaseTtlSeconds, QBackendTransaction transaction) throws QException
+   {
       Instant now = now();
-      return (cas(TABLE_CHUNK, Map.of("leaseExpiresAt", now.plusSeconds(leaseTtlSeconds), "heartbeatAt", now), fence(lease), null) == 1);
+      return (cas(TABLE_CHUNK, Map.of("leaseExpiresAt", now.plusSeconds(leaseTtlSeconds), "heartbeatAt", now), fence(lease), transaction) == 1);
    }
 
 
@@ -435,12 +514,14 @@ public class DurableJobStore
          int count = cas(TABLE_CHUNK, values, new QQueryFilter()
             .withCriteria(new QFilterCriteria("id", QCriteriaOperator.EQUALS, chunk.getValueInteger("id")))
             .withCriteria(new QFilterCriteria("leaseVersion", QCriteriaOperator.EQUALS, version))
+            .withCriteria(new QFilterCriteria("leaseExpiresAt", QCriteriaOperator.LESS_THAN, now))
             .withCriteria(new QFilterCriteria("status", QCriteriaOperator.EQUALS, ChunkStatus.RUNNING.name())), null);
 
          if(count == 1)
          {
             chunk.setValue("status", next.name());
             reclaimed.add(chunk);
+            JobProgressLifecycle.reclaimed(this, chunk);
             recordEvent(jobId, chunk.getValueInteger("id"), JobEventType.RECLAIMED, null, null, reaperPodId,
                "Chunk " + chunk.getValueInteger("seq") + " (attempt " + attempt + ") reclaimed from " + chunk.getValueString("leaseOwner") + "; now " + next.name());
             LOG.info("Reclaimed expired job chunk", logPair("jobId", jobId), logPair("chunkId", chunk.getValueInteger("id")), logPair("from", chunk.getValueString("leaseOwner")), logPair("to", next));
@@ -553,6 +634,13 @@ public class DurableJobStore
       values.put("lastProgressAt", now());
       updateJob(jobId, values);
 
+      QRecord refreshed = getJob(jobId);
+      var snapshot = JobProgressLifecycle.snapshot(refreshed);
+      if((snapshot.getPhases() == null || snapshot.getPhases().isEmpty()) && snapshot.getTotal() == null && snapshot.getBytesTotal() == null)
+      {
+         new JobProgressMath().update(snapshot, refreshed, 0, now());
+         updateJob(jobId, JobLogWriter.progressValues(snapshot));
+      }
       return (chunks);
    }
 

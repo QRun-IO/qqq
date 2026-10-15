@@ -65,6 +65,7 @@ The API update adapter opts out of generic prefetch. Its provider contract and f
 * `transaction` - *QBackendTransaction, default: null* - Optional caller-owned transaction supported by the selected backend. Pass an `RDBMSTransaction` from the table's backend for RDBMS operations; Update does not commit, roll back or close it.
 * `omitModifyDateUpdate` - *boolean, default: false* - Suppresses the automatic MODIFY_DATE field behavior.
 * `omitTriggeringAutomations` - *boolean, default: false* - Suppresses Update's automation-status assignment; intended for specialized status-management operations.
+* `omitRecordChangeEvents` - *boolean, default: false* - For trusted system writes of derived counters or denormalized totals that are not business events. Suppresses optional record-change listeners; required integrity listeners still run. Record locks, field security, validation and permissions are unchanged. Also available on `InsertInput` and `DeleteInput`; does not require restore mode or change audit semantics.
 * `omitDmlAudit` - *boolean, default: false* - Suppresses the action's DML audit.
 * `auditContext` - *String, default: null* - Optional context included in DML audit messages.
 * `areAllValuesBeingUpdatedTheSame` - *Boolean, default: null* - Trusted optimization hint for backends using the shared grouping helper. Null compares values automatically; an incorrect true value can produce an incorrect update.

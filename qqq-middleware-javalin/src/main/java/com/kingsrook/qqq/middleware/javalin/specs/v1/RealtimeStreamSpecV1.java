@@ -36,6 +36,7 @@ import com.kingsrook.qqq.middleware.javalin.specs.BasicResponse;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.RealtimeChannelRevokedEventV1;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.RealtimeEventV1;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.RealtimeHelloEventV1;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.RealtimeJobProgressEventV1;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.RealtimeMetaDataChangedEventV1;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.RealtimeRecordChangedEventV1;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.RealtimeRecordDeletedEventV1;
@@ -73,7 +74,7 @@ public class RealtimeStreamSpecV1 extends AbstractEndpointSpec<RealtimeExecutor.
          .withShortSummary("Open the realtime event stream")
          .withLongDescription("SSE invalidation hints. Each event has id <connectionId>:<sequence>, an event name and JSON data. "
             + "hello identifies the connection; comment pings maintain it. Last-Event-ID replays retained events on the same pod and session, otherwise resync asks clients to refetch. "
-            + "Core event payloads use the Realtime*EventV1 components. Qbits publish through RealtimeBus with their own event names, such as presence.changed and comment.added, described by RealtimeEventV1. "
+            + "Core event payloads use the Realtime*EventV1 components. job.progress uses RealtimeJobProgressEventV1; an advancing logSeq tells clients to poll the job log. Qbits publish through RealtimeBus with their own event names, such as presence.changed and comment.added, described by RealtimeEventV1. "
             + "Subscriptions require a separate POST; session-ended closes the stream and channel-revoked removes a subscription."));
    }
 
@@ -109,6 +110,7 @@ public class RealtimeStreamSpecV1 extends AbstractEndpointSpec<RealtimeExecutor.
    public Map<String, Schema> defineComponentSchemas()
    {
       Map<String, Schema> schemas = new LinkedHashMap<>();
+      schemas.put("RealtimeJobProgressEventV1", new RealtimeJobProgressEventV1().toSchema());
       schemas.put("RealtimeHelloEventV1", new RealtimeHelloEventV1().toSchema());
       schemas.put("RealtimeRecordChangedEventV1", new RealtimeRecordChangedEventV1().toSchema());
       schemas.put("RealtimeRecordDeletedEventV1", new RealtimeRecordDeletedEventV1().toSchema());

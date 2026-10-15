@@ -48,6 +48,13 @@ public class DeleteInput extends AbstractTableActionInput
 
    private boolean dryRun = false;
 
+   /*******************************************************************************
+    ** For trusted system writes of derived values (counters, denormalized totals)
+    ** that are not business events. Required integrity listeners still run.
+    ** Record locks, field security, validation and permissions are unchanged.
+    *******************************************************************************/
+   private boolean omitRecordChangeEvents = false;
+
    private boolean omitDmlAudit = false;
    private String  auditContext = null;
 
@@ -236,6 +243,37 @@ public class DeleteInput extends AbstractTableActionInput
    public DeleteInput withInputSource(InputSource inputSource)
    {
       this.inputSource = inputSource;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for omitRecordChangeEvents
+    *******************************************************************************/
+   public boolean getOmitRecordChangeEvents()
+   {
+      return (this.omitRecordChangeEvents);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for omitRecordChangeEvents
+    *******************************************************************************/
+   public void setOmitRecordChangeEvents(boolean omitRecordChangeEvents)
+   {
+      this.omitRecordChangeEvents = omitRecordChangeEvents;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for omitRecordChangeEvents
+    *******************************************************************************/
+   public DeleteInput withOmitRecordChangeEvents(boolean omitRecordChangeEvents)
+   {
+      this.omitRecordChangeEvents = omitRecordChangeEvents;
       return (this);
    }
 

@@ -25,11 +25,13 @@ package com.kingsrook.qqq.backend.core.jobs.plans;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.Serializable;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,25 +44,30 @@ import com.kingsrook.qqq.backend.core.actions.audits.DMLAuditAction;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.KeysetPager;
+import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.tables.StorageAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.jobs.DurableJobsMetaData;
+import com.kingsrook.qqq.backend.core.jobs.DurableJobsTables;
 import com.kingsrook.qqq.backend.core.jobs.SystemScope;
 import com.kingsrook.qqq.backend.core.jobs.model.ChunkOutcome;
 import com.kingsrook.qqq.backend.core.jobs.model.JobIdempotency;
 import com.kingsrook.qqq.backend.core.jobs.model.JobMode;
 import com.kingsrook.qqq.backend.core.jobs.model.JobSourceType;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobProgressAsyncJobCallback;
 import com.kingsrook.qqq.backend.core.jobs.uploads.UploadRefs;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.storage.StorageInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QBackendStepMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.savedbulkloadprofiles.SavedBulkLoadProfile;
@@ -216,8 +223,8 @@ public class ChunkedProcessPlan implements JobPlan
             list.forEach(n -> wanted.add(ValueUtils.getValueAsInteger(n)));
          }
 
-         List<QRecord>       parentChunks = SystemScope.call(() -> com.kingsrook.qqq.backend.core.actions.tables.QueryAction.execute(com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.TABLE_CHUNK,
-            new QQueryFilter(new QFilterCriteria("jobId", QCriteriaOperator.EQUALS, parentJobId)).withOrderBy(new com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy("seq"))));
+         List<QRecord>       parentChunks = SystemScope.call(() -> QueryAction.execute(DurableJobsTables.TABLE_CHUNK,
+            new QQueryFilter(new QFilterCriteria("jobId", QCriteriaOperator.EQUALS, parentJobId)).withOrderBy(new QFilterOrderBy("seq"))));
          String              storageTable = storageTableName();
          List<BulkLoadFileRow> selected   = new ArrayList<>();
          BulkLoadFileRow       header     = null;
@@ -274,7 +281,7 @@ public class ChunkedProcessPlan implements JobPlan
     ** Write rows into chunk objects of chunkSize rows each (header first in every
     ** object). Bounded memory: one row at a time.
     *******************************************************************************/
-   private List<QRecord> writeChunkObjects(BulkLoadFileRow header, java.util.Iterator<BulkLoadFileRow> rows, int chunkSize, String prefixOrNull) throws QException
+   private List<QRecord> writeChunkObjects(BulkLoadFileRow header, Iterator<BulkLoadFileRow> rows, int chunkSize, String prefixOrNull) throws QException
    {
       String        storageTable = storageTableName();
       String        prefix       = prefixOrNull != null ? prefixOrNull : "jobs/" + LocalDate.now(ZoneOffset.UTC).format(DateTimeFormatter.ofPattern("yyyy/MM/dd")) + "/" + UUID.randomUUID() + "/";
@@ -370,12 +377,13 @@ public class ChunkedProcessPlan implements JobPlan
 
       boolean             sameTransaction = JobIdempotency.SAME_TRANSACTION.name().equals(job.getValueString("idempotency")) && !isValidate;
       QBackendTransaction transaction     = sameTransaction ? QBackendTransaction.openFor(new InsertInput(destinationTableName(job, process))) : null;
-      try(JobChunkScope scope = JobChunkScope.open(transaction, context::check, context.identity()))
+      try(JobChunkScope scope = JobChunkScope.open(transaction, context::check, context.identity()).withProgress(context.getProgress()))
       {
          context.check();
 
          RunProcessInput input = new RunProcessInput();
          input.setProcessName(process.getName());
+         input.setAsyncJobCallback(new JobProgressAsyncJobCallback(context.getProgress()));
          input.setFrontendStepBehavior(RunProcessInput.FrontendStepBehavior.SKIP);
          input.setValues(new LinkedHashMap<>(values));
          Map<String, Serializable> validation = new LinkedHashMap<>();
@@ -430,6 +438,7 @@ public class ChunkedProcessPlan implements JobPlan
          else
          {
             context.getStore().recordRowErrors(rowErrors, null);
+            context.getProgress().flush();
             context.recordEffects(scope.drainEffects());
          }
          return (outcome);
@@ -499,7 +508,7 @@ public class ChunkedProcessPlan implements JobPlan
    private static List<QRecord> toRowErrorRecords(QRecord job, QRecord chunk, List<JobChunkScope.RowError> errors)
    {
       List<QRecord> records = new ArrayList<>();
-      java.time.Instant now = java.time.Instant.now();
+      Instant now = Instant.now();
       for(JobChunkScope.RowError error : errors)
       {
          records.add(new QRecord()
@@ -686,7 +695,7 @@ public class ChunkedProcessPlan implements JobPlan
       }
       for(var step : process.getStepList())
       {
-         if(step instanceof com.kingsrook.qqq.backend.core.model.metadata.processes.QBackendStepMetaData backendStep
+         if(step instanceof QBackendStepMetaData backendStep
             && backendStep.getInputMetaData() != null && backendStep.getInputMetaData().getFieldList() != null)
          {
             for(var field : backendStep.getInputMetaData().getFieldList())

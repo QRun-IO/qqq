@@ -73,7 +73,55 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 
 ## Versions
 
-### 1.3.0 (unreleased)
+### 1.4.0 (QQQ 4.1.0-RC.8)
+- Added `GET /jobs`, `GET /jobs/{jobId}`, `GET /jobs/{jobId}/progress`,
+  `POST /jobs/{jobId}/cancel`, `POST /jobs/{jobId}/retry`, and `POST /jobs/track`.
+  These routes require the durable jobs tables, `jobs_job.read`, and the owner record lock.
+  `scope=all` requires `jobs_admin`; hidden jobs return 404 and invalid transitions return 409.
+  `/jobs` is reserved for core routes.
+- Added `JobSummaryV1`, `JobDetailV1`, `JobProgressV1`, `JobPhaseV1`, `JobLogLineV1`,
+  `JobListResponseV1`, `JobProgressPollV1`, `JobTrackRequestV1`, and `JobActionResponseV1`.
+  Poll responses include a twenty-id overlap; clients deduplicate lines by id.
+- Added weighted phases, byte/count progress, monotonic attempt percentages, and sliding-window ETA.
+  `jobs_job.percentDone` is an INTEGER rounded down; snapshots retain fractional precision.
+  `jobs_log` inherits the job lock and is append-only for users. Every line is redacted.
+  Oldest INFO/DEBUG entries over `logMaxLines` (default 2000) are pruned and counted in `logDropped`;
+  WARN/ERROR are retained even if they alone exceed the cap.
+- Progress and log flushes use a separate lease-fenced transaction. Reclaim preserves attempt
+  logs and resets live progress to committed work; completion adds a final line and 100 percent.
+- Added `INLINE` tracking of already-running foreground processes. The owning pod mirrors status
+  each second; loss of its heartbeat fails the job with an explanation that foreground work cannot
+  resume. Chunk workers never claim INLINE jobs.
+- Running process status gains optional `progress` and redacted `logTail` (last 200 lines).
+  Existing async callbacks adapt to durable progress. `RealtimeJobProgressEventV1` includes
+  optional `currentPhase`, `percent`, `message`, `bytesDone`, `bytesTotal`, and `logSeq`.
+- Added the core extension `health` 1.0.0 (central health monitoring, `docs/specs/HEALTH.md`):
+  `GET /health/summary`, `GET /health/components/{name}`, `GET /health/checks/{name}/history` and
+  `POST /health/checks/{name}/run`, with `Health...V1` schemas. It is registered when an app adds
+  `HealthMonitoringMetaData`; `/health` joins `ESTABLISHED_PREFIXES`. The core document is unchanged.
+- Added `POST /table/{tableName}/formAdjuster/{identifier}/{event}` (tag `Tables`, #1152): runs a
+  table form's on-load or on-change adjuster and returns `FormAdjusterOutputV1`. It replaces the
+  Material Dashboard module's unversioned `POST /material-dashboard-backend/form-adjuster/...`
+  route for v1 clients. The adjuster runs in the caller's session (the legacy route runs it as the
+  system user, unauthenticated), and the caller must be allowed to insert or edit records in the
+  table. It answers 404 when the application registers no form adjusters.
+- Added `GET /table/{tableName}/apis` (tag `Tables`, #1152): the application APIs that expose a
+  table, with each API's versions, semantic versions and the path of the table's OpenAPI document
+  in each (`TableApisResponseV1`). It replaces the unversioned `/apis.json?tableName=` and
+  `{api}/versions.json` for v1 clients. Modules contribute through `TableApisProviderInterface`
+  (found with `ServiceLoader`); `qqq-middleware-api` provides one. The caller must be allowed to
+  read the table.
+- Added `GET /table/{tableName}/apis/{apiName}/{version}/openapi` (tag `Tables`): the table's
+  OpenAPI document in one version of an application API, through the UI API (replaces fetching
+  `{api.path}{version}/{table}/openapi.json` from the API middleware). `TableApisProviderInterface`
+  gains `getTableSpecJson`.
+- The API-aware routes (`/qqq/v1/{applicationApiPath}/{applicationApiVersion}/...`,
+  `ApiAwareMiddlewareVersionV1` in qqq-middleware-api) now have a committed document,
+  `qqq-middleware-api/src/main/resources/openapi/v1/api-aware.yaml`, checked by
+  `ApiAwareUiApiContractTest`, so clients can vendor it.
+- `baseline.yaml` is now the RC.7 document (1.3.0).
+
+### 1.3.0 (QQQ 4.1.0-RC.7)
 - Added `UiApiRequest.withHeader(name, value)` for custom invocation headers; null values remove headers, and the invoker drops reserved credential, client-channel and request-metadata headers case-insensitively.
 - Strict UI API routes are the default (#1159): startup fails when a route under `/qqq/v1` has no
   spec (core or extension). `QQQ_UI_API_STRICT_ROUTES=false` (or `withStrictUiApiRoutes(false)`)
@@ -128,9 +176,6 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
   - It is intersected with the user's live permissions.
   - The session's client channel is `token:<id>`; "token" is a new default channel.
   - Access tokens from qbit-authentik set it.
-
-### 1.2.0 (QQQ 4.1.0-RC.6)
-1.1.0 was never released; its additions ship here.
 - In-app help (docs/HELP-CONTENT.md):
   - Typed `HelpContentV1` entries and slot maps across all existing help properties; new `helpContents` maps on apps, processes and reports. Targeting fields remain server-only.
   - Added secured `GET /help/search?q=&limit=` with ranked results, canonical keys, summaries, long help and application-relative links (default 20, maximum 50).
@@ -154,6 +199,11 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
   `validatePossibleValueSourceOnWrite(false)`. SYSTEM writes are excluded.
   See [Contingent possible values](CONTINGENT-POSSIBLE-VALUES.md) for examples,
   frontend obligations, sample fixtures and the process-step validation limitation.
+- `baseline.yaml` was the RC.6 document (1.2.0) for this release; the in-app help, invoker, bulk-load
+  and contingent-field additions above were first listed under 1.2.0 but merged after RC.6 was cut.
+
+### 1.2.0 (QQQ 4.1.0-RC.6)
+1.1.0 was never released; its additions ship here.
 - Added typed `recordFeatures.ownership` and `builtInViews` to table metadata for
   ASSIGNMENT-enabled tables. The "My records" filter preserves `CurrentUser`
   expression objects (`type: CurrentUser`, displayed as "Me"). Core also resolves

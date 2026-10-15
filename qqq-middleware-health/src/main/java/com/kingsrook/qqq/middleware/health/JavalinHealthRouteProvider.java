@@ -21,6 +21,9 @@
 package com.kingsrook.qqq.middleware.health;
 
 
+import java.util.Map;
+import com.kingsrook.qqq.backend.core.cluster.QNodeLifecycle;
+import com.kingsrook.qqq.backend.core.cluster.QNodeRoles;
 import com.kingsrook.qqq.backend.core.health.HealthMonitoringMetaData;
 import com.kingsrook.qqq.backend.core.health.HealthStatus;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -74,6 +77,15 @@ public class JavalinHealthRouteProvider implements QJavalinRouteProviderInterfac
          });
          get(readyPath, ctx ->
          {
+            ////////////////////////////////////////////////////////////////////
+            // a draining node (SIGTERM, or a drain request) is not ready, so //
+            // the load balancer stops sending it requests (QNodeLifecycle)   //
+            ////////////////////////////////////////////////////////////////////
+            if(QNodeLifecycle.isDraining())
+            {
+               ctx.status(503).json(Map.of("status", HealthStatus.DOWN, "reason", "draining", "nodeId", QNodeRoles.nodeId()));
+               return;
+            }
             var body = HealthProbes.run(qInstance, true);
             ctx.status(body.get("status") == HealthStatus.DOWN ? 503 : 200).json(body);
          });

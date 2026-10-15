@@ -21,6 +21,7 @@
 package com.kingsrook.qqq.backend.core.model.actions.processes;
 
 
+import java.io.Serializable;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,7 +39,7 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  ** e.g., changing the steps; updating fields (e.g., changing an inline PVS,
  ** or an isRequired attribute)
  *******************************************************************************/
-public class ProcessMetaDataAdjustment
+public class ProcessMetaDataAdjustment implements Serializable
 {
    private static final QLogger LOG = QLogger.getLogger(ProcessMetaDataAdjustment.class);
 

@@ -41,6 +41,7 @@ import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
 import com.kingsrook.qqq.backend.core.actions.values.QValueFormatter;
+import com.kingsrook.qqq.backend.core.cluster.ClusterCaches;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -72,13 +73,13 @@ public class ProcessLockUtils
 {
    private static final QLogger LOG = QLogger.getLogger(ProcessLockUtils.class);
 
-   private static Memoization<String, ProcessLockType> getProcessLockTypeByNameMemoization = new Memoization<String, ProcessLockType>()
+   private static Memoization<String, ProcessLockType> getProcessLockTypeByNameMemoization = ClusterCaches.shared("processLocks.typeByName", new Memoization<String, ProcessLockType>()
       .withTimeout(Duration.ofHours(1))
-      .withMayStoreNullValues(false);
+      .withMayStoreNullValues(false), null);
 
-   private static Memoization<Integer, ProcessLockType> getProcessLockTypeByIdMemoization = new Memoization<Integer, ProcessLockType>()
+   private static Memoization<Integer, ProcessLockType> getProcessLockTypeByIdMemoization = ClusterCaches.shared("processLocks.typeById", new Memoization<Integer, ProcessLockType>()
       .withTimeout(Duration.ofHours(1))
-      .withMayStoreNullValues(false);
+      .withMayStoreNullValues(false), Integer::valueOf);
 
 
 

@@ -58,6 +58,18 @@ public interface EsbConnectionFactoryBuilder
 
 
    /*******************************************************************************
+    ** Whether an exception reported to a connection's ExceptionListener means the
+    ** client failed over to another broker by itself (the connection still
+    ** works), rather than that the connection is lost.  False by default.
+    *******************************************************************************/
+   default boolean isFailover(JMSException exception)
+   {
+      return (false);
+   }
+
+
+
+   /*******************************************************************************
     ** Apply broker-specific settings to a newly opened session.
     *******************************************************************************/
    default void configureSession(Session session) throws JMSException

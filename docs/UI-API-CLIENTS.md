@@ -218,7 +218,10 @@ redirect URI must be registered on the provider (the kof22 Authentik
 token, never the ID token). The server verifies the JWT
 against the provider's keys (issuer, audience = the app's client or `nativeClientId`, expiry,
 signature; `alg: none` and HMAC are refused) and maps it to the same user, permissions and token
-scope as a web sign-in. Bearer calls are stateless: no cookie is set.
+scope as a web sign-in. Bearer calls are stateless: no cookie is set. One consequence: where the
+app re-establishes a durable job's owner from the launching sign-in (job grants), a job launched with
+a bearer JWT cannot continue as the user later; launch long jobs from a stored session
+(`POST /manageSession`, then `Bearer {sessionUUID}`).
 
 **Refreshing.** Access tokens are short-lived (minutes). On `401` (`code: UNAUTHENTICATED`), or
 shortly before `exp`, refresh at the provider: `POST {token_endpoint}` with

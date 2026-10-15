@@ -49,6 +49,7 @@ import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
+import com.kingsrook.qqq.backend.core.cluster.ClusterCaches;
 import com.kingsrook.qqq.backend.core.context.CapturedContext;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
@@ -136,12 +137,16 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
 
    private static final Pattern UUID_PATTERN = Pattern.compile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
 
-   private static final Memoization<String, String> getAccessTokenFromSessionUUIDMemoization = new Memoization<String, String>()
+   ////////////////////////////////////////////////////////////////////////
+   // session-keyed: cleared on every node when the session ends (logout, //
+   // back-channel logout) through ClusterCaches; the TTL is the backstop //
+   ////////////////////////////////////////////////////////////////////////
+   private static final Memoization<String, String> getAccessTokenFromSessionUUIDMemoization = ClusterCaches.sessionKeyed("oauth2.accessTokenBySession", new Memoization<String, String>()
       .withTimeout(Duration.of(1, ChronoUnit.MINUTES))
-      .withMaxSize(1000);
+      .withMaxSize(1000));
 
-   private static final Memoization<String, OIDCProviderMetadata> oidcProviderMetadataMemoization = new Memoization<String, OIDCProviderMetadata>()
-      .withMayStoreNullValues(false);
+   private static final Memoization<String, OIDCProviderMetadata> oidcProviderMetadataMemoization = ClusterCaches.nodeLocal(new Memoization<String, OIDCProviderMetadata>()
+      .withMayStoreNullValues(false), "the provider's discovery document is the same for every node");
 
    ///////////////////////////////////////////////////////////////////////////////
    // striped locks, so that concurrent requests for the same session perform  //
@@ -278,7 +283,12 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
             // if session store is enabled, try to load cached session first         //
             // this avoids re-deriving security keys and other expensive operations  //
             ///////////////////////////////////////////////////////////////////////////
-            if(Boolean.TRUE.equals(oauth2MetaData.getSessionStoreEnabled()))
+            ////////////////////////////////////////////////////////////////////////
+            // a durable job's worker asks for a fresh session (bypassSessionStore) //
+            // so the user's current permissions apply (JobSessions)               //
+            ////////////////////////////////////////////////////////////////////////
+            boolean useSessionStore = Boolean.TRUE.equals(oauth2MetaData.getSessionStoreEnabled()) && !"true".equals(context.get("bypassSessionStore"));
+            if(useSessionStore)
             {
                Optional<QSession> cachedSession = QSessionStoreHelper.loadAndTouchSession(uuid);
                if(cachedSession.isPresent())
@@ -317,7 +327,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
             // if session store is enabled, store the session for future use    //
             // this happens after finalCustomizeSession so security keys cached //
             ///////////////////////////////////////////////////////////////////////
-            if(Boolean.TRUE.equals(oauth2MetaData.getSessionStoreEnabled()))
+            if(useSessionStore)
             {
                QSessionStoreHelper.storeSession(uuid, session, QSessionStoreHelper.getDefaultTtl());
             }
@@ -1561,11 +1571,15 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
 
 
    /*******************************************************************************
-    ** Forget a cached token after its authoritative session has been removed.
+    ** Forget a cached token after its authoritative session has been removed -
+    ** on every node (a session-ended cluster event), along with any session
+    ** store entry.
     *******************************************************************************/
    public static void clearAccessTokenCache(String sessionUUID)
    {
       getAccessTokenFromSessionUUIDMemoization.clearKey(sessionUUID);
+      QSessionStoreHelper.removeSession(sessionUUID);
+      ClusterCaches.sessionEnded(sessionUUID);
    }
 
 

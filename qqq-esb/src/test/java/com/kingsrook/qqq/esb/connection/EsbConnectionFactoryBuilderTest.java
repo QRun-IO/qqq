@@ -45,6 +45,48 @@ class EsbConnectionFactoryBuilderTest
 {
 
    /*******************************************************************************
+    ** Artemis HA: a failover url passes through untouched - both connectors (each
+    ** with the default connect timeout), ha, and the reconnect settings - and
+    ** the call-failover timeout defaults to 30 s unless the url sets it.
+    *******************************************************************************/
+   @Test
+   void testArtemisHaUrl() throws Exception
+   {
+      ArtemisConnectionFactoryBuilder builder = new ArtemisConnectionFactoryBuilder();
+      ConnectionFactory connectionFactory = builder.buildConnectionFactory(new QEsbProviderMetaData()
+         .withUrl("(tcp://broker-a.example:61616,tcp://broker-b.example:61617)?ha=true&reconnectAttempts=-1&retryInterval=1000"));
+      try(ActiveMQConnectionFactory artemisConnectionFactory = (ActiveMQConnectionFactory) connectionFactory)
+      {
+         assertThat(artemisConnectionFactory.isHA()).isTrue();
+         assertThat(artemisConnectionFactory.getReconnectAttempts()).isEqualTo(-1);
+         assertThat(artemisConnectionFactory.getRetryInterval()).isEqualTo(1000L);
+         assertThat(artemisConnectionFactory.getCallFailoverTimeout()).isEqualTo(ArtemisConnectionFactoryBuilder.CALL_FAILOVER_TIMEOUT_MS);
+
+         TransportConfiguration[] connectors = artemisConnectionFactory.getStaticConnectors();
+         assertThat(connectors).hasSize(2);
+         assertThat(connectors[0].getParams()).containsEntry(TransportConstants.HOST_PROP_NAME, "broker-a.example");
+         assertThat(connectors[1].getParams()).containsEntry(TransportConstants.HOST_PROP_NAME, "broker-b.example");
+         assertThat(connectors).allSatisfy(connector -> assertThat(connector.getParams()).containsEntry(TransportConstants.NETTY_CONNECT_TIMEOUT, EsbConnectionFactoryBuilder.CONNECT_TIMEOUT_MS));
+      }
+
+      ConnectionFactory ownTimeout = builder.buildConnectionFactory(new QEsbProviderMetaData()
+         .withUrl("(tcp://broker-a.example:61616,tcp://broker-b.example:61617)?ha=true&reconnectAttempts=-1&callFailoverTimeout=5000"));
+      try(ActiveMQConnectionFactory artemisConnectionFactory = (ActiveMQConnectionFactory) ownTimeout)
+      {
+         assertThat(artemisConnectionFactory.getCallFailoverTimeout()).isEqualTo(5000L);
+      }
+
+      ConnectionFactory single = builder.buildConnectionFactory(new QEsbProviderMetaData().withUrl("tcp://broker.example:61616"));
+      try(ActiveMQConnectionFactory artemisConnectionFactory = (ActiveMQConnectionFactory) single)
+      {
+         assertThat(artemisConnectionFactory.isHA()).isFalse();
+         assertThat(artemisConnectionFactory.getReconnectAttempts()).as("single-broker mode leaves reconnecting to EsbConnectionManager").isZero();
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Artemis: url and credentials go to the factory, and the connect timeout is
     ** 5 s - unless the url sets its own.
     *******************************************************************************/

@@ -21,12 +21,18 @@
 package com.kingsrook.qqq.backend.core.actions.async;
 
 
+import java.io.IOException;
+import java.io.ObjectOutputStream;
 import java.io.Serializable;
+import java.time.Instant;
 import java.util.List;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.kingsrook.qqq.backend.core.actions.processes.ProcessStateAccess;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.jobs.progress.JobLogLine;
 import com.kingsrook.qqq.backend.core.jobs.progress.JobProgressSnapshot;
+import com.kingsrook.qqq.backend.core.state.StateSerialization;
 
 
 /*******************************************************************************
@@ -35,7 +41,19 @@ import com.kingsrook.qqq.backend.core.jobs.progress.JobProgressSnapshot;
  *******************************************************************************/
 public class AsyncJobStatus implements Serializable
 {
-   private transient ProcessStateAccess stateAccess;
+   ////////////////////////////////////////////////////////////////////////
+   // serialized, so a shared (multi-node) state provider keeps the owner //
+   // check on every node                                                 //
+   ////////////////////////////////////////////////////////////////////////
+   private ProcessStateAccess stateAccess;
+
+   ////////////////////////////////////////////////////////////////////////
+   // the node running the job, and when it last wrote this status (a    //
+   // running job's node re-writes it periodically; a stale heartbeat on //
+   // a RUNNING job means its node is gone)                              //
+   ////////////////////////////////////////////////////////////////////////
+   private String  nodeId;
+   private Instant heartbeatAt;
 
    private String        jobName;
    private AsyncJobState state;
@@ -311,4 +329,76 @@ public class AsyncJobStatus implements Serializable
       return (this);
    }
 
+
+
+   /*******************************************************************************
+    ** Serialize, replacing a caught exception that cannot be serialized (for
+    ** example, one holding a non-serializable field) with one that carries its
+    ** message - user-facing stays user-facing.
+    *******************************************************************************/
+   private void writeObject(ObjectOutputStream out) throws IOException
+   {
+      Exception original = caughtException;
+      if(original != null)
+      {
+         try
+         {
+            StateSerialization.toBytes(original);
+         }
+         catch(QException e)
+         {
+            caughtException = (original instanceof QUserFacingException) ? new QUserFacingException(original.getMessage()) : new QException(original.getMessage());
+         }
+      }
+      try
+      {
+         out.defaultWriteObject();
+      }
+      finally
+      {
+         caughtException = original;
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for nodeId
+    *******************************************************************************/
+   @JsonIgnore
+   public String getNodeId()
+   {
+      return (this.nodeId);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for nodeId
+    *******************************************************************************/
+   public void setNodeId(String nodeId)
+   {
+      this.nodeId = nodeId;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for heartbeatAt
+    *******************************************************************************/
+   @JsonIgnore
+   public Instant getHeartbeatAt()
+   {
+      return (this.heartbeatAt);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for heartbeatAt
+    *******************************************************************************/
+   public void setHeartbeatAt(Instant heartbeatAt)
+   {
+      this.heartbeatAt = heartbeatAt;
+   }
 }

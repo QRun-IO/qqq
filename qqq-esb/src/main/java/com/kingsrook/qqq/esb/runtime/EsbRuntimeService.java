@@ -26,6 +26,7 @@ import com.kingsrook.qqq.backend.core.instances.QRuntimeServiceInterface;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.realtime.RealtimeBus;
 import com.kingsrook.qqq.esb.connection.EsbConnectionManager;
+import com.kingsrook.qqq.esb.outbox.EsbOutboxRelay;
 
 
 /*******************************************************************************
@@ -60,6 +61,12 @@ public class EsbRuntimeService implements QRuntimeServiceInterface
    public void start(QInstance qInstance) throws QException
    {
       instance = qInstance;
+
+      /////////////////////////////////////////////////////////////////////
+      // the outbox relay runs on every node (claims make that safe), so  //
+      // it starts apart from the trigger runtime                         //
+      /////////////////////////////////////////////////////////////////////
+      EsbOutboxRelay.getInstance().start(qInstance);
       QEsbRuntime.getInstance().start(qInstance);
    }
 
@@ -84,6 +91,7 @@ public class EsbRuntimeService implements QRuntimeServiceInterface
    @Override
    public void afterApplicationStop()
    {
+      EsbOutboxRelay.getInstance().stop();
       RealtimeBus.close(instance);
       EsbConnectionManager.getInstance().closeAll();
    }

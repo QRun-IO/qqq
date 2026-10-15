@@ -75,7 +75,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.processes.implementations.basepull.BasepullConfiguration;
 import com.kingsrook.qqq.backend.core.processes.tracing.ProcessTracerInterface;
-import com.kingsrook.qqq.backend.core.state.InMemoryStateProvider;
+import com.kingsrook.qqq.backend.core.state.QStateProviders;
 import com.kingsrook.qqq.backend.core.state.StateProviderInterface;
 import com.kingsrook.qqq.backend.core.state.StateType;
 import com.kingsrook.qqq.backend.core.state.UUIDAndTypeStateKey;
@@ -337,6 +337,11 @@ public class RunProcessAction
             LoopTodo loopTodo = prepareForFrontendStep(runProcessInput, process, frontendStep, processState);
             if(loopTodo == LoopTodo.BREAK)
             {
+               ////////////////////////////////////////////////////////////////////////
+               // store what the frontend step set up (defaults, components, next/   //
+               // back step), so a node that resumes from shared state sees it too   //
+               ////////////////////////////////////////////////////////////////////////
+               storeState(stateKey, processState);
                break;
             }
          }
@@ -521,6 +526,11 @@ public class RunProcessAction
             LoopTodo loopTodo = prepareForFrontendStep(runProcessInput, process, frontendStep, processState);
             if(loopTodo == LoopTodo.BREAK)
             {
+               ////////////////////////////////////////////////////////////////////////
+               // store what the frontend step set up (defaults, components, next/   //
+               // back step), so a node that resumes from shared state sees it too   //
+               ////////////////////////////////////////////////////////////////////////
+               storeState(stateKey, processState);
                return;
             }
          }
@@ -684,6 +694,12 @@ public class RunProcessAction
          // in the other directly                                                                           //
          /////////////////////////////////////////////////////////////////////////////////////////////////////
          optionalProcessState.get().setProcessMetaDataAdjustment(null);
+
+         ////////////////////////////////////////////////////////////////////////
+         // isStepBack belongs to a single run (the loop lowers it in memory   //
+         // after the last store) - never carry it over from stored state      //
+         ////////////////////////////////////////////////////////////////////////
+         optionalProcessState.get().setIsStepBack(false);
 
          ///////////////////////////////////////////////////////////////////////////
          // if there were values from the caller, put those (back) in the request //
@@ -887,11 +903,11 @@ public class RunProcessAction
     *******************************************************************************/
    public static StateProviderInterface getStateProvider()
    {
-      // TODO - read this from somewhere in meta data eh?
-      return InMemoryStateProvider.getInstance();
-
-      // todo - by using JSON serialization internally, this makes stupidly large payloads and crashes things.
-      // return TempFileStateProvider.getInstance();
+      //////////////////////////////////////////////////////////////////////////
+      // the instance's StateProviderMetaData (shared across nodes), else the //
+      // in-memory provider (spec 2026-10-15-cluster-ha-design, section B)    //
+      //////////////////////////////////////////////////////////////////////////
+      return (QStateProviders.get());
    }
 
 

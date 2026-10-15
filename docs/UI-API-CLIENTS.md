@@ -21,7 +21,7 @@ committed `qqq-middleware-javalin/src/main/resources/openapi/v1/openapi.yaml` pl
 how each kind of client renders it. It never prescribes React or HTML structure.
 
 Related docs: `UI-API-EXTENSIONS.md` covers the extension point and in-process invocation,
-`UI-API-CHANGELOG.md` covers versioning, and `UI-API-AUDIT.md` covers the current gaps.
+`UI-API-CHANGELOG.md` covers versioning, and `UI-API-AUDIT.md` records the 2026 audit.
 
 ## 1. Lifecycle
 
@@ -167,6 +167,25 @@ Hints describe meaning, never markup:
   `patternMessage`). Check them before saving; still show the server's record errors, since the
   server is the authority.
 
+## 6. Tools for client authors (QRun-IO/qqq-cli)
+
+- **Generated TypeScript client** `@qrun-io/qqq-ui-api-client` (GitHub Packages): typed from the merged
+  document (core plus extensions), with device-flow sign-in, refresh, the error type and an SSE
+  reader. Other languages can generate a client from `GET /qqq/v1/openapi.json`: every operation has
+  a stable `operationId` and every `$ref` resolves.
+- **Reference CLI** `qqq`: sign-in, apps, tables, filtered queries, records, processes, jobs and the
+  live event stream, all through `/qqq/v1`. Read it as an example of each pattern on this page.
+- **Mock server**: `npm run mock` serves the merged document with Prism.
+- **Conformance suite** `qqq-ui-api-conformance --server <url> [--token <bearer>]`: read-only black-box
+  checks that a server keeps this contract (versioning, the document, 401s, the error schema, and
+  response validation).
+- **`qqq-dev-idp`**: a local OIDC provider (device grant, refresh, per-client issuers) for testing a
+  native client against a local server. For development only.
+
+Every area of the web UI is now described by the document. The audit's former gaps (alerts, assistant
+and sql-workbench payloads; `materialDashboard` settings, now `uiSettings`; form adjusters; saved
+views, sharing, audits and bulk processes, now `clientCapabilities`) are closed as of 1.6.0.
+
 ## 7. Authentication for CLI, TUI and native clients
 
 Read `GET /qqq/v1/metaData/authentication`. For `type: OAUTH2`, `values` gives the issuer
@@ -226,12 +245,3 @@ configures the table-backed state provider needs no affinity: any replica serves
 call, and a step whose replica died reports a clear error instead of hanging. Durable process jobs
 (`POST /processes/{processName}/jobs`, `/jobs/...`) are database-backed and already work from any
 replica.
-
-## 6. Known gaps (tracked in UI-API-AUDIT.md)
-
-These still need typed schemas or v1 operations before a non-web client can match the web UI:
-- the alerts, assistant and sql-workbench payloads, until those qbits ship as extensions;
-- the `materialDashboard` supplemental settings: go-to fields, quick filters, sidebar, form adjusters;
-- form adjusters (a legacy route today).
-
-Until they are typed, a non-web client shows these areas as read-only or omits them.

@@ -42,6 +42,12 @@ independently of QQQ's own release version.
    the baseline's;
 4. `info.version` is not semver, or its MAJOR is not 1.
 
+The API-aware routes (`ApiAwareMiddlewareVersionV1`, qqq-middleware-api) serve the same core
+operations under `/qqq/v1/{applicationApiPath}/{applicationApiVersion}/`, so any change to a core
+operation also changes `qqq-middleware-api/src/main/resources/openapi/v1/api-aware.yaml`.
+`ApiAwareUiApiContractTest` fails until it is regenerated: run it with
+`-Dqqq.uiApi.regenerate=true`.
+
 When cutting an RC or GA, the release captain refreshes the baseline with
 `PublishAPI -r <repo root> --baseline`. Several additive PRs between releases can share one MINOR
 bump.
@@ -78,6 +84,17 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
   was registered first and took the request (Javalin matches routes in registration order). The
   table APIs operation is now registered before the record get, and `MiddlewareVersionV1RouteOrderTest`
   fails the build whenever a parameter route would shadow a later literal route.
+### 1.5.0 (unreleased)
+- Output delivery:
+  - Added `GET /delivery/destinations`, `POST /delivery/destinations/{name}/targets`
+    (`{chosen: {...}}`), and `GET /delivery/output/{logId}`. Discovery and target
+    selection use the authenticated user's permissions; hidden and unknown names
+    both return 404.
+  - Stored output is available only to its owner or `output_delivery.admin`.
+    Responses stream directly from storage, with multiple files streamed as ZIP.
+  - Added the `delivery` feature and reserved core route prefix. Published complete
+    request, destination, target-step and binary-response schemas.
+- `baseline.yaml` is now the RC.8 document (1.4.0).
 
 ### 1.4.0 (QQQ 4.1.0-RC.8)
 - Added `GET /jobs`, `GET /jobs/{jobId}`, `GET /jobs/{jobId}/progress`,

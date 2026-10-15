@@ -93,7 +93,7 @@ class TableDeleteSpecV1Test extends SpecTestBase
       ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
       assertEquals(HttpStatus.FORBIDDEN_403, response.getStatus());
       JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
-      assertEquals(1, jsonObject.keySet().size(), "Number of top-level keys");
+      assertEquals(java.util.Set.of("error", "code", "message", "traceId"), jsonObject.keySet(), "Error body keys");
       String error = jsonObject.getString("error");
       assertThat(error).contains("Permission denied");
    }

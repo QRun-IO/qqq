@@ -79,6 +79,31 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 
 ## Versions
 
+### 1.6.0 (next QQQ 4.1.0 RC) - native clients
+Ready for CLI, TUI and native clients (see `UI-API-CLIENTS.md`).
+- **Bearer authentication.** Every secured operation now accepts any one of three security
+  schemes: the `sessionUuidCookie` (web), `bearerAuth` (`Authorization: Bearer <token>`) and
+  `oauth2` (documented flows). A bearer token is either an OAuth2 access token (JWT) from the app's
+  provider, verified against the provider's JWKS (signature with RS/PS/ES algorithms only, exact
+  issuer, audience, `exp`/`nbf`), or a session UUID from `POST /manageSession`. A JWT gives the same
+  user, permissions and credential scope as a web sign-in (the same authentication customizer runs).
+  Bearer sessions are stateless: no cookie is set, and they end at the token's `exp`.
+- `GET /metaData/authentication` OAuth2 values add `nativeClientId` and `nativeClientBaseUrl` (the
+  public client and issuer for native clients) and `bearerTokensAccepted`.
+- **operationIds.** Every operation has a stable `operationId` (core names in `UiApiOperationIds`;
+  extension operations get one derived from method and path). The contract check now fails on a
+  missing, duplicate or non-camelCase operationId, and on any change to a released operationId.
+  A credential scope's `operationIds` may name operations by either form (`METHOD /path` or the
+  operationId).
+- **Tags and servers.** The document lists its `tags` (extension operations are tagged with the
+  extension name) and a relative `servers` entry.
+- **One error schema.** `BasicErrorResponseV1` is the error body of every operation, core and
+  extensions: `error` (kept), plus `code` (BAD_REQUEST, UNAUTHENTICATED, PERMISSION_DENIED,
+  NOT_FOUND, CONFLICT, RATE_LIMITED, INTERNAL_ERROR, ERROR), `message`, `fieldErrors[]` and
+  `traceId` (also the `X-QQQ-Trace-Id` response header; a safe client `X-Request-Id` is reused).
+  Every operation declares 400, 404, 409 and 429, and secured operations 401 and 403, with this
+  schema. Every extension document carries the schema.
+
 ### 1.5.0 (QQQ 4.1.0-RC.9)
 - Fixed: `GET /table/{tableName}/apis` answered 500 on a server, because `GET /table/{tableName}/{primaryKey}`
   was registered first and took the request (Javalin matches routes in registration order). The

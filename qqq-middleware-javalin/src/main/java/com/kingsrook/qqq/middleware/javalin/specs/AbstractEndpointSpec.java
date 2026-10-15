@@ -232,13 +232,24 @@ public abstract class AbstractEndpointSpec<
 
 
    /***************************************************************************
+    ** The OpenAPI operationId of this spec (e.g. `queryTable`).  A credential
+    ** scope may name an operation by either this or getOperationId().
+    ***************************************************************************/
+   public String getOpenApiOperationId()
+   {
+      return (defineMethod().getOperationId());
+   }
+
+
+
+   /***************************************************************************
     ** Refuse an operation outside the session's credential scope (if any).
     ***************************************************************************/
    protected void checkCredentialScopeOperation() throws QPermissionDeniedException
    {
       QSession         session = QContext.getQSession();
       QCredentialScope scope   = session == null ? null : session.getCredentialScope();
-      if(scope != null && !QCredentialScope.allows(scope.getOperationIds(), getOperationId()))
+      if(scope != null && !QCredentialScope.allows(scope.getOperationIds(), getOperationId()) && !QCredentialScope.allows(scope.getOperationIds(), getOpenApiOperationId()))
       {
          throw (new QPermissionDeniedException("Permission denied."));
       }
@@ -264,6 +275,7 @@ public abstract class AbstractEndpointSpec<
       BasicOperation basicOperation = defineBasicOperation();
 
       Method method = new Method()
+         .withOperationId(basicOperation.getOperationId() != null ? basicOperation.getOperationId() : UiApiOperationIds.of(basicOperation.getHttpMethod(), basicOperation.getPath()))
          .withSummary(basicOperation.getShortSummary())
          .withDescription(basicOperation.getLongDescription())
          .withParameters(defineRequestParameters())

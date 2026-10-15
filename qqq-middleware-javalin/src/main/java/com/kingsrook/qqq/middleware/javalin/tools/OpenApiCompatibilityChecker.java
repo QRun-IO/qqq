@@ -193,10 +193,62 @@ public class OpenApiCompatibilityChecker
 
 
    /*******************************************************************************
+    ** Every operation must have an operationId: unique in the document, and a
+    ** camelCase identifier (so every client generator can use it as a name).
+    *******************************************************************************/
+   public static List<String> findOperationIdProblems(Map<String, Object> document)
+   {
+      List<String>        problems = new ArrayList<>();
+      Map<String, String> seen     = new java.util.HashMap<>();
+      for(Map.Entry<String, Object> pathEntry : asMap(document.get("paths")).entrySet())
+      {
+         for(Map.Entry<String, Object> operationEntry : asMap(pathEntry.getValue()).entrySet())
+         {
+            if(!HTTP_METHODS.contains(operationEntry.getKey()))
+            {
+               continue;
+            }
+
+            String where       = operationEntry.getKey().toUpperCase() + " " + pathEntry.getKey();
+            Object operationId = asMap(operationEntry.getValue()).get("operationId");
+            if(!(operationId instanceof String id) || id.isBlank())
+            {
+               problems.add(where + ": no operationId");
+            }
+            else if(!id.matches("[a-z][A-Za-z0-9]*"))
+            {
+               problems.add(where + ": operationId is not a camelCase identifier: " + id);
+            }
+            else if(seen.containsKey(id))
+            {
+               problems.add(where + ": duplicate operationId " + id + " (also " + seen.get(id) + ")");
+            }
+            else
+            {
+               seen.put(id, where);
+            }
+         }
+      }
+      return (problems);
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    private static void compareOperation(String where, Map<String, Object> oldOperation, Map<String, Object> newOperation, List<String> problems)
    {
+      /////////////////////////////////////////////////////////////////////////
+      // generated clients name methods after operationIds: once published, //
+      // an operationId is part of the contract                             //
+      /////////////////////////////////////////////////////////////////////////
+      Object oldOperationId = oldOperation.get("operationId");
+      if(oldOperationId != null && !oldOperationId.equals(newOperation.get("operationId")))
+      {
+         problems.add(where + ": operationId changed: " + oldOperationId + " -> " + newOperation.get("operationId"));
+      }
+
       ////////////////
       // parameters //
       ////////////////

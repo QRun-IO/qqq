@@ -28,9 +28,9 @@ Related docs: `UI-API-EXTENSIONS.md` covers the extension point and in-process i
 1. `GET /version` (no session). Check `apiVersion` against the range the client supports, and stop
    with a clear message if it is outside it. A 404 means a server before 1.1.0, which serves the
    1.0.0 surface. Use `features` and `extensions` to decide which areas to show.
-2. `GET /metaData/authentication` returns the provider type. Sign in with it, then call
-   `POST /manageSession`. The session is the `sessionUUID` cookie; native clients keep it in their
-   cookie jar or keychain.
+2. `GET /metaData/authentication` returns the provider type. Web clients sign in with it, then call
+   `POST /manageSession`; the session is the `sessionUUID` cookie. CLI, TUI and native clients sign
+   in as in section 7 and send `Authorization: Bearer <token>` on every call.
 3. `GET /metaData` returns the apps, tables, processes, reports and widgets the user may use. Build
    the navigation from apps (`children`, `sections`) only. Never hard-code table or process names.
 4. Use the table, process, widget and report operations as the user moves around.
@@ -44,6 +44,14 @@ General rules:
 - **Permissions are enforced by the server.** Hide what metadata says the user cannot do, but always
   handle 403 (show the server's `error` message).
 - **Every call is a spec operation.** A client never calls a path that is not in the document.
+  Name calls by `operationId`: it is stable for the life of `/qqq/v1`.
+- **Errors.** Every error is a `BasicErrorResponseV1`: show `message`, branch on `code`
+  (`UNAUTHENTICATED`: sign in again or refresh the token; `PERMISSION_DENIED`; `NOT_FOUND`;
+  `CONFLICT`; `RATE_LIMITED`: back off; `BAD_REQUEST`: show `fieldErrors` by field), and print
+  `traceId` with any failure the user may report. Treat an unknown `code` by the HTTP status.
+- **Client channel.** Send `X-QQQ-Client: cli` (or `tui`, `ios`, ... optionally `/<detail>`, e.g.
+  `cli/qqq-cli 0.1.0`) so audits and the client-channel permissions attribute your calls. A
+  credential-scoped token is always attributed to `token:<id>` instead.
 
 ## 2. Widgets (`POST /widget/{name}`)
 
@@ -133,6 +141,66 @@ Hints describe meaning, never markup:
   thumbnail fields to use. Search with `POST /table/{t}/possibleValues/{field}`.
 - **App home.** Apps list `widgets` (the home dashboard) and `sections` (groups of tables, processes
   and reports). Render the widgets first, then the sections.
+
+## 7. Authentication for CLI, TUI and native clients
+
+Read `GET /qqq/v1/metaData/authentication`. For `type: OAUTH2`, `values` gives the issuer
+(`baseUrl`), the scopes, and, when the app has one, `nativeClientId`: a **public** OAuth2 client
+(no secret) for native clients, whose issuer is `nativeClientBaseUrl` (or `baseUrl`). Fetch the
+issuer's discovery document, `{issuer}.well-known/openid-configuration`, for its endpoints.
+
+**Device-authorization grant (RFC 8628): best for a CLI or TUI, and for SSH sessions.**
+1. `POST {device_authorization_endpoint}` with `client_id={nativeClientId}` and
+   `scope=openid profile email offline_access`.
+2. Show the user `verification_uri_complete` (or `verification_uri` and `user_code`), and poll
+   `POST {token_endpoint}` with `grant_type=urn:ietf:params:oauth:grant-type:device_code`,
+   `client_id` and `device_code` every `interval` seconds while the answer is
+   `authorization_pending` (add 5 s on `slow_down`; stop on `expired_token` or `access_denied`).
+3. Keep the `access_token` and `refresh_token` in the OS keychain, or in a file only the user can
+   read (mode 0600). Never log them.
+
+**Authorization code + PKCE: best for a desktop or mobile app with a browser.**
+Use `nativeClientId` with a redirect URI registered at the provider: a loopback URI
+(`http://127.0.0.1:{port}/callback`, any free port, RFC 8252) or a custom scheme
+(`com.example.app://oauth/callback`). Exchange the code at the token endpoint with the
+`code_verifier`. Every redirect URI must be registered on the provider (the kof22 Authentik
+`kof22-admin-cli` provider, for example, allows `http://127.0.0.1:<port>/callback` and
+`http://localhost:<port>/callback`).
+
+**Calling the API.** Send `Authorization: Bearer {access_token}`. The server verifies the JWT
+against the provider's keys (issuer, audience = the app's client or `nativeClientId`, expiry,
+signature; `alg: none` and HMAC are refused) and maps it to the same user, permissions and token
+scope as a web sign-in. Bearer calls are stateless: no cookie is set.
+
+**Refreshing.** Access tokens are short-lived (minutes). On `401` (`code: UNAUTHENTICATED`), or
+shortly before `exp`, refresh at the provider: `POST {token_endpoint}` with
+`grant_type=refresh_token`, `client_id={nativeClientId}` and the refresh token. Store the new pair
+(providers may rotate refresh tokens). When refreshing fails, sign in again.
+
+**Other bearer tokens.**
+- *QQQ access tokens* (personal access tokens, e.g. qbit-authentik app passwords): exchange the
+  token for a JWT at the provider (for Authentik, `grant_type=client_credentials` with the username
+  and the token as password), then send the JWT as above. The token's scope still applies.
+- *Session UUID:* a native app that used `POST /manageSession` (auth code + PKCE with the app's own
+  client) may send `Authorization: Bearer {sessionUUID}` instead of the cookie; the server keeps
+  that session's tokens refreshed.
+
+## 8. Several servers (replicas)
+
+Through QQQ 4.1.0-RC.10, process `init`/`step`/`status`/`records`, and async job status, read
+replica-local state. A client must keep all calls for one `processUUID`/`jobUUID` on the same
+backend replica (for example with a sticky cookie), or the calls return "Could not find status" or
+permission denied. A CLI or TUI must therefore keep a cookie jar for the load balancer's affinity
+cookie even when it authenticates with a bearer token. Realtime (SSE)
+events reach only the subscribers connected to the replica that published them, unless the
+deployment configures a cross-node realtime bus (`RealtimeMetaData.bus`, e.g. qqq-esb
+`EsbRealtimeBus`).
+
+From the release that adds shared process state (the cluster/HA work, the next 4.1 RC), an app that
+configures the table-backed state provider needs no affinity: any replica serves any process or job
+call, and a step whose replica died reports a clear error instead of hanging. Durable process jobs
+(`POST /processes/{processName}/jobs`, `/jobs/...`) are database-backed and already work from any
+replica.
 
 ## 6. Known gaps (tracked in UI-API-AUDIT.md)
 

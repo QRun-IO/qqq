@@ -92,8 +92,22 @@ components:
               baseUrl:
                 description: "BaseUrl for OAuth2 provider"
                 type: "string"
+              bearerTokensAccepted:
+                description: "True when the server accepts the provider's access tokens\
+                  \ as Authorization: Bearer <JWT>. Since 1.6.0."
+                type: "boolean"
               clientId:
                 description: "ClientId for OAuth2 provider"
+                type: "string"
+              nativeClientBaseUrl:
+                description: "The issuer (OIDC discovery base URL) of nativeClientId,\
+                  \ when it differs from baseUrl. Since 1.6.0."
+                type: "string"
+              nativeClientId:
+                description: "The public OAuth2 client for native clients (CLI, TUI,\
+                  \ mobile): use it with auth-code + PKCE or the device-authorization\
+                  \ grant, then send the access token as Authorization: Bearer. Absent\
+                  \ when the app has no native client. Since 1.6.0."
                 type: "string"
               scopes:
                 description: "OAuth2 scopes to request (space-separated)"
@@ -103,9 +117,42 @@ components:
     BackChannelLogoutResponseV1:
       type: "object"
     BasicErrorResponseV1:
+      description: "The error body of every UI API operation (core and extensions)."
       properties:
         error:
-          description: "Description of the error"
+          description: "The error message (the same as message; kept for clients of\
+            \ UI API 1.0 to 1.5)."
+          type: "string"
+        code:
+          description: "A stable, machine-readable code. Well-known values: BAD_REQUEST\
+            \ (400), UNAUTHENTICATED (401),\nPERMISSION_DENIED (403), NOT_FOUND (404),\
+            \ CONFLICT (409), RATE_LIMITED (429), INTERNAL_ERROR (500),\nERROR (other).\
+            \ Extensions may add codes; treat an unknown code by the HTTP status.\
+            \ Since 1.6.0."
+          type: "string"
+        message:
+          description: "A message to show the user. Since 1.6.0."
+          type: "string"
+        fieldErrors:
+          description: "Errors about particular request fields, when known. Since\
+            \ 1.6.0."
+          items:
+            properties:
+              field:
+                description: "The field (or parameter) name."
+                type: "string"
+              message:
+                description: "The error about that field."
+                type: "string"
+              code:
+                description: "An optional machine-readable code, e.g. REQUIRED, TOO_LONG,\
+                  \ PATTERN."
+                type: "string"
+            type: "object"
+          type: "array"
+        traceId:
+          description: "Identifies this request in the server logs (also the X-QQQ-Trace-Id\
+            \ response header); quote it when reporting a problem. Since 1.6.0."
           type: "string"
       type: "object"
     BulkLoadSuggestMappingResponseV1:
@@ -4316,9 +4363,42 @@ components:
       type: "object"
   securitySchemes:
     sessionUuidCookie:
+      description: "The session cookie set by POST /qqq/v1/manageSession (web clients)."
       in: "cookie"
       name: "sessionUUID"
       type: "apiKey"
+    bearerAuth:
+      bearerFormat: "JWT or session UUID"
+      description: "`Authorization: Bearer <token>`, where the token is either\n-\
+        \ an OAuth2 access token (a signed JWT) issued by the app's identity provider\
+        \ to the app's client,\n  or to its native client (`values.nativeClientId`\
+        \ in GET /qqq/v1/metaData/authentication), for\n  example from the device-authorization\
+        \ grant or auth-code + PKCE. It is verified against the\n  provider's keys\
+        \ (issuer, audience, expiry, signature) and gives the same user and permissions\n\
+        \  as signing in on the web. When it expires (401), refresh it at the provider\
+        \ and retry; or\n- a session UUID returned by POST /qqq/v1/manageSession,\
+        \ which the server keeps refreshed."
+      scheme: "bearer"
+      type: "http"
+    oauth2:
+      description: "The app's OAuth2 / OpenID Connect provider. The real endpoints\
+        \ come from the provider's discovery\ndocument: `{values.baseUrl}.well-known/openid-configuration`,\
+        \ with values from\nGET /qqq/v1/metaData/authentication. Native clients use\
+        \ `values.nativeClientId` (a public client)\nwith auth-code + PKCE (loopback\
+        \ or custom-scheme redirect URI registered at the provider) or the\ndevice-authorization\
+        \ grant (`device_authorization_endpoint`, RFC 8628), then send the access\
+        \ token\nas `Authorization: Bearer`."
+      flows:
+        authorizationCode:
+          authorizationUrl: "/authorize"
+          scopes:
+            email: "Email address"
+            offline_access: "A refresh token, to renew the access token without signing\
+              \ in again"
+            openid: "OpenID Connect sign-in"
+            profile: "Name, username and groups (permissions come from the groups)"
+          tokenUrl: "/token"
+      type: "oauth2"
 info:
   contact:
     email: "contact@kingsrook.com"
@@ -4351,7 +4431,7 @@ info:
     \ its own\nconfiguration, identity and permission administration, audits, API\
     \ keys or secrets), exactly as if the user had\nno permission for them.\n"
   title: "QQQ Middleware API"
-  version: "1.5.0"
+  version: "1.6.0"
 openapi: "3.0.3"
 paths:
   /qqq/v1/{applicationApiPath}/{applicationApiVersion}/version:
@@ -4362,6 +4442,7 @@ paths:
         \ with its own semantic version.\n\nA client should call this first, before\
         \ authentication, and stop with a clear message when\napiVersion is outside\
         \ the range it supports.  Not secured."
+      operationId: "getVersion"
       responses:
         200:
           content:
@@ -4386,6 +4467,32 @@ paths:
               schema:
                 $ref: "#/components/schemas/VersionResponseV1"
           description: "Successful Response"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       summary: "Get the UI API version"
       tags:
       - "General"
@@ -4400,6 +4507,7 @@ paths:
         \ their own event names, such as presence.changed and comment.added, described\
         \ by RealtimeEventV1. Subscriptions require a separate POST; session-ended\
         \ closes the stream and channel-revoked removes a subscription."
+      operationId: "openRealtimeStream"
       parameters:
       - description: "Last received <connectionId>:<sequence> cursor."
         in: "header"
@@ -4414,9 +4522,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/RealtimeEventV1"
           description: "Realtime named events and comment heartbeats."
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Open the realtime event stream"
       tags:
       - "General"
@@ -4427,6 +4581,7 @@ paths:
         \ require READ. Refusals give no reason. The connection must belong to the\
         \ authenticated session; otherwise 404. Active user channels are returned\
         \ as user:me. Channel limits apply."
+      operationId: "updateRealtimeSubscriptions"
       requestBody:
         content:
           application/json:
@@ -4463,9 +4618,42 @@ paths:
               schema:
                 $ref: "#/components/schemas/RealtimeSubscriptionResponseV1"
           description: "Current subscriptions and refused additions."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Change realtime subscriptions"
       tags:
       - "General"
@@ -4476,6 +4664,7 @@ paths:
         \ and inspecting the `type` property in the response.\n\nNote that this endpoint\
         \ is not secured, as its purpose is to be called as part of the workflow that\
         \ results\nin a user being authenticated."
+      operationId: "getAuthenticationMetaData"
       responses:
         200:
           content:
@@ -4496,6 +4685,32 @@ paths:
               schema:
                 $ref: "#/components/schemas/AuthenticationMetaDataResponseV1"
           description: "Successful Response"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       summary: "Get authentication metaData"
       tags:
       - "Authentication"
@@ -4515,6 +4730,7 @@ paths:
         \ and no `sessionUUID` resumes the session named by the `sessionUUID` cookie,\n\
         which may be `HttpOnly`.  That response carries the session's `values` but\
         \ not its `uuid`; a `401`\nresponse means there is no valid session to resume."
+      operationId: "manageSession"
       parameters:
       - description: "For `TABLE_BASED` authentication: `Basic ` followed by the base64\
           \ encoding of `username:password` (UTF-8).\nNot used by other authentication\
@@ -4560,6 +4776,7 @@ paths:
                 Invalid token:
                   value:
                     error: "Unable to decode access token."
+                    message: "Unable to decode access token."
               schema:
                 $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Authentication error - session was not created"
@@ -4579,6 +4796,32 @@ paths:
               schema:
                 $ref: "#/components/schemas/ManageSessionResponseV1"
           description: "Successful response - session has been created"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       summary: "Create a session"
       tags:
       - "Authentication"
@@ -4589,6 +4832,7 @@ paths:
         \ removed.\n\nFrontends should call this endpoint before performing client-side\
         \ logout\n(clearing localStorage, redirecting to IdP logout, etc.) to ensure\
         \ the\nsession cannot be resumed."
+      operationId: "logout"
       responses:
         200:
           content:
@@ -4598,6 +4842,32 @@ paths:
               schema:
                 $ref: "#/components/schemas/LogoutResponseV1"
           description: "Session has been invalidated"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       summary: "Logout and invalidate session"
       tags:
       - "Authentication"
@@ -4613,6 +4883,7 @@ paths:
         \ when\nboth are present. Invalid tokens or unsupported configuration return\
         \ HTTP 400.\n\nThis endpoint should be registered with your IdP as the back-channel\
         \ logout URI."
+      operationId: "oidcBackChannelLogout"
       responses:
         200:
           content:
@@ -4622,6 +4893,32 @@ paths:
               schema:
                 $ref: "#/components/schemas/BackChannelLogoutResponseV1"
           description: "Back-channel logout processed successfully"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       summary: "OIDC Back-Channel Logout"
       tags:
       - "Authentication"
@@ -4634,6 +4931,7 @@ paths:
         - Tables (but without all details, e.g., fields),\n- Processes (also without\
         \ full details, e.g., screens),\n- Reports\n- Widgets\n- Branding\n- Help\
         \ Contents\n- Environment values\n"
+      operationId: "getMetaData"
       parameters:
       - description: "Name of the frontend requesting the meta-data.\nGenerally a\
           \ QQQ frontend library, unless a custom application frontend has been built."
@@ -4832,9 +5130,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/MetaDataResponseV1"
           description: "Overall metadata for the application."
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Get instance metaData"
       tags:
       - "General"
@@ -4845,6 +5189,7 @@ paths:
         \ requests return 401. PATCH changes only supplied fields and fixed rows;\
         \ invalid changes return 400 with all messages before anything is stored.\
         \ Writes are audited as the user and client channel."
+      operationId: "listPreferenceSections"
       responses:
         200:
           content:
@@ -4852,14 +5197,61 @@ paths:
               schema:
                 $ref: "#/components/schemas/PreferencesResponseV1"
           description: "Current preferences for the session user"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "List visible sections and the signed-in user's preferences"
       tags:
       - "General"
   /qqq/v1/{applicationApiPath}/{applicationApiVersion}/delivery/destinations:
     get:
+      operationId: "listDeliveryDestinations"
       responses:
         200:
           content:
@@ -4867,14 +5259,61 @@ paths:
               schema:
                 $ref: "#/components/schemas/DeliveryDestinationsResponseV1"
           description: "Delivery response"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "List authorized output destinations"
       tags:
       - "General"
   /qqq/v1/{applicationApiPath}/{applicationApiVersion}/delivery/destinations/{name}/targets:
     post:
+      operationId: "chooseDeliveryTargets"
       parameters:
       - in: "path"
         name: "name"
@@ -4894,14 +5333,61 @@ paths:
               schema:
                 $ref: "#/components/schemas/DeliveryTargetStepResponseV1"
           description: "Delivery response"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Describe the next delivery target"
       tags:
       - "General"
   /qqq/v1/{applicationApiPath}/{applicationApiVersion}/delivery/output/{logId}:
     get:
+      operationId: "getDeliveryOutput"
       parameters:
       - in: "path"
         name: "logId"
@@ -4915,9 +5401,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/DeliveryOutputResponseV1"
           description: "Stored output; multiple attachments form a ZIP archive"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Download stored output as its owner or delivery administrator"
       tags:
       - "General"
@@ -4928,6 +5460,7 @@ paths:
         \ requests return 401. PATCH changes only supplied fields and fixed rows;\
         \ invalid changes return 400 with all messages before anything is stored.\
         \ Writes are audited as the user and client channel."
+      operationId: "getPreferenceSection"
       parameters:
       - description: "Registered visible preference section name, from GET /preferences."
         in: "path"
@@ -4942,9 +5475,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/PreferenceSectionV1"
           description: "Current preferences for the session user"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Read one visible section for the signed-in user"
       tags:
       - "General"
@@ -4954,6 +5533,7 @@ paths:
         \ requests return 401. PATCH changes only supplied fields and fixed rows;\
         \ invalid changes return 400 with all messages before anything is stored.\
         \ Writes are audited as the user and client channel."
+      operationId: "updatePreferenceSection"
       parameters:
       - description: "Registered visible preference section name, from GET /preferences."
         in: "path"
@@ -4974,9 +5554,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/PreferenceSectionV1"
           description: "Current preferences for the session user"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Partially update the signed-in user's preferences"
       tags:
       - "General"
@@ -4988,6 +5614,7 @@ paths:
         \ unauthenticated requests return 401. Clients must confirm confirmationText\
         \ before running. Secrets are shown once and must not be stored, logged, cached,\
         \ or sent to analytics by clients. Responses use Cache-Control: no-store."
+      operationId: "runPreferenceSectionAction"
       parameters:
       - description: "Registered visible preference section name, from GET /preferences."
         in: "path"
@@ -5014,9 +5641,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/PreferenceActionResponseV1"
           description: "Current preferences for the session user"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Run an action on the signed-in user's preferences"
       tags:
       - "General"
@@ -5024,6 +5697,7 @@ paths:
     get:
       description: "Load the full metadata for a single table, including all fields,\
         \ which a frontend\nneeds to display to users."
+      operationId: "getTableMetaData"
       parameters:
       - description: "Name of the table to load."
         example: "person"
@@ -5084,9 +5758,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/TableMetaDataResponseV1"
           description: "The full table metadata"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Get table metaData"
       tags:
       - "Tables"
@@ -5094,6 +5814,7 @@ paths:
     post:
       description: "Execute a query against a table, returning records that match\
         \ a filter."
+      operationId: "queryTable"
       parameters:
       - description: "Name of the table to query."
         example: "person"
@@ -5144,9 +5865,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/TableQueryResponseV1"
           description: "The records matching query"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Query for records from a table"
       tags:
       - "Tables"
@@ -5154,6 +5921,7 @@ paths:
     post:
       description: "Execute a query against a table, returning the number of records\
         \ that match a filter."
+      operationId: "countTable"
       parameters:
       - description: "Name of the table to count."
         example: "person"
@@ -5202,9 +5970,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/TableCountResponseV1"
           description: "The number (count) of records matching the query"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Count records in a table"
       tags:
       - "Tables"
@@ -5225,6 +6039,7 @@ paths:
         \ (other search field values), `updatedAt` and, from a provider, a `score`.\n\
         Only fields the user may see are used.  All of these, and `tables` and `provider`,\
         \ are optional: clients must\ntolerate their absence."
+      operationId: "searchRecords"
       requestBody:
         content:
           application/json:
@@ -5301,9 +6116,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/RecordSearchResponseV1"
           description: "The records matching the search term"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Search records across tables"
       tags:
       - "Tables"
@@ -5312,6 +6173,7 @@ paths:
       description: "Search help visible to the session. Label hits weigh 3, summary\
         \ hits 2 and content hits 1. Stable ties sort by kind and key. Limit defaults\
         \ to 20 and is capped at 50."
+      operationId: "searchHelp"
       parameters:
       - in: "query"
         name: "q"
@@ -5330,9 +6192,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/HelpSearchResponseV1"
           description: "Help search results"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Search visible application help"
       tags:
       - "General"
@@ -5340,6 +6248,7 @@ paths:
     get:
       description: "Requires INSERT or EDIT permission on helpContent. Includes hidden\
         \ targets. Totals reflect kind and parent scope before missingOnly is applied."
+      operationId: "getHelpCoverage"
       parameters:
       - in: "query"
         name: "kind"
@@ -5369,9 +6278,48 @@ paths:
               schema:
                 $ref: "#/components/schemas/HelpCoverageResponseV1"
           description: "Help coverage results"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Inspect application help coverage"
       tags:
       - "General"
@@ -5380,6 +6328,7 @@ paths:
       description: "List the variants a table's backend can be scoped to (for example\
         \ one data set per store).  Requires read\npermission on the table and on\
         \ the backend's variant options table."
+      operationId: "listTableVariants"
       parameters:
       - description: "Name of the table whose variants to list."
         example: "person"
@@ -5402,9 +6351,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/TableVariantsResponseV1"
           description: "The variants the table can be scoped to."
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "List a table's backend variants"
       tags:
       - "Tables"
@@ -5414,6 +6409,7 @@ paths:
         \ one) that expose the table, with each API's versions and the root-relative\
         \ path of the table's OpenAPI document in each version.  Empty when the application\
         \ serves no APIs.  The caller must be allowed to read the table."
+      operationId: "listTableApis"
       parameters:
       - description: "Name of the table."
         in: "path"
@@ -5428,9 +6424,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/TableApisResponseV1"
           description: "Successful Response"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "List the APIs that expose a table"
       tags:
       - "Tables"
@@ -5438,6 +6480,7 @@ paths:
     delete:
       description: "Delete a single record from a table, identified by its primary\
         \ key value."
+      operationId: "deleteRecord"
       parameters:
       - description: "Name of the table to delete from."
         example: "person"
@@ -5464,15 +6507,62 @@ paths:
               schema:
                 $ref: "#/components/schemas/TableDeleteResponseV1"
           description: "The number of records that were deleted"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Delete a record from a table"
       tags:
       - "Tables"
     get:
       description: "Fetch a single record from a table, identified by its primary\
         \ key value."
+      operationId: "getRecord"
       parameters:
       - description: "Name of the table to get the record from."
         example: "person"
@@ -5532,15 +6622,62 @@ paths:
               schema:
                 $ref: "#/components/schemas/TableGetResponseV1"
           description: "The record matching the given primary key"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Get a record from a table by primary key"
       tags:
       - "Tables"
     patch:
       description: "Update an existing record in a table, identified by its primary\
         \ key. The request body should contain the field values to update."
+      operationId: "updateRecord"
       parameters:
       - description: "Optional optimistic version from the last read, encoded as a\
           \ string in the version field's format (ISO-8601 for modify dates). A mismatch\
@@ -5625,9 +6762,48 @@ paths:
               schema:
                 $ref: "#/components/schemas/RecordConflictV1"
           description: "The record changed since it was read."
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Update a record in a table"
       tags:
       - "Tables"
@@ -5635,6 +6811,7 @@ paths:
     get:
       description: "Features and capabilities for a visible record, with optional\
         \ summary provider contributions."
+      operationId: "getRecordFeatures"
       parameters:
       - in: "path"
         name: "tableName"
@@ -5653,9 +6830,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/RecordFeatureSummaryV1"
           description: "Record collaboration summary"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Get record collaboration features"
       tags:
       - "Tables"
@@ -5667,6 +6890,7 @@ paths:
         \ supplemental metadata) for that field's adjusters.  The caller must be allowed\
         \ to insert or edit records in the table.  Answers 404 when the application\
         \ registers no form adjusters."
+      operationId: "runFormAdjuster"
       parameters:
       - description: "Name of the table whose form is being adjusted."
         in: "path"
@@ -5714,9 +6938,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/FormAdjusterOutputV1"
           description: "Successful Response"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Run a form adjuster"
       tags:
       - "Tables"
@@ -5726,6 +6996,7 @@ paths:
         \ API that exposes it (as listed by `GET /table/{tableName}/apis`).  The caller\
         \ must be allowed to read the table.  Answers 404 when no API by that name\
         \ exposes the table in that version."
+      operationId: "getTableApiDocument"
       parameters:
       - description: "Name of the table."
         in: "path"
@@ -5752,9 +7023,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/TableApiDocumentV1"
           description: "Successful Response"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Get a table's OpenAPI document in an application API"
       tags:
       - "Tables"
@@ -5762,6 +7079,7 @@ paths:
     post:
       description: "Insert a new record into a table. The request body should contain\
         \ the field values for the new record."
+      operationId: "insertRecord"
       parameters:
       - description: "Name of the table to insert into."
         example: "person"
@@ -5823,9 +7141,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/TableInsertResponseV1"
           description: "The record that was inserted"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Insert a record into a table"
       tags:
       - "Tables"
@@ -5839,6 +7203,7 @@ paths:
         \ the table query route. Reads limit + 1 rows for hasMore (no count). For\
         \ MULTI_CHILD and LINK with a primaryKey, linkedIds says which returned records\
         \ the parent already has rows for."
+      operationId: "queryRelatedRecordPicker"
       parameters:
       - description: "Name of the table that declares the picker (e.g. the order)."
         example: "sales_order"
@@ -5892,9 +7257,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/RelatedRecordPickerQueryResponseV1"
           description: "Query the records a related-record picker offers: result"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Query the records a related-record picker offers"
       tags:
       - "Tables"
@@ -5905,6 +7316,7 @@ paths:
         \ target keys. The client shows the reviewFieldNames of each row for the user\
         \ to fill, then calls add. Needs INSERT on the child table; every target must\
         \ be available through the picker's query (else 400)."
+      operationId: "prepareRelatedRecordPicker"
       parameters:
       - description: "Name of the table that declares the picker (e.g. the order)."
         example: "sales_order"
@@ -5944,9 +7356,55 @@ paths:
                 $ref: "#/components/schemas/RelatedRecordPickerPrepareResponseV1"
           description: "Prepare child rows for picked records (MULTI_CHILD, LINK):\
             \ result"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Prepare child rows for picked records (MULTI_CHILD, LINK)"
       tags:
       - "Tables"
@@ -5959,6 +7417,7 @@ paths:
         \ client; the parent and target keys always come from the server. Every target\
         \ must be available through the picker's query (else 400). Row errors are\
         \ a 400 naming each row, and nothing is saved."
+      operationId: "addRelatedRecords"
       parameters:
       - description: "Name of the table that declares the picker (e.g. the order)."
         example: "sales_order"
@@ -6011,9 +7470,55 @@ paths:
                 $ref: "#/components/schemas/RelatedRecordPickerAddResponseV1"
           description: "Add child or join rows for picked records (MULTI_CHILD, LINK):\
             \ result"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Add child or join rows for picked records (MULTI_CHILD, LINK)"
       tags:
       - "Tables"
@@ -6023,6 +7528,7 @@ paths:
         \ standard delete action (DELETE permission on the join table, record security\
         \ locks, audit). Only for LINK pickers (else 400); child rows of a MULTI_CHILD\
         \ picker are deleted with the table delete route."
+      operationId: "removeRelatedRecords"
       parameters:
       - description: "Name of the table that declares the picker (e.g. the order)."
         example: "sales_order"
@@ -6061,9 +7567,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/RelatedRecordPickerRemoveResponseV1"
           description: "Unlink picked records (LINK): result"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Unlink picked records (LINK)"
       tags:
       - "Tables"
@@ -6074,6 +7626,7 @@ paths:
         \ references (if any) with its revisions (newest first),\nand, for scripts\
         \ that can be tested, the fields to test them with.\n\nRequires permission\
         \ to read records from the table.  If the record is not found, a 404 is returned."
+      operationId: "getRecordDeveloperMode"
       parameters:
       - description: "Name of the table that the record is in."
         example: "person"
@@ -6153,9 +7706,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/RecordDeveloperModeResponseV1"
           description: "The record, with its table's associated scripts"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Get a record's associated scripts (developer mode)"
       tags:
       - "Tables"
@@ -6170,6 +7769,7 @@ paths:
         \ record\nsecurity locks.  If the record is not found, a 404 is returned.\
         \  A provider that fails yields a panel\nwith an error message rather than\
         \ failing the request."
+      operationId: "listRecordDeveloperPanels"
       parameters:
       - description: "Name of the table that the record is in."
         example: "person"
@@ -6218,9 +7818,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/RecordDeveloperPanelsResponseV1"
           description: "The record's developer panels"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Get a record's developer panels"
       tags:
       - "Tables"
@@ -6231,6 +7877,7 @@ paths:
         \  If the record does not yet reference a script, one is\ninserted (and the\
         \ record is updated to reference it).\n\nRequires permission to edit records\
         \ in the table."
+      operationId: "storeAssociatedScript"
       parameters:
       - description: "Name of the table that the record is in."
         example: "person"
@@ -6284,9 +7931,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/RecordAssociatedScriptStoreResponseV1"
           description: "The script, and the revision that was stored"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Store a new revision of a record's associated script (developer mode)"
       tags:
       - "Tables"
@@ -6295,6 +7988,7 @@ paths:
       description: "Fetch the logs (up to 100, newest first) of runs of a script revision,\
         \ each with its log lines.\n\nRequires permission to read records from the\
         \ table, and the record must exist (else a 404 is returned)."
+      operationId: "getAssociatedScriptLogs"
       parameters:
       - description: "Name of the table that the record is in."
         example: "person"
@@ -6349,9 +8043,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/RecordAssociatedScriptLogsResponseV1"
           description: "The script revision's logs"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Get the logs of a record's associated script revision (developer mode)"
       tags:
       - "Tables"
@@ -6359,6 +8099,7 @@ paths:
     post:
       description: "Search for possible values associated with a field on a table.\n\
         Returns a list of id/label pairs that match the given search criteria."
+      operationId: "searchTablePossibleValues"
       parameters:
       - description: "Name of the table containing the field."
         example: "person"
@@ -6442,9 +8183,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/PossibleValuesResponseV1"
           description: "List of possible value options matching the search criteria."
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Search possible values for a table field"
       tags:
       - "Tables"
@@ -6452,6 +8239,7 @@ paths:
     post:
       description: "Search for possible values associated with an input field on a\
         \ process.\nReturns a list of id/label pairs that match the given search criteria."
+      operationId: "searchProcessPossibleValues"
       parameters:
       - description: "Name of the process containing the field."
         example: "greetInteractive"
@@ -6535,9 +8323,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/PossibleValuesResponseV1"
           description: "List of possible value options matching the search criteria."
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Search possible values for a process field"
       tags:
       - "Processes"
@@ -6546,6 +8380,7 @@ paths:
       description: "Search for possible values from a standalone possible value source\n\
         (not associated with a specific table or process field).\nReturns a list of\
         \ id/label pairs that match the given search criteria."
+      operationId: "searchPossibleValues"
       parameters:
       - description: "Name of the possible value source to search."
         example: "person"
@@ -6622,9 +8457,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/PossibleValuesResponseV1"
           description: "List of possible value options matching the search criteria."
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Search a standalone possible value source"
       tags:
       - "General"
@@ -6632,6 +8513,7 @@ paths:
     post:
       description: "Render a widget by name, passing in query parameters as a JSON\
         \ object in the request body.\nThe response shape varies by widget type."
+      operationId: "getWidgetData"
       parameters:
       - description: "Name of the widget to render."
         example: "myWidget"
@@ -6660,9 +8542,55 @@ paths:
                 $ref: "#/components/schemas/WidgetData"
           description: "The rendered widget data itself (not wrapped): one of the\
             \ WidgetData shapes, chosen by its `type`."
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Render a widget"
       tags:
       - "Widgets"
@@ -6670,6 +8598,7 @@ paths:
     get:
       description: "Load the full metadata for a single process, including all screens\
         \ (aka, frontend steps), which a frontend\nneeds to display to users."
+      operationId: "getProcessMetaData"
       parameters:
       - description: "Name of the process to load."
         example: "samplePersonProcess"
@@ -6688,9 +8617,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProcessMetaDataResponseV1"
           description: "The full process metadata"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Get process metaData"
       tags:
       - "Processes"
@@ -6708,6 +8683,7 @@ paths:
         a `jobUUID`, which should be sent to the `/processes/{processName}/{processUUID}/status/{jobUUID}`\n\
         endpoint, to poll for a status update.\n\n*This threshold has a default value\
         \ of 3,000 ms., but can be set per-request via the form\nparameter `stepTimeoutMillis`.\n"
+      operationId: "initProcess"
       parameters:
       - description: "Name of the process to initialize"
         example: "samplePersonProcess"
@@ -6852,9 +8828,55 @@ paths:
                 $ref: "#/components/schemas/ProcessStepResponseV1"
           description: "State of the initialization of the job, with different fields\
             \ set, based on the\nstatus of the task."
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Initialize a process"
       tags:
       - "Processes"
@@ -6869,6 +8891,7 @@ paths:
         \ return a\na `jobUUID`, which should be sent to the `/processes/{processName}/{processUUID}/status/{jobUUID}`\n\
         endpoint, to poll for a status update.\n\n*This threshold has a default value\
         \ of 3,000 ms., but can be set per-request via the form\nparameter `stepTimeoutMillis`.\n"
+      operationId: "stepProcess"
       parameters:
       - description: "Name of the process to perform the step in."
         example: "samplePersonProcess"
@@ -6997,9 +9020,55 @@ paths:
                 $ref: "#/components/schemas/ProcessStepResponseV1"
           description: "State of the backend's running of the next step(s) of the\
             \ job, with different fields set,\nbased on the status of the job."
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Run a step in a process"
       tags:
       - "Processes"
@@ -7007,6 +9076,7 @@ paths:
     get:
       description: "Get the status of a running job for a process.\n\nResponse is\
         \ the same format as for an init or step call that completed synchronously.\n"
+      operationId: "getProcessStatus"
       parameters:
       - description: "Name of the process that is being ran"
         example: "samplePersonProcess"
@@ -7107,9 +9177,55 @@ paths:
                 $ref: "#/components/schemas/ProcessStepResponseV1"
           description: "State of the backend's running of the specified job, with\
             \ different fields set,\nbased on the status of the job."
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Get job status"
       tags:
       - "Processes"
@@ -7117,6 +9233,7 @@ paths:
     get:
       description: "Retrieve the records associated with a running or completed process,\
         \ with support\nfor pagination via skip and limit query parameters."
+      operationId: "getProcessRecords"
       parameters:
       - description: "Name of the process"
         example: "samplePersonProcess"
@@ -7162,9 +9279,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProcessRecordsResponseV1"
           description: "Paginated list of records from the process state."
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Get records from a process"
       tags:
       - "Processes"
@@ -7172,6 +9335,7 @@ paths:
     post:
       description: "Cancel a running process. If the process defines a cancel step,\
         \ it will be executed."
+      operationId: "cancelProcess"
       parameters:
       - description: "Name of the process to cancel"
         example: "samplePersonProcess"
@@ -7203,9 +9367,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProcessCancelResponseV1"
           description: "Empty JSON object indicating successful cancellation."
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Cancel a running process"
       tags:
       - "Processes"
@@ -7218,6 +9428,7 @@ paths:
         \ with the caller's permissions (never more). A launch from the assistant\
         \ client channel waits for confirmation (status AWAITING_CONFIRMATION). Progress\
         \ arrives as job.progress and job.status events on the realtime channel record:jobs_job:{jobId}."
+      operationId: "launchProcessJob"
       parameters:
       - description: "Name of the process to run as a job"
         example: "person.bulkEdit"
@@ -7294,9 +9505,49 @@ paths:
               schema:
                 $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Too many jobs are waiting for this user (or for the assistant)."
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Run a process as a durable background job"
       tags:
       - "Processes"
@@ -7306,6 +9557,7 @@ paths:
         \ see all jobs. Hidden jobs return 404; invalid transitions return 409. Progress\
         \ polls include a twenty-id overlap for concurrent commits; deduplicate log\
         \ lines by id. Recent jobs finished in the last seven days."
+      operationId: "listJobs"
       parameters:
       - description: "mine (default), or all (requires jobs_admin)"
         in: "query"
@@ -7356,9 +9608,35 @@ paths:
               schema:
                 $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Invalid job transition"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Jobs: list"
       tags:
       - "Processes"
@@ -7368,6 +9646,7 @@ paths:
         \ see all jobs. Hidden jobs return 404; invalid transitions return 409. Progress\
         \ polls include a twenty-id overlap for concurrent commits; deduplicate log\
         \ lines by id. Recent jobs finished in the last seven days."
+      operationId: "getJob"
       parameters:
       - in: "path"
         name: "jobId"
@@ -7399,9 +9678,35 @@ paths:
               schema:
                 $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Invalid job transition"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Jobs: detail"
       tags:
       - "Processes"
@@ -7411,6 +9716,7 @@ paths:
         \ see all jobs. Hidden jobs return 404; invalid transitions return 409. Progress\
         \ polls include a twenty-id overlap for concurrent commits; deduplicate log\
         \ lines by id. Recent jobs finished in the last seven days."
+      operationId: "getJobProgress"
       parameters:
       - in: "path"
         name: "jobId"
@@ -7455,9 +9761,35 @@ paths:
               schema:
                 $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Invalid job transition"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Jobs: progress"
       tags:
       - "Processes"
@@ -7467,6 +9799,7 @@ paths:
         \ see all jobs. Hidden jobs return 404; invalid transitions return 409. Progress\
         \ polls include a twenty-id overlap for concurrent commits; deduplicate log\
         \ lines by id. Recent jobs finished in the last seven days."
+      operationId: "cancelJob"
       parameters:
       - in: "path"
         name: "jobId"
@@ -7498,9 +9831,35 @@ paths:
               schema:
                 $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Invalid job transition"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Jobs: cancel"
       tags:
       - "Processes"
@@ -7510,6 +9869,7 @@ paths:
         \ see all jobs. Hidden jobs return 404; invalid transitions return 409. Progress\
         \ polls include a twenty-id overlap for concurrent commits; deduplicate log\
         \ lines by id. Recent jobs finished in the last seven days."
+      operationId: "retryJob"
       parameters:
       - in: "path"
         name: "jobId"
@@ -7541,9 +9901,35 @@ paths:
               schema:
                 $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Invalid job transition"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Jobs: retry"
       tags:
       - "Processes"
@@ -7553,6 +9939,7 @@ paths:
         \ see all jobs. Hidden jobs return 404; invalid transitions return 409. Progress\
         \ polls include a twenty-id overlap for concurrent commits; deduplicate log\
         \ lines by id. Recent jobs finished in the last seven days."
+      operationId: "trackJob"
       requestBody:
         content:
           application/json:
@@ -7584,9 +9971,35 @@ paths:
               schema:
                 $ref: "#/components/schemas/BasicErrorResponseV1"
           description: "Invalid job transition"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Jobs: track"
       tags:
       - "Processes"
@@ -7597,6 +10010,7 @@ paths:
         \ when launching a job (POST /processes/{processName}/jobs). Send multipart\
         \ form data with one file field, or the raw file as the request body with\
         \ the fileName query parameter."
+      operationId: "upload"
       parameters:
       - description: "The file's name, when the body is the raw file (not multipart)."
         example: "people.csv"
@@ -7629,9 +10043,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/UploadRefResponseV1"
           description: "The upload's ref, name, size, content type and expiry."
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Upload a file for a job or a bulk load"
       tags:
       - "Processes"
@@ -7639,6 +10099,7 @@ paths:
     post:
       description: "Export records from a table as a downloadable file in the specified\
         \ format (CSV, XLSX, JSON, TSV)."
+      operationId: "exportTable"
       parameters:
       - description: "Name of the table to export."
         example: "person"
@@ -7686,15 +10147,62 @@ paths:
                 format: "binary"
                 type: "string"
           description: "Binary file content in the requested export format"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Export records from a table"
       tags:
       - "Tables"
   /qqq/v1/{applicationApiPath}/{applicationApiVersion}/table/{tableName}/{primaryKey}/{fieldName}/{filename}:
     get:
       description: "Download the binary content of a blob field from a specific record."
+      operationId: "downloadRecordFieldFile"
       parameters:
       - description: "Name of the table containing the record."
         example: "person"
@@ -7732,9 +10240,55 @@ paths:
                 format: "binary"
                 type: "string"
           description: "Binary file content"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Download a field value from a record"
       tags:
       - "Tables"
@@ -7742,6 +10296,7 @@ paths:
     get:
       description: "Download a file from server-side storage by file path or storage\
         \ table reference."
+      operationId: "download"
       parameters:
       - description: "Filename for the download."
         example: "report.csv"
@@ -7776,9 +10331,55 @@ paths:
                 format: "binary"
                 type: "string"
           description: "Binary file content"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Download a file"
       tags:
       - "General"
@@ -7788,6 +10389,7 @@ paths:
         \  The report's input fields are given as\nquery parameters named for the\
         \ fields; a missing required input is a 400.  Requires permission to run the\
         \ report."
+      operationId: "runReport"
       parameters:
       - description: "Name of the report to run."
         example: "personReport"
@@ -7811,9 +10413,55 @@ paths:
                 format: "binary"
                 type: "string"
           description: "The generated report file, in the requested format"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Run a report and download the file"
       tags:
       - "Reports"
@@ -7827,6 +10475,7 @@ paths:
         \ request's `X-QQQ-AI-Route` header is `hipaa`; unmapped columns never get\
         \ samples otherwise.  Requires the table's bulk-insert process permission.\
         \  Nothing is stored."
+      operationId: "getBulkLoadUploadProfile"
       parameters:
       - description: "The opaque ref of an upload the session user owns."
         in: "path"
@@ -7861,9 +10510,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/BulkLoadUploadProfileResponseV1"
           description: "The upload's header guess and column profiles"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Profile an uploaded file for a bulk load"
       tags:
       - "Bulk Load"
@@ -7875,6 +10570,7 @@ paths:
         \ value source (whose file values may need value mapping).  The upload must\
         \ be the session user's.  Requires the table's bulk-insert process permission.\
         \  Nothing is stored."
+      operationId: "suggestBulkLoadMapping"
       parameters:
       - description: "The table the file would be loaded into."
         example: "person"
@@ -7910,9 +10606,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/BulkLoadSuggestMappingResponseV1"
           description: "The suggested profile and what it leaves unmapped"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Suggest a bulk load mapping for an uploaded file"
       tags:
       - "Bulk Load"
@@ -7926,6 +10668,7 @@ paths:
         \ of classified fields are left out unless the request's `X-QQQ-AI-Route`\
         \ header is `hipaa`.  The upload must be the session user's.  Requires the\
         \ table's bulk-insert process permission."
+      operationId: "validateBulkLoad"
       parameters:
       - description: "The table the file would be loaded into."
         example: "person"
@@ -7970,9 +10713,66 @@ paths:
               schema:
                 $ref: "#/components/schemas/BulkLoadValidateResponseV1"
           description: "The dry run's summary and error groups"
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
       security:
       - sessionUuidCookie:
         - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
       summary: "Dry-run a bulk load profile over an uploaded file"
       tags:
       - "Bulk Load"
+servers:
+- description: "The QQQ server that serves this document (paths include /qqq/v1)."
+  url: "/"
+tags:
+- name: "Authentication"
+- name: "Bulk Load"
+- name: "General"
+- name: "Processes"
+- name: "Reports"
+- name: "Tables"
+- name: "Widgets"

@@ -90,6 +90,7 @@ class UiApiContractTest
          paths:
            /a:
              get:
+               operationId: "getA"
                parameters:
                - name: "x"
                  in: "query"
@@ -143,6 +144,18 @@ class UiApiContractTest
       assertThat(breaking(baseDocument, base.replace("type: \"object\"", "type: \"array\""))).anyMatch(p -> p.contains("type changed"));
       assertThat(breaking(baseDocument, base.replace("      type: \"object\"\n", "      type: \"object\"\n      required: [\"kind\"]\n"))).anyMatch(p -> p.contains("became required: kind"));
       assertThat(breaking(baseDocument, added)).isEmpty();
+
+      ///////////////////////////////////////////////////////////////////
+      // operationIds: required, unique, camelCase, and never changed //
+      ///////////////////////////////////////////////////////////////////
+      assertThat(breaking(baseDocument, base.replace("getA", "fetchA"))).anyMatch(p -> p.contains("operationId changed: getA -> fetchA"));
+      String noId = base.replace("      operationId: \"getA\"\n", "");
+      assertThat(breaking(baseDocument, noId)).anyMatch(p -> p.contains("operationId changed: getA -> null"));
+      assertThat(UiApiContract.check(noId, noId, null, 1, "x")).anyMatch(p -> p.contains("no operationId"));
+      String badId = base.replace("getA", "Get-A");
+      assertThat(UiApiContract.check(badId, badId, null, 1, "x")).anyMatch(p -> p.contains("not a camelCase identifier"));
+      String twoOps = base.replace("    get:\n", "    post:\n      operationId: \"getA\"\n      responses: {}\n    get:\n");
+      assertThat(OpenApiCompatibilityChecker.findOperationIdProblems(OpenApiCompatibilityChecker.parse(twoOps))).anyMatch(p -> p.contains("duplicate operationId getA"));
       assertThat(UiApiContract.check(base.replace("1.0.0", "2.0.0"), base.replace("1.0.0", "2.0.0"), base, 1, "x")).anyMatch(p -> p.contains("MAJOR 1"));
       assertThat(UiApiContract.check(base.replace("1.0.0", "0.9.0"), base.replace("1.0.0", "0.9.0"), base, 1, "x")).anyMatch(p -> p.contains("lower than the baseline"));
       assertThat(UiApiContract.check(base.replace("1.0.0", "v1"), base.replace("1.0.0", "v1"), null, 1, "x")).anyMatch(p -> p.contains("not a semantic version"));

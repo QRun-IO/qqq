@@ -226,6 +226,15 @@ public class AuthenticationMetaDataResponseV1 implements AuthenticationMetaDataO
       @OpenAPIDescription("OAuth2 scopes to request (space-separated)")
       private String scopes;
 
+      @OpenAPIDescription("The public OAuth2 client for native clients (CLI, TUI, mobile): use it with auth-code + PKCE or the device-authorization grant, then send the access token as Authorization: Bearer. Absent when the app has no native client. Since 1.6.0.")
+      private String nativeClientId;
+
+      @OpenAPIDescription("The issuer (OIDC discovery base URL) of nativeClientId, when it differs from baseUrl. Since 1.6.0.")
+      private String nativeClientBaseUrl;
+
+      @OpenAPIDescription("True when the server accepts the provider's access tokens as Authorization: Bearer <JWT>. Since 1.6.0.")
+      private Boolean bearerTokensAccepted;
+
 
 
       /*******************************************************************************
@@ -319,6 +328,66 @@ public class AuthenticationMetaDataResponseV1 implements AuthenticationMetaDataO
          return (this);
       }
 
+
+
+      /*******************************************************************************
+       ** Getter for nativeClientId
+       *******************************************************************************/
+      public String getNativeClientId()
+      {
+         return nativeClientId;
+      }
+
+
+
+      /*******************************************************************************
+       ** Setter for nativeClientId
+       *******************************************************************************/
+      public void setNativeClientId(String nativeClientId)
+      {
+         this.nativeClientId = nativeClientId;
+      }
+
+
+
+      /*******************************************************************************
+       ** Getter for nativeClientBaseUrl
+       *******************************************************************************/
+      public String getNativeClientBaseUrl()
+      {
+         return nativeClientBaseUrl;
+      }
+
+
+
+      /*******************************************************************************
+       ** Setter for nativeClientBaseUrl
+       *******************************************************************************/
+      public void setNativeClientBaseUrl(String nativeClientBaseUrl)
+      {
+         this.nativeClientBaseUrl = nativeClientBaseUrl;
+      }
+
+
+
+      /*******************************************************************************
+       ** Getter for bearerTokensAccepted
+       *******************************************************************************/
+      public Boolean getBearerTokensAccepted()
+      {
+         return bearerTokensAccepted;
+      }
+
+
+
+      /*******************************************************************************
+       ** Setter for bearerTokensAccepted
+       *******************************************************************************/
+      public void setBearerTokensAccepted(Boolean bearerTokensAccepted)
+      {
+         this.bearerTokensAccepted = bearerTokensAccepted;
+      }
+
    }
 
 
@@ -339,6 +408,12 @@ public class AuthenticationMetaDataResponseV1 implements AuthenticationMetaDataO
          oauth2Values.setClientId(oauth2MetaData.getClientId());
          oauth2Values.setBaseUrl(StringUtils.hasContent(oauth2MetaData.getExternalBaseUrl()) ? oauth2MetaData.getExternalBaseUrl() : oauth2MetaData.getBaseUrl());
          oauth2Values.setScopes(oauth2MetaData.getScopes());
+         oauth2Values.setNativeClientId(oauth2MetaData.getNativeClientId());
+         if(StringUtils.hasContent(oauth2MetaData.getNativeClientId()) && StringUtils.hasContent(oauth2MetaData.getNativeClientBaseUrl()))
+         {
+            oauth2Values.setNativeClientBaseUrl(oauth2MetaData.getNativeClientBaseUrl());
+         }
+         oauth2Values.setBearerTokensAccepted(!Boolean.FALSE.equals(oauth2MetaData.getBearerTokensEnabled()));
       }
       else if(qAuthenticationMetaData instanceof Auth0AuthenticationMetaData auth0MetaData)
       {

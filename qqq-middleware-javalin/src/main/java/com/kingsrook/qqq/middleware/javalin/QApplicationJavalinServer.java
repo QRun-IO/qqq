@@ -29,6 +29,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.function.Consumer;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
+import com.kingsrook.qqq.backend.core.cluster.ClusterBus;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QInstanceValidationException;
 import com.kingsrook.qqq.backend.core.health.HealthMonitoringMetaData;
@@ -394,6 +395,12 @@ public class QApplicationJavalinServer
       // stop (and on SIGTERM, through the runtime's shutdown hook).   //
       ///////////////////////////////////////////////////////////////////
       DurableJobsRuntime.start(qInstance);
+
+      ////////////////////////////////////////////////////////////////////////
+      // receive cluster control events (cache invalidation, session ends,  //
+      // overlay changes) from other nodes before serving any change       //
+      ////////////////////////////////////////////////////////////////////////
+      ClusterBus.connect(qInstance);
 
       ////////////////////////////////////////////////////////////////////////
       // SIGTERM drains this node (not-ready, async steps finish, in-flight //

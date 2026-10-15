@@ -34,6 +34,7 @@ import com.kingsrook.qqq.backend.core.actions.collaboration.RuntimeMetaDataOverl
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionCheckResult;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.cluster.ClusterCaches;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QRuntimeException;
@@ -72,7 +73,7 @@ public class MetaDataAction
 {
    private static final QLogger LOG = QLogger.getLogger(MetaDataAction.class);
 
-   private static Memoization<QInstance, MetaDataActionCustomizerInterface> metaDataActionCustomizerMemoization = new Memoization<>();
+   private static Memoization<QInstance, MetaDataActionCustomizerInterface> metaDataActionCustomizerMemoization = ClusterCaches.nodeLocal(new Memoization<>(), "code from the instance, the same on every node");
 
 
 

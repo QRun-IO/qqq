@@ -142,6 +142,29 @@ public class QSessionStoreHelper
 
 
    /***************************************************************************
+    ** Remove a session from the store (logout / session ended), if available.
+    ***************************************************************************/
+   public static void removeSession(String sessionUuid)
+   {
+      Optional<QSessionStoreProviderInterface> provider = QSessionStoreRegistry.getInstance().getProvider();
+      if(provider.isEmpty() || sessionUuid == null)
+      {
+         return;
+      }
+
+      try
+      {
+         provider.get().remove(sessionUuid);
+      }
+      catch(Exception e)
+      {
+         LOG.warn("Failed to remove session from session store", e, logPair("sessionUuid", sessionUuid));
+      }
+   }
+
+
+
+   /***************************************************************************
     ** Touch a session to reset its TTL (if available).
     ***************************************************************************/
    public static void touchSession(String sessionUuid)

@@ -23,6 +23,7 @@ package com.kingsrook.qqq.backend.core.actions.customizers;
 
 import java.lang.reflect.Constructor;
 import java.util.Optional;
+import com.kingsrook.qqq.backend.core.cluster.ClusterCaches;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.code.InitializableViaCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
@@ -42,7 +43,7 @@ public class QCodeLoader
 {
    private static final QLogger LOG = QLogger.getLogger(QCodeLoader.class);
 
-   private static Memoization<String, Constructor<?>> constructorMemoization = new Memoization<>();
+   private static Memoization<String, Constructor<?>> constructorMemoization = ClusterCaches.nodeLocal(new Memoization<>(), "classes are the same on every node");
 
 
 

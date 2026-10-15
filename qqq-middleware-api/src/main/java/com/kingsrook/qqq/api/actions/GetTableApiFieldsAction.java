@@ -37,6 +37,7 @@ import com.kingsrook.qqq.api.model.metadata.tables.ApiTableMetaData;
 import com.kingsrook.qqq.api.model.metadata.tables.ApiTableMetaDataContainer;
 import com.kingsrook.qqq.backend.core.actions.AbstractQActionFunction;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.cluster.ClusterCaches;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
@@ -60,8 +61,8 @@ public class GetTableApiFieldsAction extends AbstractQActionFunction<GetTableApi
 {
    private static final QLogger LOG = QLogger.getLogger(GetTableApiFieldsAction.class);
 
-   private static Memoization<MemoizationKey, List<QFieldMetaData>>        fieldListMemoization = new Memoization<>();
-   private static Memoization<MemoizationKey, Map<String, QFieldMetaData>> fieldMapMemoization  = new Memoization<>();
+   private static Memoization<MemoizationKey, List<QFieldMetaData>>        fieldListMemoization = ClusterCaches.nodeLocal(new Memoization<>(), "derived from the instance's meta data, the same on every node");
+   private static Memoization<MemoizationKey, Map<String, QFieldMetaData>> fieldMapMemoization  = ClusterCaches.nodeLocal(new Memoization<>(), "derived from the instance's meta data, the same on every node");
 
 
 

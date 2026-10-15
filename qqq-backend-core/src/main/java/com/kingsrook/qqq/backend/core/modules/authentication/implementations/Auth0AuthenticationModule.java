@@ -54,6 +54,7 @@ import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
+import com.kingsrook.qqq.backend.core.cluster.ClusterCaches;
 import com.kingsrook.qqq.backend.core.context.CapturedContext;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.AccessTokenException;
@@ -146,9 +147,9 @@ public class Auth0AuthenticationModule implements QAuthenticationModuleInterface
 
    private static boolean mayMemoize = true;
 
-   private static final Memoization<String, String> getAccessTokenFromSessionUUIDMemoization = new Memoization<String, String>()
+   private static final Memoization<String, String> getAccessTokenFromSessionUUIDMemoization = ClusterCaches.sessionKeyed("auth0.accessTokenBySession", new Memoization<String, String>()
       .withTimeout(Duration.of(1, ChronoUnit.MINUTES))
-      .withMaxSize(1000);
+      .withMaxSize(1000));
 
    ////////////////////////////////////////////////////////////////////////////////////////////////////////////
    // this is how we allow the actions within this class to work without themselves having a logged-in user. //

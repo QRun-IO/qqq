@@ -255,6 +255,9 @@ class UserProfilesTest extends BaseTest
       Map<String, Serializable> values = UserProfiles.frontendUserValues(QContext.getQInstance(), QContext.getQSession());
       assertThat(values).containsEntry("displayName", "Alice A.");
       assertThat((String) values.get("avatarUrl")).endsWith("?v=g" + row.getValueString("gravatarHash"));
+      Map<String, Serializable> section = action.getSection(UserProfilesMetaData.SECTION_NAME).getValues().getValues();
+      assertThat(section.get("avatar")).isNull();
+      assertThat(section.get("avatarUrl")).isEqualTo(values.get("avatarUrl"));
 
       setAvatar(upload("me.png", png(64, 64, Color.RED)));
       values = UserProfiles.frontendUserValues(QContext.getQInstance(), QContext.getQSession());

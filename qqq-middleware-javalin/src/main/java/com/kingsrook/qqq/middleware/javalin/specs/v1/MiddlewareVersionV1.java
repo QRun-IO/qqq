@@ -39,7 +39,7 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
     ** and PATCH for fixes (UiApiContractTest enforces it); a breaking change
     ** needs a new URL version (/qqq/v2).
     ***************************************************************************/
-   public static final String SEMANTIC_VERSION = "1.6.0";
+   public static final String SEMANTIC_VERSION = "1.7.0";
 
    /***************************************************************************
     ** Optional core features, published by GET /version.
@@ -47,7 +47,7 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
    public static final List<String> FEATURES = List.of(
       "metaData", "tables", "recordSearch", "tableVariants", "recordDeveloper", "possibleValues",
       "widgets", "processes", "processCancel", "reports", "exports", "downloads", "version", "extensions", "recordFeatures", "realtime",
-      "help", "preferences", "durableJobs", "delivery");
+      "help", "preferences", "durableJobs", "delivery", "avatars");
 
    private final List<AbstractEndpointSpec<?, ?, ?>> list = new ArrayList<>();
 
@@ -69,6 +69,7 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
       list.add(new RealtimeSubscriptionsSpecV1(realtime::getHub));
       list.add(new AuthenticationMetaDataSpecV1());
       list.add(new BrandingAssetSpecV1());
+      list.add(new AvatarGetSpecV1());
       list.add(new ManageSessionSpecV1());
       list.add(new LogoutSpecV1());
       list.add(new BackChannelLogoutSpecV1());

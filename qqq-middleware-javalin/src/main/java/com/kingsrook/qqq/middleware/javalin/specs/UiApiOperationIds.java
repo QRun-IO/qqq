@@ -47,6 +47,7 @@ public class UiApiOperationIds
       core("GET /version", "getVersion");
       core("GET /metaData/authentication", "getAuthenticationMetaData");
       core("GET /branding/{role}", "getBrandingAsset");
+      core("GET /avatars/{userId}", "getAvatar");
       core("POST /manageSession", "manageSession");
       core("POST /logout", "logout");
       core("POST /oidc/backchannel-logout", "oidcBackChannelLogout");

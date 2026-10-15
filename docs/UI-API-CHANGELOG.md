@@ -80,6 +80,21 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 
 ## Versions
 
+### 1.7.0 (QQQ 4.1.0-RC.16) - user profiles and avatars
+See [USER-PROFILE-AVATARS.md](USER-PROFILE-AVATARS.md).
+
+- **`GET /avatars/{userId}`** (`getAvatar`): a user's avatar as a square PNG (`size` 32, 64, 128 or
+  256; default 128) for any signed-in user; 404 when none (clients draw initials); 302 to Gravatar
+  only for a user who turned it on in an application that allows it. `v` (the version in an
+  `avatarUrl`) makes it cacheable for a year; otherwise five minutes with an `ETag` (304).
+- **`POST /manageSession`**: `values.user` adds `avatarUrl` and `displayName` when the application
+  installs user profiles (`UserProfileMetaDataProvider`).
+- **Preferences section `profile`** (core): `avatar` (photo), `displayName`, and `useGravatar` when
+  the application allows Gravatar.
+- **`FieldAdornment.values`** for FILE_UPLOAD: `valueIsUploadRef` (upload with `POST /uploads`, send
+  the ref as the value; the value read back is a URL), `accept`, `maxBytes` and `imageShape`.
+- `GET /version` features add `avatars`.
+
 ### 1.6.0 (QQQ 4.1.0-RC.15) - native clients
 Ready for CLI, TUI and native clients (see `UI-API-CLIENTS.md`).
 

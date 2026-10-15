@@ -52,7 +52,8 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
  ** when the app allows it, Gravatar).  Always the signed-in user's own row.
  **
  ** The avatar field reads as the photo's URL and is written with a ref from
- ** POST /uploads (or null to remove the photo).  Writing a value equal to the
+ ** POST /uploads (or null to remove the photo).  The hidden, read-only avatarUrl
+ ** is what others see: the photo, else the chosen Gravatar, else null.  Writing a value equal to the
  ** current URL changes nothing, so a client may send the whole form back.
  *******************************************************************************/
 public class UserProfilePreferenceProvider implements UserPreferenceProviderInterface
@@ -60,6 +61,7 @@ public class UserProfilePreferenceProvider implements UserPreferenceProviderInte
    public static final String FIELD_AVATAR       = "avatar";
    public static final String FIELD_DISPLAY_NAME = "displayName";
    public static final String FIELD_USE_GRAVATAR = "useGravatar";
+   public static final String FIELD_AVATAR_URL   = "avatarUrl";
 
 
 
@@ -74,6 +76,8 @@ public class UserProfilePreferenceProvider implements UserPreferenceProviderInte
       String                    key    = row == null ? null : row.getValueString("avatarKey");
       values.put(FIELD_AVATAR, StringUtils.hasContent(key) ? UserProfiles.avatarUrl(context.getUserId(), new UserProfiles.Avatar(key, null)) : null);
       values.put(FIELD_DISPLAY_NAME, row == null ? null : row.getValueString("displayName"));
+      UserProfiles.Avatar effective = UserProfiles.avatarOf(row);
+      values.put(FIELD_AVATAR_URL, effective == null ? null : UserProfiles.avatarUrl(context.getUserId(), effective));
       if(UserProfiles.settings().getGravatarOptIn())
       {
          values.put(FIELD_USE_GRAVATAR, row != null && Boolean.TRUE.equals(row.getValueBoolean("useGravatar")));

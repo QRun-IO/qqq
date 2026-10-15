@@ -48,6 +48,8 @@ new UserProfileMetaDataProvider()
     Read value: the photo URL (or null). Write value: a ref from `POST /uploads`, or null to remove.
   - `displayName` - STRING, max 100. Blank means "use my sign-in name".
   - `useGravatar` - BOOLEAN, only when the app opts in.
+  - `avatarUrl` - hidden, read-only: what others see (the photo, else the chosen Gravatar, else
+    null). Clients use it for the signed-in user's own avatar.
 
 `valueIsUploadRef` is a generic contract: any section may declare an upload field this way, and a
 client that sees it uploads the file first and sends the ref.

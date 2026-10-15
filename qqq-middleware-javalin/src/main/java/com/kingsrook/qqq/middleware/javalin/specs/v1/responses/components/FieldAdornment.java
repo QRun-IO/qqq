@@ -158,6 +158,10 @@ public class FieldAdornment implements ToSchema
       rs.put("width", str("SIZE: display width of the field - one of xsmall, small, medium, medlarge, large, xlarge (semantic widths; each client maps them to its own columns or characters). FILE_UPLOAD: width of the upload control.")
          .withEnumValues(List.of("xsmall", "small", "medium", "medlarge", "large", "xlarge", "full", "half")));
       rs.put("format", str("FILE_UPLOAD: control style (dragAndDrop or button)."));
+      rs.put("valueIsUploadRef", bool("FILE_UPLOAD: upload the file with POST /uploads and send its ref as the field's value (null removes the file); the value read back is a URL to show. Since 1.7.0."));
+      rs.put("accept", str("FILE_UPLOAD: accepted MIME types, comma-separated (e.g. image/png,image/jpeg). Since 1.7.0."));
+      rs.put("maxBytes", new Schema().withType(Type.INTEGER).withDescription("FILE_UPLOAD: largest accepted file in bytes. Since 1.7.0."));
+      rs.put("imageShape", str("FILE_UPLOAD: the field is an image to crop and preview in this shape (square or circle; both crop square). Since 1.7.0.").withEnumValues(List.of("square", "circle")));
       rs.put("languageMode", str("CODE_EDITOR: language of the code (e.g. javascript, sql, json, velocity) - for highlighting; a client without an editor shows it monospaced."));
       rs.put("staticText", str("TOOLTIP: the tooltip text."));
       rs.put("tooltipDynamic", bool("TOOLTIP: the text is per record - read it from the record displayValue `{fieldName}:tooltipDynamic`."));

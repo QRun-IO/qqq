@@ -130,7 +130,8 @@ public class UserProfileMetaDataProvider
                .withValue(AdornmentType.FileUploadAdornment.ACCEPT, "image/png,image/jpeg,image/webp,image/gif")
                .withValue(AdornmentType.FileUploadAdornment.MAX_BYTES, maxAvatarBytes)
                .withValue(AdornmentType.FileUploadAdornment.IMAGE_SHAPE, "circle")))
-         .withField(new QFieldMetaData(UserProfilePreferenceProvider.FIELD_DISPLAY_NAME, QFieldType.STRING).withLabel("Display name").withMaxLength(100));
+         .withField(new QFieldMetaData(UserProfilePreferenceProvider.FIELD_DISPLAY_NAME, QFieldType.STRING).withLabel("Display name").withMaxLength(100))
+         .withField(new QFieldMetaData(UserProfilePreferenceProvider.FIELD_AVATAR_URL, QFieldType.STRING).withLabel("Avatar URL").withIsHidden(true).withIsEditable(false));
       if(gravatarOptIn)
       {
          section.withField(new QFieldMetaData(UserProfilePreferenceProvider.FIELD_USE_GRAVATAR, QFieldType.BOOLEAN).withLabel("Use my Gravatar when I have no photo").withDefaultValue(false));

@@ -186,6 +186,59 @@ class EsbConnectionManagerTest extends EsbTestBase
 
 
    /*******************************************************************************
+    ** HA mode, through config only: a failover url whose first broker is down
+    ** connects to the next one; when that broker restarts, the client's own
+    ** reconnect (reconnectAttempts=-1) fails over: the manager keeps the
+    ** connection (old and new sessions work) and fires its listeners once, so
+    ** triggers rebuild their consumers.
+    *******************************************************************************/
+   @Test
+   void testHaFailoverUrl() throws Exception
+   {
+      int deadPort;
+      try(java.net.ServerSocket serverSocket = new java.net.ServerSocket(0))
+      {
+         deadPort = serverSocket.getLocalPort();
+      }
+      String    haProvider = "artemisHa";
+      QInstance qInstance  = defineInstance();
+      EsbInstanceMetaData.of(qInstance).withProvider(new QEsbProviderMetaData()
+         .withName(haProvider)
+         .withType(EsbProviderType.ACTIVEMQ_ARTEMIS)
+         .withUrl("(tcp://localhost:" + deadPort + "," + getBrokerUrl() + ")?ha=true&reconnectAttempts=-1&retryInterval=100&callFailoverTimeout=10000"));
+      QContext.init(qInstance, new QSession());
+
+      EsbConnectionManager manager = EsbConnectionManager.getInstance();
+      AtomicInteger reconnectCount = new AtomicInteger(0);
+      manager.addConnectionListener(haProvider, reconnectCount::incrementAndGet);
+
+      Session session = manager.openSession(haProvider, false);
+      assertThat(manager.isConnected(haProvider)).isTrue();
+      assertThat(sendAndReceive(session, manager.resolveQueue(session, haProvider, "esb.test.ha.before"), "before")).isEqualTo("before");
+
+      stopEmbeddedBroker();
+      startEmbeddedBroker();
+
+      waitFor("a session to open after the bounce", () ->
+      {
+         try
+         {
+            Session after = manager.openSession(haProvider, false);
+            return (sendAndReceive(after, manager.resolveQueue(after, haProvider, "esb.test.ha.after"), "after").equals("after"));
+         }
+         catch(Exception e)
+         {
+            return (false);
+         }
+      });
+      assertThat(manager.isConnected(haProvider)).isTrue();
+      waitFor("the listeners to hear of the failover", () -> reconnectCount.get() == 1);
+      assertThat(sendAndReceive(session, manager.resolveQueue(session, haProvider, "esb.test.ha.same"), "same")).as("the manager kept the failed-over connection and its sessions").isEqualTo("same");
+   }
+
+
+
+   /*******************************************************************************
     ** With the broker down, the first open fails within the connect timeout;
     ** later opens fail at once while the manager retries in the background;
     ** when the broker comes up, the listeners fire and sessions open again.

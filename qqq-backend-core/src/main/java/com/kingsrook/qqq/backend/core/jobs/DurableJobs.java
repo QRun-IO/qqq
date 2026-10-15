@@ -289,6 +289,8 @@ public final class DurableJobs
          source.putAll(request.getRowSetSource());
       }
 
+      Map<String, List<Serializable>> launchScope = JobSessions.captureScope(session);
+
       Instant now = store.now();
       QRecord job = new QRecord()
          .withValue("label", StringUtils.hasContent(request.getLabel()) ? StringUtils.safeTruncate(request.getLabel(), 250) : Objects.requireNonNullElse(process.getLabel(), process.getName()))
@@ -300,7 +302,7 @@ public final class DurableJobs
          .withValue("priority", priority)
          .withValue("userId", userId)
          .withValue("clientChannel", session.getClientChannel())
-         .withValue("credentialScopeJson", JsonUtils.toJson(JobSessions.captureScope(session)))
+         .withValue("credentialScopeJson", JsonUtils.toJson(launchScope))
          .withValue("sourceType", sourceType.name())
          .withValue("sourceJson", JsonUtils.toJson(source))
          .withValue("paramsJson", JsonUtils.toJson(paramValues(request.getValues())))
@@ -329,6 +331,7 @@ public final class DurableJobs
       List<QRecord> chunks = plan.planChunks(job);
 
       Integer jobId = store.insertJob(job, null);
+      JobSessions.attachGrant(instance, session, jobId, userId, launchScope);
       try
       {
          List<QRecord> chunkRecords = new ArrayList<>();

@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.alerts.AlertSeverity;
+import com.kingsrook.qqq.backend.core.cluster.QNodeRoles;
 import com.kingsrook.qqq.backend.core.health.HealthCategory;
 import com.kingsrook.qqq.backend.core.health.HealthCheck;
 import com.kingsrook.qqq.backend.core.health.HealthCheckInput;
@@ -74,6 +75,10 @@ public final class EsbHealthChecks
          }
          add(registry, "core.esb.connection." + HealthChecksMetaData.toNamePart(provider), 30, AlertSeverity.ERROR, input ->
          {
+            if(!QNodeRoles.get().esbTriggers())
+            {
+               return (HealthCheckOutcome.up("ESB triggers standby on this node (publishing only)"));
+            }
             if(!Boolean.TRUE.equals(QEsbRuntime.getInstance().isRunning()))
             {
                return (HealthCheckOutcome.unknown("ESB runtime not started"));

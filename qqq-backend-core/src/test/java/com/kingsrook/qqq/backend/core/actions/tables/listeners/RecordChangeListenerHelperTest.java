@@ -182,6 +182,7 @@ public class RecordChangeListenerHelperTest extends BaseTest
       assertThat(RequiredCapturingListener.events).hasSize(1);
       assertThat(RequiredCapturingListener.events.get(0).getType()).isEqualTo(RecordChangeType.INSERT);
       assertThat(RequiredCapturingListener.events.get(0).getRecords()).hasSize(1);
+      assertThat(RequiredCapturingListener.events.get(0).getNotificationsSuppressed()).isEqualTo(omitEvents);
    }
 
 

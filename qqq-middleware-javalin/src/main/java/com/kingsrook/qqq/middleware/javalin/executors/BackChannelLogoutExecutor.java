@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
+import com.kingsrook.qqq.backend.core.cluster.ClusterCaches;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -67,8 +68,8 @@ import com.nimbusds.openid.connect.sdk.validators.LogoutTokenValidator;
 public class BackChannelLogoutExecutor extends AbstractMiddlewareExecutor<BackChannelLogoutInput, BackChannelLogoutOutputInterface>
 {
    private static final Duration MAX_TOKEN_AGE = Duration.ofMinutes(5);
-   private static final Memoization<List<String>, LogoutTokenValidator> VALIDATORS = new Memoization<List<String>, LogoutTokenValidator>()
-      .withTimeout(Duration.ofMinutes(10)).withMaxSize(100);
+   private static final Memoization<List<String>, LogoutTokenValidator> VALIDATORS = ClusterCaches.nodeLocal(new Memoization<List<String>, LogoutTokenValidator>()
+      .withTimeout(Duration.ofMinutes(10)).withMaxSize(100), "provider key validators, the same on every node");
    private static final Map<List<Object>, Instant> PROCESSED_TOKENS = new HashMap<>();
 
 

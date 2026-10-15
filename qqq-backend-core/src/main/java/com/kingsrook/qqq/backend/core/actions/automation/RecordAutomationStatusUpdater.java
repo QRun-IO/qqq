@@ -33,6 +33,7 @@ import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.tables.CountAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
+import com.kingsrook.qqq.backend.core.cluster.ClusterCaches;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
@@ -77,7 +78,7 @@ public class RecordAutomationStatusUpdater
    ///////////////////////////////////////////////////////////////////////////////////////////////
    private static boolean memoizeCheckForTriggers = new QMetaDataVariableInterpreter().getBooleanFromPropertyOrEnvironment("qqq.recordAutomationStatusUpdater.memoizeCheckForTriggers", "QQQ_RECORD_AUTOMATION_STATUS_UPDATER_MEMOIZE_CHECK_FOR_TRIGGERS", true);
 
-   private static Memoization<Key, Boolean> areThereTableTriggersForTableMemoization = new Memoization<Key, Boolean>().withTimeout(Duration.of(60, ChronoUnit.SECONDS));
+   private static Memoization<Key, Boolean> areThereTableTriggersForTableMemoization = ClusterCaches.shared("automation.tableTriggersByTable", new Memoization<Key, Boolean>().withTimeout(Duration.of(60, ChronoUnit.SECONDS)), null);
 
 
 

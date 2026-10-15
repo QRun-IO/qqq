@@ -21,6 +21,7 @@
 package com.kingsrook.qqq.backend.core.actions.ai;
 
 
+import java.io.Serializable;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QSupplementalFieldMetaData;
 
@@ -37,7 +38,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QSupplementalFieldMe
  ** though the kernel's actions still omit hidden fields and mask passwords).
  ** Either way, a field's exposure is capped by its table's exposure.
  *******************************************************************************/
-public class AiFieldMetaData extends QSupplementalFieldMetaData
+public class AiFieldMetaData extends QSupplementalFieldMetaData implements Serializable
 {
    public static final String TYPE = "ai";
 

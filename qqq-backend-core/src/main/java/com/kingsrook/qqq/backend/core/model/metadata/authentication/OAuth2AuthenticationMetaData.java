@@ -21,6 +21,7 @@
 package com.kingsrook.qqq.backend.core.model.metadata.authentication;
 
 
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -104,6 +105,21 @@ public class OAuth2AuthenticationMetaData extends QAuthenticationMetaData
    private Map<String, String> previousRefreshTokenEncryptionKeys;
    private Boolean             allowPlaintextRefreshTokens = false;
 
+   ////////////////////////////////////////////////////////////////////////////////
+   // bearer tokens (UI API 1.6.0): an `Authorization: Bearer <JWT>` issued by the //
+   // provider to clientId (or to the native client, or to an additional accepted //
+   // audience) is verified locally against the provider's JWKS (issuer, audience, //
+   // expiry, signature) and mapped to the same user and permissions as a session. //
+   // nativeClientId is the public client (no secret) that CLIs, TUIs and native   //
+   // apps use for the device-authorization grant or auth-code + PKCE; its issuer  //
+   // is nativeClientBaseUrl (default: baseUrl), since providers such as Authentik //
+   // give each client its own issuer.                                            //
+   ////////////////////////////////////////////////////////////////////////////////
+   private Boolean      bearerTokensEnabled = true;
+   private String       nativeClientId;
+   private String       nativeClientBaseUrl;
+   private List<String> additionalBearerAudiences;
+
    ////////////////////////////////////////////////////////////////////////////////////////
    // keep this secret, on the server - don't let it be serialized and sent to a client! //
    ////////////////////////////////////////////////////////////////////////////////////////
@@ -162,6 +178,8 @@ public class OAuth2AuthenticationMetaData extends QAuthenticationMetaData
       qInstanceValidator.assertCondition(maxSessionLifetimeSeconds == null || maxSessionLifetimeSeconds > 0, prefix + "maxSessionLifetimeSeconds must be positive when set");
 
       validateRefreshTokenEncryption(qInstance, qInstanceValidator, prefix);
+      qInstanceValidator.assertCondition(nativeClientBaseUrl == null || StringUtils.hasContent(nativeClientId), prefix + "nativeClientBaseUrl requires nativeClientId");
+      qInstanceValidator.assertCondition(nativeClientId == null || !nativeClientId.equals(clientId), prefix + "nativeClientId must be a separate (public) client, not clientId");
    }
 
 
@@ -711,6 +729,130 @@ public class OAuth2AuthenticationMetaData extends QAuthenticationMetaData
    public OAuth2AuthenticationMetaData withAllowPlaintextRefreshTokens(Boolean allowPlaintextRefreshTokens)
    {
       this.allowPlaintextRefreshTokens = allowPlaintextRefreshTokens;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for bearerTokensEnabled - whether `Authorization: Bearer <JWT>` is accepted (default true).
+    *******************************************************************************/
+   public Boolean getBearerTokensEnabled()
+   {
+      return (this.bearerTokensEnabled);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for bearerTokensEnabled
+    *******************************************************************************/
+   public void setBearerTokensEnabled(Boolean bearerTokensEnabled)
+   {
+      this.bearerTokensEnabled = bearerTokensEnabled;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for bearerTokensEnabled
+    *******************************************************************************/
+   public OAuth2AuthenticationMetaData withBearerTokensEnabled(Boolean bearerTokensEnabled)
+   {
+      this.bearerTokensEnabled = bearerTokensEnabled;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for nativeClientId - the public OAuth2 client used by native clients (CLI, TUI, iOS); published in /metaData/authentication, and accepted as a bearer-token audience.
+    *******************************************************************************/
+   public String getNativeClientId()
+   {
+      return (this.nativeClientId);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for nativeClientId
+    *******************************************************************************/
+   public void setNativeClientId(String nativeClientId)
+   {
+      this.nativeClientId = nativeClientId;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for nativeClientId
+    *******************************************************************************/
+   public OAuth2AuthenticationMetaData withNativeClientId(String nativeClientId)
+   {
+      this.nativeClientId = nativeClientId;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for nativeClientBaseUrl - the issuer (OIDC discovery base) of the native client, when it differs from baseUrl.
+    *******************************************************************************/
+   public String getNativeClientBaseUrl()
+   {
+      return (this.nativeClientBaseUrl);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for nativeClientBaseUrl
+    *******************************************************************************/
+   public void setNativeClientBaseUrl(String nativeClientBaseUrl)
+   {
+      this.nativeClientBaseUrl = nativeClientBaseUrl;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for nativeClientBaseUrl
+    *******************************************************************************/
+   public OAuth2AuthenticationMetaData withNativeClientBaseUrl(String nativeClientBaseUrl)
+   {
+      this.nativeClientBaseUrl = nativeClientBaseUrl;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for additionalBearerAudiences - more client ids whose tokens (from the baseUrl issuer) are accepted as bearer tokens.
+    *******************************************************************************/
+   public List<String> getAdditionalBearerAudiences()
+   {
+      return (this.additionalBearerAudiences);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for additionalBearerAudiences
+    *******************************************************************************/
+   public void setAdditionalBearerAudiences(List<String> additionalBearerAudiences)
+   {
+      this.additionalBearerAudiences = additionalBearerAudiences;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for additionalBearerAudiences
+    *******************************************************************************/
+   public OAuth2AuthenticationMetaData withAdditionalBearerAudiences(List<String> additionalBearerAudiences)
+   {
+      this.additionalBearerAudiences = additionalBearerAudiences;
       return (this);
    }
 

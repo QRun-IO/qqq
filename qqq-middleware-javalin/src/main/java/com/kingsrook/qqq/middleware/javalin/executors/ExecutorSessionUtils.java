@@ -36,6 +36,7 @@ import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.Auth0AuthenticationModule;
+import com.kingsrook.qqq.backend.core.modules.authentication.implementations.OAuth2AuthenticationModule;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.collections.MapBuilder;
 import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
@@ -156,7 +157,11 @@ public class ExecutorSessionUtils
          /////////////////////////////////////////////////////////////////////////////////
          // refresh cookies only for sessions created by the authentication module    //
          /////////////////////////////////////////////////////////////////////////////////
-         if(inProcessToken == null && authenticationModule.usesSessionIdCookie())
+         /////////////////////////////////////////////////////////////////////////////
+         // a bearer-token session (OAuth2 JWT) is stateless - the client sends the //
+         // token on each request, so it gets no cookie                             //
+         /////////////////////////////////////////////////////////////////////////////
+         if(inProcessToken == null && authenticationModule.usesSessionIdCookie() && !"true".equals(session.getValue(OAuth2AuthenticationModule.BEARER_SESSION_VALUE_KEY)))
          {
             QJavalinImplementation.setSessionCookie(context, SESSION_ID_COOKIE_NAME, session.getIdReference());
          }

@@ -32,9 +32,13 @@ import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.esb.health.EsbHealthChecks;
+import com.kingsrook.qqq.esb.health.EsbOutboxHealthChecks;
+import com.kingsrook.qqq.esb.outbox.EsbOutboxTable;
+import com.kingsrook.qqq.esb.outbox.EsbProcessedMessageTable;
 import com.kingsrook.qqq.esb.publish.EsbProcessLifecycleListener;
 import com.kingsrook.qqq.esb.publish.EsbRecordChangeListener;
 import com.kingsrook.qqq.esb.runtime.EsbRuntimeService;
@@ -64,6 +68,9 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
    private static final String INSTANCE_NAME_PATTERN = "[A-Za-z0-9._~-]+";
 
    private String realtimeDestinationName = "qqq.realtime";
+
+   private EsbOutboxConfig outbox = new EsbOutboxConfig();
+   private EsbDedupeConfig dedupe = new EsbDedupeConfig();
    private String                               instanceName;
    private Map<String, QEsbProviderMetaData>    providers    = new LinkedHashMap<>();
    private Map<String, QEsbDestinationMetaData> destinations = new LinkedHashMap<>();
@@ -112,6 +119,10 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
    public void enrich(QInstance qInstance)
    {
       EsbHealthChecks.register(qInstance);
+      if(isOutboxEnabled())
+      {
+         EsbOutboxHealthChecks.register(qInstance);
+      }
       QMetaDataVariableInterpreter interpreter = new QMetaDataVariableInterpreter();
       for(QEsbProviderMetaData provider : CollectionUtils.nonNullMap(providers).values())
       {
@@ -177,6 +188,34 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
       }
 
       validateUniqueSubscriptionNames(qInstance, validator);
+      if(isOutboxEnabled())
+      {
+         validateTable(qInstance, validator, "outbox", outbox.getTableName(), EsbOutboxTable.FIELD_UUID, EsbOutboxTable.FIELD_DESTINATION_NAME, EsbOutboxTable.FIELD_EVENT_JSON, EsbOutboxTable.FIELD_STATUS, EsbOutboxTable.FIELD_ATTEMPTS,
+            EsbOutboxTable.FIELD_NEXT_ATTEMPT_AT, EsbOutboxTable.FIELD_LEASE_OWNER, EsbOutboxTable.FIELD_LEASE_EXPIRES_AT, EsbOutboxTable.FIELD_LAST_ERROR, EsbOutboxTable.FIELD_CREATE_DATE, EsbOutboxTable.FIELD_SENT_AT);
+      }
+      if(isDedupeEnabled())
+      {
+         validateTable(qInstance, validator, "processed-message", dedupe.getTableName(), EsbProcessedMessageTable.FIELD_TRIGGER_NAME, EsbProcessedMessageTable.FIELD_MESSAGE_ID, EsbProcessedMessageTable.FIELD_PROCESSED_AT);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** An enabled outbox or dedupe needs its table in the instance, with the
+    ** fields that EsbOutboxTable / EsbProcessedMessageTable define.
+    *******************************************************************************/
+   private static void validateTable(QInstance qInstance, QInstanceValidator validator, String what, String tableName, String... fieldNames)
+   {
+      QTableMetaData table = StringUtils.hasContent(tableName) ? qInstance.getTable(tableName) : null;
+      if(!validator.assertCondition(table != null, "The ESB " + what + " table " + tableName + " is not in the instance (add it with its defineTable helper)."))
+      {
+         return;
+      }
+      for(String fieldName : fieldNames)
+      {
+         validator.assertCondition(table.getFields().containsKey(fieldName), "The ESB " + what + " table " + tableName + " is missing its " + fieldName + " field.");
+      }
    }
 
 
@@ -404,4 +443,93 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
       setRealtimeDestinationName(realtimeDestinationName);
       return (this);
    }
+
+
+
+   /*******************************************************************************
+    ** Whether the transactional outbox is on (see EsbOutboxConfig).
+    *******************************************************************************/
+   @JsonIgnore
+   public boolean isOutboxEnabled()
+   {
+      return (outbox != null && Boolean.TRUE.equals(outbox.getEnabled()));
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether idempotent (deduplicating) triggers are on (see EsbDedupeConfig).
+    *******************************************************************************/
+   @JsonIgnore
+   public boolean isDedupeEnabled()
+   {
+      return (dedupe != null && Boolean.TRUE.equals(dedupe.getEnabled()));
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for outbox - the transactional outbox settings (off by default).
+    ** Not serialized.
+    *******************************************************************************/
+   @JsonIgnore
+   public EsbOutboxConfig getOutbox()
+   {
+      return (this.outbox);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for outbox
+    *******************************************************************************/
+   public void setOutbox(EsbOutboxConfig outbox)
+   {
+      this.outbox = outbox;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for outbox
+    *******************************************************************************/
+   public EsbInstanceMetaData withOutbox(EsbOutboxConfig outbox)
+   {
+      this.outbox = outbox;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for dedupe - the idempotent-trigger settings (off by default).  Not
+    ** serialized.
+    *******************************************************************************/
+   @JsonIgnore
+   public EsbDedupeConfig getDedupe()
+   {
+      return (this.dedupe);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for dedupe
+    *******************************************************************************/
+   public void setDedupe(EsbDedupeConfig dedupe)
+   {
+      this.dedupe = dedupe;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for dedupe
+    *******************************************************************************/
+   public EsbInstanceMetaData withDedupe(EsbDedupeConfig dedupe)
+   {
+      this.dedupe = dedupe;
+      return (this);
+   }
+
 }

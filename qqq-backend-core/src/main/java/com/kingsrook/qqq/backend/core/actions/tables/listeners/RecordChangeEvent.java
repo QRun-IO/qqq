@@ -42,6 +42,11 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
  **
  ** transaction: the caller's transaction, or null if the action ran without one.
  **
+ ** notificationsSuppressed: true when the write asked for no record change
+ ** events (omitRecordChangeEvents, or a restore that doesn't publish), so only
+ ** required listeners run.  A listener that is required for some work (e.g., a
+ ** transactional outbox) checks it to skip its notification part.
+ **
  ** One event object is given to every listener that applies to it, in turn -
  ** so listeners must treat it (and its records) as read-only.
  *******************************************************************************/
@@ -52,6 +57,7 @@ public class RecordChangeEvent
    private List<QRecord>       records;
    private List<QRecord>       oldRecords;
    private QBackendTransaction transaction;
+   private boolean             notificationsSuppressed = false;
 
 
 
@@ -205,6 +211,38 @@ public class RecordChangeEvent
    public RecordChangeEvent withTransaction(QBackendTransaction transaction)
    {
       this.transaction = transaction;
+      return (this);
+   }
+
+
+
+
+   /*******************************************************************************
+    ** Getter for notificationsSuppressed - see the class comment.
+    *******************************************************************************/
+   public boolean getNotificationsSuppressed()
+   {
+      return (this.notificationsSuppressed);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for notificationsSuppressed
+    *******************************************************************************/
+   public void setNotificationsSuppressed(boolean notificationsSuppressed)
+   {
+      this.notificationsSuppressed = notificationsSuppressed;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for notificationsSuppressed
+    *******************************************************************************/
+   public RecordChangeEvent withNotificationsSuppressed(boolean notificationsSuppressed)
+   {
+      this.notificationsSuppressed = notificationsSuppressed;
       return (this);
    }
 

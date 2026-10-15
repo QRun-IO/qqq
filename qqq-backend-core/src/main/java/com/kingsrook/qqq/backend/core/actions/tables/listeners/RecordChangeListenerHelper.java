@@ -93,6 +93,11 @@ public class RecordChangeListenerHelper
          return;
       }
 
+      if(requiredOnly)
+      {
+         event.setNotificationsSuppressed(true);
+      }
+
       for(QCodeReference codeReference : qInstance.getRecordChangeListeners())
       {
          RecordChangeListenerInterface listener = loadIfApplies(codeReference, event.getTableName(), event.getType());

@@ -22,6 +22,7 @@ package com.kingsrook.qqq.esb.publish;
 
 
 import java.util.List;
+import java.util.Locale;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -57,6 +58,15 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  * is logged, counted once per event with EsbStats.publishFailed, and returned
  * in the output - so a failed publish can't fail the record write or process
  * that asked for it.  Sent messages are counted with EsbStats.published.
+ *
+ * A send that failed because of a failover or a stale session (a commit
+ * rolled back or left in doubt by a failover, or a session or connection that
+ * is no longer usable) is retried once, on a fresh session, if the provider
+ * is connected.  Other failures (e.g., the broker rejected the batch) are not.  That can deliver a message twice if the first commit reached the
+ * broker; every message carries a stable qqq_message_id, so consumers dedupe.
+ *
+ * sendOutbox is the outbox relay's path: it throws instead, so the relay can
+ * retry the rows.
  *
  * Destinations are looked up (and a provider's first connection is made) from
  * the QContext's instance, so call it with a QContext.
@@ -102,11 +112,23 @@ public final class EsbPublisher
 
       try
       {
-         send(getDestination(destinationName), events);
+         send(getDestination(destinationName), events, null);
       }
       catch(Exception | LinkageError e)
       {
-         return (failed(destinationName, events.size(), e));
+         if(!isRetryable(destinationName, e))
+         {
+            return (failed(destinationName, events.size(), e));
+         }
+         try
+         {
+            LOG.info("Retrying an ESB publish on a fresh session", logPair("destinationName", destinationName), logPair("error", getErrorText(e)));
+            send(getDestination(destinationName), events, null);
+         }
+         catch(Exception | LinkageError retryException)
+         {
+            return (failed(destinationName, events.size(), retryException));
+         }
       }
 
       for(int i = 0; i < events.size(); i++)
@@ -115,6 +137,65 @@ public final class EsbPublisher
       }
 
       return (new EsbPublishOutput().withSuccess(true).withSent(events.size()));
+   }
+
+
+
+   /*******************************************************************************
+    ** Send the events, in order, in one broker transaction, each with its
+    ** message id (index-aligned) as its qqq_message_id - for the outbox relay.
+    ** Throws on any failure (nothing is then sent); does not count.
+    *******************************************************************************/
+   public void sendOutbox(String destinationName, List<EsbEvent> events, List<String> messageIds) throws QException, JMSException
+   {
+      send(getDestination(destinationName), events, messageIds);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether a failed publish is worth one retry: it failed because of a
+    ** failover or a stale session (see the class comment), and the provider is
+    ** connected now.
+    *******************************************************************************/
+   static boolean isRetryable(String destinationName, Throwable throwable)
+   {
+      if(!isFailoverOrStaleSession(throwable))
+      {
+         return (false);
+      }
+      try
+      {
+         return (EsbConnectionManager.getInstance().isConnected(getDestination(destinationName).getProviderName()));
+      }
+      catch(Exception e)
+      {
+         return (false);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether a failure (or one of its causes) is a session or connection that is
+    ** no longer usable, or a transaction rolled back - or left in doubt - by a
+    ** failover.
+    *******************************************************************************/
+   static boolean isFailoverOrStaleSession(Throwable throwable)
+   {
+      for(Throwable cause = throwable; cause != null; cause = (cause.getCause() == cause ? null : cause.getCause()))
+      {
+         if(cause instanceof jakarta.jms.IllegalStateException)
+         {
+            return (true);
+         }
+         String message = cause.getMessage() == null ? "" : cause.getMessage().toLowerCase(Locale.ROOT);
+         if(message.contains("failover") || message.contains("outcome unknown") || message.contains("no longer current"))
+         {
+            return (true);
+         }
+      }
+      return (false);
    }
 
 
@@ -165,7 +246,7 @@ public final class EsbPublisher
     ** Send on an exclusive pooled session. Close the producer before committing;
     ** any send, producer cleanup, or commit failure discards the whole lease.
     *******************************************************************************/
-   private static void send(QEsbDestinationMetaData destination, List<EsbEvent> events) throws QException, JMSException
+   private static void send(QEsbDestinationMetaData destination, List<EsbEvent> events, List<String> messageIds) throws QException, JMSException
    {
       EsbConnectionManager connectionManager = EsbConnectionManager.getInstance();
       try(EsbConnectionManager.PublishingSessionLease lease = connectionManager.borrowPublishingSession(destination.getProviderName()))
@@ -174,9 +255,10 @@ public final class EsbPublisher
          try(MessageProducer producer = session.createProducer(connectionManager.resolve(session, destination)))
          {
             producer.setDeliveryMode(DeliveryMode.PERSISTENT);
-            for(EsbEvent event : events)
+            for(int i = 0; i < events.size(); i++)
             {
-               producer.send(EsbEventCodec.toMessage(session, event));
+               String messageId = (messageIds == null) ? null : messageIds.get(i);
+               producer.send(EsbEventCodec.toMessage(session, events.get(i), messageId));
             }
          }
          lease.commit();

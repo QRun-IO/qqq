@@ -31,6 +31,8 @@ import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeEvent
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeListenerInterface;
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeType;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
@@ -40,6 +42,9 @@ import com.kingsrook.qqq.esb.envelope.EsbEventFactory;
 import com.kingsrook.qqq.esb.model.EsbTableEvent;
 import com.kingsrook.qqq.esb.model.EsbTableMetaData;
 import com.kingsrook.qqq.esb.model.EsbTablePublication;
+import com.kingsrook.qqq.esb.outbox.EsbOutbox;
+import com.kingsrook.qqq.esb.stats.EsbStats;
+import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
@@ -56,10 +61,32 @@ import com.kingsrook.qqq.esb.model.EsbTablePublication;
  * Otherwise (the write is already stored) they are sent right away.  Sending
  * never fails the write: EsbPublisher logs and counts failures.
  *
+ * With the transactional outbox enabled (EsbOutboxConfig), the events are
+ * instead written to the outbox table - in the write's transaction when it is
+ * on the outbox's backend (see EsbOutbox) - and EsbOutboxRelay publishes them.
+ * The listener is then required (isRequired): if the outbox write fails in a
+ * transaction, the record write fails too, so an event is never lost while
+ * its record commits.  Without a transaction the records are already stored,
+ * so a failed outbox write is logged and counted instead.
+ *
  * Holds no state (actions load a new instance for each event).
  *******************************************************************************/
 public class EsbRecordChangeListener implements RecordChangeListenerInterface
 {
+   private static final QLogger LOG = QLogger.getLogger(EsbRecordChangeListener.class);
+
+
+
+   /*******************************************************************************
+    ** Required while the outbox is enabled (see the class comment).
+    *******************************************************************************/
+   @Override
+   public boolean isRequired()
+   {
+      return (EsbOutbox.getEnabledConfig(QContext.getQInstance()) != null);
+   }
+
+
 
    /*******************************************************************************
     ** Whether the table (in the QContext's instance) has a publication for this
@@ -78,10 +105,10 @@ public class EsbRecordChangeListener implements RecordChangeListenerInterface
     ** destination - after the caller's transaction commits, if there is one.
     *******************************************************************************/
    @Override
-   public void onRecordsChanged(RecordChangeEvent event)
+   public void onRecordsChanged(RecordChangeEvent event) throws QException
    {
       Set<String> destinationNames = getDestinationNames(event.getTableName(), event.getType());
-      if(destinationNames.isEmpty())
+      if(destinationNames.isEmpty() || event.getNotificationsSuppressed())
       {
          return;
       }
@@ -97,6 +124,12 @@ public class EsbRecordChangeListener implements RecordChangeListenerInterface
             .allMatch(EsbTablePublication::getIncludeClassified);
          eventsByDestination.put(destination, eventsByPolicy.computeIfAbsent(includeClassified, include -> makeEvents(event, include)));
       }
+      if(EsbOutbox.getEnabledConfig(QContext.getQInstance()) != null)
+      {
+         writeToOutbox(event, eventsByDestination);
+         return;
+      }
+
       Runnable publish = () -> eventsByDestination.forEach((destination, events) -> publish(Set.of(destination), events));
 
       if(event.getTransaction() != null)
@@ -106,6 +139,31 @@ public class EsbRecordChangeListener implements RecordChangeListenerInterface
       else
       {
          publish.run();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Write the events to the outbox.  In a transaction a failure propagates (so
+    ** the caller rolls back); without one it is logged and counted.
+    *******************************************************************************/
+   private static void writeToOutbox(RecordChangeEvent event, Map<String, List<EsbEvent>> eventsByDestination) throws QException
+   {
+      if(event.getTransaction() != null)
+      {
+         EsbOutbox.write(event.getTableName(), event.getTransaction(), eventsByDestination);
+         return;
+      }
+
+      try
+      {
+         EsbOutbox.write(event.getTableName(), null, eventsByDestination);
+      }
+      catch(Exception e)
+      {
+         LOG.error("Could not write ESB events to the outbox for records that are already stored; the events are lost", e, logPair("tableName", event.getTableName()), logPair("type", event.getType()));
+         eventsByDestination.forEach((destination, events) -> events.forEach(esbEvent -> EsbStats.getInstance().publishFailed(destination, e)));
       }
    }
 

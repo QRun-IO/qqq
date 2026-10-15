@@ -133,6 +133,9 @@ Ready for CLI, TUI and native clients (see `UI-API-CLIENTS.md`).
   names, for shareable tables) and `bulkInsert`/`bulkEdit`/`bulkEditWithFile`/`bulkDelete`
   (`ProcessCapabilityV1`). Each is computed for the current user, so clients no longer hard-code
   process names. (The existing `capabilities` list of backend capabilities is unchanged.)
+  `audits.available` depends only on whether the user can run the audit process or read the audit
+  table; `level` is informational (a table at level `NONE` gets no automatic audits, but code can
+  still write audits for its records).
 - **Field validation rules.** Each field adds `validation` (`FieldValidationV1`): `required`,
   `maxLength` with `tooLongBehavior`, `minValue`/`maxValue` with `minInclusive`/`maxInclusive`
   (only ranges the server refuses), and `pattern` with `patternMessage`. Core adds

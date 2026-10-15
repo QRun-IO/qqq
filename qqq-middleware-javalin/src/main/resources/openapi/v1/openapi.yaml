@@ -143,6 +143,7 @@ components:
         available:
           description: "True when the table is audited and the user can read its audits\
             \ one of the two ways."
+          nullable: true
           type: "boolean"
         detailTableName:
           description: "The audit detail table (field changes), joined to tableName."
@@ -1066,6 +1067,7 @@ components:
         maxInclusive:
           description: "Whether maxValue itself is accepted (false: the value must\
             \ be less)."
+          nullable: true
           type: "boolean"
         maxLength:
           description: "For string fields, the most characters the field stores. \
@@ -1078,6 +1080,7 @@ components:
         minInclusive:
           description: "Whether minValue itself is accepted (false: the value must\
             \ be greater)."
+          nullable: true
           type: "boolean"
         minValue:
           description: "For number fields, the smallest value accepted (plain digits,\
@@ -1093,6 +1096,7 @@ components:
           type: "string"
         required:
           description: "True when a value is required."
+          nullable: true
           type: "boolean"
         tooLongBehavior:
           description: "With maxLength: ERROR (a longer value is refused), TRUNCATE\
@@ -2401,6 +2405,7 @@ components:
       properties:
         available:
           description: "True when the process exists and the user may run it."
+          nullable: true
           type: "boolean"
         processName:
           description: "The process to run (present only when available)."
@@ -3904,6 +3909,7 @@ components:
         available:
           description: "True when the user may list saved views (queryProcessName\
             \ can run)."
+          nullable: true
           type: "boolean"
         deleteProcessName:
           description: "Deletes a view; absent when the user may not delete views."
@@ -3920,6 +3926,7 @@ components:
       properties:
         available:
           description: "True when the table is shareable and the user may list shares."
+          nullable: true
           type: "boolean"
         deleteProcessName:
           description: "Removes a share."
@@ -4477,6 +4484,7 @@ components:
                 available:
                   description: "True when the table is audited and the user can read\
                     \ its audits one of the two ways."
+                  nullable: true
                   type: "boolean"
                 detailTableName:
                   description: "The audit detail table (field changes), joined to\
@@ -4499,6 +4507,7 @@ components:
                 available:
                   description: "True when the process exists and the user may run\
                     \ it."
+                  nullable: true
                   type: "boolean"
                 processName:
                   description: "The process to run (present only when available)."
@@ -4510,6 +4519,7 @@ components:
                 available:
                   description: "True when the process exists and the user may run\
                     \ it."
+                  nullable: true
                   type: "boolean"
                 processName:
                   description: "The process to run (present only when available)."
@@ -4521,6 +4531,7 @@ components:
                 available:
                   description: "True when the process exists and the user may run\
                     \ it."
+                  nullable: true
                   type: "boolean"
                 processName:
                   description: "The process to run (present only when available)."
@@ -4532,6 +4543,7 @@ components:
                 available:
                   description: "True when the process exists and the user may run\
                     \ it."
+                  nullable: true
                   type: "boolean"
                 processName:
                   description: "The process to run (present only when available)."
@@ -4543,6 +4555,7 @@ components:
                 available:
                   description: "True when the user may list saved views (queryProcessName\
                     \ can run)."
+                  nullable: true
                   type: "boolean"
                 deleteProcessName:
                   description: "Deletes a view; absent when the user may not delete\
@@ -4562,6 +4575,7 @@ components:
                 available:
                   description: "True when the table is shareable and the user may\
                     \ list shares."
+                  nullable: true
                   type: "boolean"
                 deleteProcessName:
                   description: "Removes a share."
@@ -5681,6 +5695,7 @@ components:
                       maxInclusive:
                         description: "Whether maxValue itself is accepted (false:\
                           \ the value must be less)."
+                        nullable: true
                         type: "boolean"
                       maxLength:
                         description: "For string fields, the most characters the field\
@@ -5693,6 +5708,7 @@ components:
                       minInclusive:
                         description: "Whether minValue itself is accepted (false:\
                           \ the value must be greater)."
+                        nullable: true
                         type: "boolean"
                       minValue:
                         description: "For number fields, the smallest value accepted\
@@ -5709,6 +5725,7 @@ components:
                         type: "string"
                       required:
                         description: "True when a value is required."
+                        nullable: true
                         type: "boolean"
                       tooLongBehavior:
                         description: "With maxLength: ERROR (a longer value is refused),\

@@ -41,7 +41,7 @@ public class HtmlText
       }
       Document document = Jsoup.parse(html);
       document.select("script, style, template").remove();
-      document.select("p, div, li, h1, h2, h3, h4, h5, h6, tr, blockquote, pre").after("\n");
+      document.select("br, p, div, li, h1, h2, h3, h4, h5, h6, tr, blockquote, pre").after("\n");
       return (document.body().wholeText().replace('\u00a0', ' ').replaceAll("[ \t]+\n", "\n").replaceAll("\n{3,}", "\n\n").strip());
    }
 }

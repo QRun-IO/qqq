@@ -49,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed the per-RC Next waiver owner-approval gate by owner decision on 2026-10-13; releases no longer require a comment on #798. The seven Next-owned successor features report missing/pending acceptance evidence without blocking releases. Failed tests and invalid supplied receipts still block strict coverage; non-Next requirements are unchanged.
 
 ### Fixed
+- The cluster bus, the table state provider and the server's SIGTERM drain hook no longer hold a `QInstance` (or the server) strongly. Dropped instances were kept alive for the life of the JVM, which grew test suites that build many instances.
 - **Cluster:** with shared state, a one-time secret is handed out only once. The producing node used to keep a local copy and could hand the secret out again after another node's status poll had taken it from the shared store.
 - **Cluster:** a cancel requested on another node is no longer lost. The node running an async step re-read the stored cancel flag and then rewrote the status row, so a cancel stored between that read and the write was overwritten. Cancels now also write a separate marker that only cancels write.
 - **ESB outbox:** a row whose destination is no longer configured now counts attempts and goes `DEAD` after `maxAttempts`. Before, it was treated as a broker outage: it stayed `PENDING` forever, blocked its destination and logged a warning on every pass.

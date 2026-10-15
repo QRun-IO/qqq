@@ -38,7 +38,7 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
-import com.kingsrook.qqq.backend.core.state.InMemoryStateProvider;
+import com.kingsrook.qqq.backend.core.state.QStateProviders;
 import com.kingsrook.qqq.backend.core.state.StateProviderInterface;
 import com.kingsrook.qqq.backend.core.state.StateType;
 import com.kingsrook.qqq.backend.core.state.UUIDAndTypeStateKey;
@@ -99,7 +99,8 @@ public class AsyncJobManager
       {
          asyncJobStatus.setStateAccess(ProcessStateAccess.capture(jobName, processUUID));
       }
-      getStateProvider().put(uuidAndTypeStateKey, asyncJobStatus);
+      AsyncJobRegistry.register(jobUUID, asyncJobStatus);
+      AsyncJobRegistry.store(jobUUID, asyncJobStatus, true);
 
       try
       {
@@ -171,7 +172,7 @@ public class AsyncJobManager
          LOG.debug("Starting job " + uuidAndTypeStateKey.getUuid());
          T result = asyncJob.run(new AsyncJobCallback(uuidAndTypeStateKey.getUuid(), asyncJobStatus));
          asyncJobStatus.setState(AsyncJobState.COMPLETE);
-         getStateProvider().put(uuidAndTypeStateKey, asyncJobStatus);
+         AsyncJobRegistry.store(uuidAndTypeStateKey.getUuid(), asyncJobStatus, true);
          LOG.debug("Completed job " + uuidAndTypeStateKey.getUuid());
          return (result);
       }
@@ -186,7 +187,7 @@ public class AsyncJobManager
          {
             asyncJobStatus.setCaughtException(new QException("Caught throwable", t));
          }
-         getStateProvider().put(uuidAndTypeStateKey, asyncJobStatus);
+         AsyncJobRegistry.store(uuidAndTypeStateKey.getUuid(), asyncJobStatus, true);
 
          //////////////////////////////////////////////////////
          // if user facing, just log an info, warn otherwise //
@@ -196,6 +197,7 @@ public class AsyncJobManager
       }
       finally
       {
+         AsyncJobRegistry.unregister(uuidAndTypeStateKey.getUuid());
          Thread.currentThread().setName(originalThreadName);
          QContext.clear();
       }
@@ -210,7 +212,7 @@ public class AsyncJobManager
    public Optional<AsyncJobStatus> getJobStatus(String uuid)
    {
       UUIDAndTypeStateKey uuidAndTypeStateKey = new UUIDAndTypeStateKey(UUID.fromString(uuid), StateType.ASYNC_JOB_STATUS);
-      return (getStateProvider().get(AsyncJobStatus.class, uuidAndTypeStateKey));
+      return (getStateProvider().get(AsyncJobStatus.class, uuidAndTypeStateKey).map(AsyncJobRegistry::checkLost));
    }
 
 
@@ -247,11 +249,11 @@ public class AsyncJobManager
     *******************************************************************************/
    static StateProviderInterface getStateProvider()
    {
-      // TODO - read this from somewhere in meta data eh?
-      return InMemoryStateProvider.getInstance();
-
-      // todo - by using JSON serialization internally, this makes stupidly large payloads and crashes things.
-      // return TempFileStateProvider.getInstance();
+      //////////////////////////////////////////////////////////////////////////
+      // the instance's StateProviderMetaData (shared across nodes), else the //
+      // in-memory provider (spec 2026-10-15-cluster-ha-design, section B)    //
+      //////////////////////////////////////////////////////////////////////////
+      return (QStateProviders.get());
    }
 
 
@@ -262,7 +264,7 @@ public class AsyncJobManager
    public void cancelJob(String jobUUID)
    {
       Optional<AsyncJobStatus> jobStatus = getJobStatus(jobUUID);
-      jobStatus.ifPresent(asyncJobStatus -> asyncJobStatus.setCancelRequested(true));
+      jobStatus.ifPresent(asyncJobStatus -> AsyncJobRegistry.requestCancel(UUID.fromString(jobUUID), asyncJobStatus));
    }
 
 

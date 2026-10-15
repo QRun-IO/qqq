@@ -21,6 +21,7 @@
 package com.kingsrook.qqq.backend.core.model.metadata.fields;
 
 
+import java.io.Serializable;
 import java.util.Collections;
 import java.util.List;
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -40,7 +41,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
  ** do (see QValueFormatter).
  **
  *******************************************************************************/
-public interface FieldBehavior<T extends FieldBehavior<T>>
+public interface FieldBehavior<T extends FieldBehavior<T>> extends Serializable
 {
 
    /*******************************************************************************

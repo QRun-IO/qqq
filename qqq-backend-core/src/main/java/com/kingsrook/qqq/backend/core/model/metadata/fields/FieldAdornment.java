@@ -32,7 +32,7 @@ import com.kingsrook.qqq.backend.core.utils.Pair;
 /*******************************************************************************
  ** Special fancy things that fields might do in UIs.
  *******************************************************************************/
-public class FieldAdornment
+public class FieldAdornment implements Serializable
 {
    private AdornmentType             type;
    private Map<String, Serializable> values = new HashMap<>();

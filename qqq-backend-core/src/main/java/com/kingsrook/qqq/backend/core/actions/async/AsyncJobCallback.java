@@ -26,8 +26,6 @@ import java.util.UUID;
 import com.kingsrook.qqq.backend.core.jobs.progress.JobLogLine;
 import com.kingsrook.qqq.backend.core.jobs.progress.JobProgress;
 import com.kingsrook.qqq.backend.core.jobs.progress.JobProgressSnapshot;
-import com.kingsrook.qqq.backend.core.state.StateType;
-import com.kingsrook.qqq.backend.core.state.UUIDAndTypeStateKey;
 
 
 /*******************************************************************************
@@ -168,7 +166,11 @@ public class AsyncJobCallback
     *******************************************************************************/
    protected void storeUpdatedStatus()
    {
-      AsyncJobManager.getStateProvider().put(new UUIDAndTypeStateKey(jobUUID, StateType.ASYNC_JOB_STATUS), asyncJobStatus);
+      ///////////////////////////////////////////////////////////////////////
+      // throttled when state is shared across nodes (AsyncJobRegistry); a //
+      // cancel requested on another node is read back before each write   //
+      ///////////////////////////////////////////////////////////////////////
+      AsyncJobRegistry.store(jobUUID, asyncJobStatus, false);
    }
 
 
@@ -176,12 +178,12 @@ public class AsyncJobCallback
    /*******************************************************************************
     ** Check if the asyncJobStatus had a cancellation requested.
     **
-    ** TODO - concern about multiple threads writing this object to a non-in-memory
-    **  state provider, and this value getting lost...
+    ** With shared (multi-node) state, a cancel stored by any node is seen here
+    ** (AsyncJobRegistry checks the store at most once a second).
     *******************************************************************************/
    public boolean wasCancelRequested()
    {
-      return (this.asyncJobStatus.getCancelRequested());
+      return (AsyncJobRegistry.wasCancelRequested(jobUUID, this.asyncJobStatus));
    }
 
 

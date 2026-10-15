@@ -69,7 +69,11 @@ public class BulkInsertMapping implements Serializable
 
    private List<String> mappedAssociations = new ArrayList<>();
 
-   private Memoization<Pair<String, String>, Boolean> shouldProcessFieldForTable = new Memoization<>();
+   ////////////////////////////////////////////////////////////////////
+   // a cache - transient so the mapping can live in process state    //
+   // shared across nodes; rebuilt on first use after being read back //
+   ////////////////////////////////////////////////////////////////////
+   private transient Memoization<Pair<String, String>, Boolean> shouldProcessFieldForTable = new Memoization<>();
 
 
 
@@ -257,6 +261,10 @@ public class BulkInsertMapping implements Serializable
     ***************************************************************************/
    boolean shouldProcessFieldForTable(String fieldNameWithAssociationPrefix, String associationChain)
    {
+      if(shouldProcessFieldForTable == null)
+      {
+         shouldProcessFieldForTable = new Memoization<>();
+      }
       return shouldProcessFieldForTable.getResult(Pair.of(fieldNameWithAssociationPrefix, associationChain), p ->
       {
          List<String> fieldNameParts   = new ArrayList<>();

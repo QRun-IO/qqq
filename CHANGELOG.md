@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Durable jobs can no longer be launched (or auto-diverted) from an access-token session: a scoped credential (`QCredentialScope`, e.g. a PAT) or a bearer request. A worker could not hold the job to the token's scope, expiry or revocation, so a scoped token could otherwise start work that ran with the user's full permissions and outlived the token (review finding N1). Launch from an interactive sign-in instead; that path uses job grants.
+
 ### Added
 - **ESB transactional outbox (qqq-esb)**: with `EsbInstanceMetaData.withOutbox(new EsbOutboxConfig().withEnabled(true))`, table record-change events are written to an outbox table in the same backend transaction as the record write. A failed outbox write fails the write. A relay on every node claims rows with a lease (`FOR UPDATE SKIP LOCKED` on PostgreSQL) and publishes them in order per destination, with backoff retries. A row goes `DEAD` after `maxAttempts`; broker outages don't count as attempts. `SENT` rows are purged after `retentionDays`. Messages carry the row uuid as the `qqq_message_id` JMS property (at-least-once delivery). The `core.esb.outbox` health check reports DEAD and stale PENDING rows. Off by default. See `docs/esb/index.adoc`.
 - **ESB idempotent triggers (qqq-esb)**: with `EsbInstanceMetaData.withDedupe(new EsbDedupeConfig().withEnabled(true))`, triggers record processed message ids (`qqq_message_id`, else `ce_id`) in a processed-message table. They skip redelivered messages from failovers, lost commits and outbox re-sends. Off by default.

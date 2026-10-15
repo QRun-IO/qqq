@@ -246,7 +246,7 @@ public class DurableJobsRuntime
     *******************************************************************************/
    private void workerLoop()
    {
-      QContext.init(instance, new QSystemUserSession());
+      QContext.init(instance, new QSystemUserSession(instance));
       while(!draining.get() && !Thread.currentThread().isInterrupted())
       {
          try
@@ -288,7 +288,7 @@ public class DurableJobsRuntime
     *******************************************************************************/
    private void effectLoop()
    {
-      QContext.init(instance, new QSystemUserSession());
+      QContext.init(instance, new QSystemUserSession(instance));
       EffectDispatcher dispatcher = new EffectDispatcher(settings, store, podId, effectFaultHook);
       while(!draining.get() && !Thread.currentThread().isInterrupted())
       {
@@ -623,7 +623,7 @@ public class DurableJobsRuntime
    {
       try
       {
-         QContext.withTemporaryContext(new CapturedContext(instance, new QSystemUserSession()), body::run);
+         QContext.withTemporaryContext(new CapturedContext(instance, new QSystemUserSession(instance)), body::run);
       }
       catch(Exception e)
       {

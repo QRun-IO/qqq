@@ -30,6 +30,8 @@ import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.instrumentation.UnitOfWorkKind;
+import com.kingsrook.qqq.backend.core.instrumentation.UnitsOfWork;
 import com.kingsrook.qqq.backend.core.jobs.ScheduledJobs;
 import com.kingsrook.qqq.backend.core.logging.LogPair;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -174,8 +176,11 @@ public class SchedulerUtils
       runProcessInput.withPermissionBypass("scheduled process");
       QContext.pushAction(runProcessInput);
 
-      RunProcessAction runProcessAction = new RunProcessAction();
-      runProcessAction.execute(runProcessInput);
+      try(UnitsOfWork.Scope unitOfWork = UnitsOfWork.begin(UnitOfWorkKind.SCHEDULED_JOB, process.getName()))
+      {
+         RunProcessAction runProcessAction = new RunProcessAction();
+         runProcessAction.execute(runProcessInput);
+      }
    }
 
 

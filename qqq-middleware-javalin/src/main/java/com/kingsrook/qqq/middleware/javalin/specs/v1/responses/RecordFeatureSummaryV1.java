@@ -178,8 +178,8 @@ public class RecordFeatureSummaryV1 implements TableRecordFeaturesOutputInterfac
       properties.put("counts", new Schema().withType(Type.OBJECT).withAdditionalProperties(new Schema().withType(Type.INTEGER)));
       properties.put("owner", new Schema().withType(Type.STRING).withNullable(true));
       properties.put("assignee", new Schema().withType(Type.STRING).withNullable(true));
-      properties.put("presence", new Schema().withType(Type.ARRAY).withItems(new Schema().withType(Type.OBJECT).withAdditionalProperties(true)).withNullable(true));
-      properties.put("extensions", new Schema().withType(Type.OBJECT).withAdditionalProperties(new Schema().withType(Type.OBJECT).withAdditionalProperties(true)));
+      properties.put("presence", new Schema().withType(Type.ARRAY).withItems(new Schema().withType(Type.OBJECT).withAdditionalProperties(new Schema()).withDescription("Provider-defined presence entry: user identity and activity values.")).withNullable(true));
+      properties.put("extensions", new Schema().withType(Type.OBJECT).withAdditionalProperties(new Schema().withType(Type.OBJECT).withDescription("Provider-specific record feature extension values.").withAdditionalProperties(true)));
       return (new Schema().withType(Type.OBJECT).withProperties(properties));
    }
 

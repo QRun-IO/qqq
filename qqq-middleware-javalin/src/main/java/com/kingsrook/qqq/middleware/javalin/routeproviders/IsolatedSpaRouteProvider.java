@@ -37,6 +37,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.middleware.javalin.QJavalinRouteProviderInterface;
+import com.kingsrook.qqq.middleware.javalin.QJavalinUtils;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.authentication.RouteAuthenticatorInterface;
 import io.javalin.config.JavalinConfig;
 import io.javalin.http.Context;
@@ -355,6 +356,17 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
    private void handleNotFound(Context ctx, boolean checkExclusions)
    {
       String requestPath = ctx.path();
+
+      ///////////////////////////////////////////////////////////////////////////////
+      // an unknown UI API path is an API error (JSON, BasicErrorResponseV1), never //
+      // the SPA's HTML page - API clients must be able to parse every answer       //
+      ///////////////////////////////////////////////////////////////////////////////
+      if(requestPath.startsWith("/qqq/v1/") || requestPath.equals("/qqq/v1"))
+      {
+         QJavalinUtils.respondWithError(ctx, org.eclipse.jetty.http.HttpStatus.Code.NOT_FOUND, "No UI API operation " + ctx.method() + " " + requestPath);
+         ctx.contentType("application/json");
+         return;
+      }
 
       ////////////////////////////////////////////////////////////
       // For root SPAs, skip if path is excluded (e.g., /admin) //

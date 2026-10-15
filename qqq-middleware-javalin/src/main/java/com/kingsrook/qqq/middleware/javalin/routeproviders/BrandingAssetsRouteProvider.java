@@ -124,7 +124,17 @@ public final class BrandingAssetsRouteProvider implements QJavalinRouteProviderI
     ***************************************************************************/
    private void handle(Context context)
    {
-      QInstance current = instance;
+      serve(context, instance);
+   }
+
+
+
+   /***************************************************************************
+    ** Serve the declared branding image of a role (logo or icon) - shared by
+    ** the legacy /qqq/branding/{role} route and GET /qqq/v1/branding/{role}.
+    ***************************************************************************/
+   public static void serve(Context context, QInstance current)
+   {
       QBrandingMetaData branding = current == null ? null : current.getBranding();
       String role = context.pathParam("role");
       String declared = branding == null ? null : switch(role)
@@ -134,7 +144,7 @@ public final class BrandingAssetsRouteProvider implements QJavalinRouteProviderI
          default -> null;
       };
       String resource = imagePath(declared);
-      InputStream stream = resource == null ? null : getClass().getClassLoader().getResourceAsStream("material-dashboard-overlay" + resource);
+      InputStream stream = resource == null ? null : BrandingAssetsRouteProvider.class.getClassLoader().getResourceAsStream("material-dashboard-overlay" + resource);
       context.header("X-Content-Type-Options", "nosniff");
       context.header("Cache-Control", "no-cache");
       context.header("Content-Security-Policy", "default-src 'none'; sandbox");

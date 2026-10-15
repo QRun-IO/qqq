@@ -119,6 +119,9 @@ public class UiApiContract
          Map<String, Object> committedDocument = OpenApiCompatibilityChecker.parse(committedYaml);
          String              committedVersion  = OpenApiCompatibilityChecker.getInfoVersion(committedDocument);
 
+         problems.addAll(OpenApiCompatibilityChecker.findOperationIdProblems(committedDocument));
+         problems.addAll(OpenApiCompatibilityChecker.findDanglingRefs(committedDocument));
+
          if(committedVersion == null || !committedVersion.matches("\\d+\\.\\d+\\.\\d+"))
          {
             problems.add("info.version [" + committedVersion + "] is not a semantic version (MAJOR.MINOR.PATCH)");

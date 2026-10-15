@@ -24,13 +24,15 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.TreeMap;
 import com.kingsrook.qqq.backend.core.model.metadata.menus.items.QMenuItemBuiltIn;
 import com.kingsrook.qqq.backend.core.model.metadata.menus.items.QMenuItemInterface;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIExclude;
-import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIHasAdditionalProperties;
+import com.kingsrook.qqq.openapi.model.Schema;
+import com.kingsrook.qqq.openapi.model.Type;
 
 
 /***************************************************************************
@@ -115,7 +117,6 @@ public class TableMenuItem implements ToSchema
     **
     ***************************************************************************/
    @OpenAPIDescription("Item-type specific values: option for BUILT_IN, processName for RUN_PROCESS, fieldName for DOWNLOAD_FILE, and items (a list of menu items of this same shape) for SUB_MENU and SUB_LIST.")
-   @OpenAPIHasAdditionalProperties
    public Map<String, Object> getValues()
    {
       Map<String, Object> values = new LinkedHashMap<>();
@@ -136,5 +137,22 @@ public class TableMenuItem implements ToSchema
          }
       }
       return (values);
+   }
+
+
+   /*******************************************************************************
+    ** Add client-neutral display fields while preserving the original payload.
+    *******************************************************************************/
+   @Override
+   public Schema toSchema()
+   {
+      Schema schema = ToSchema.super.toSchema();
+      schema.getProperties().get("values").withProperties(new TreeMap<>(Map.of(
+         "option", new Schema().withType(Type.STRING),
+         "processName", new Schema().withType(Type.STRING),
+         "fieldName", new Schema().withType(Type.STRING),
+         "items", new Schema().withType(Type.ARRAY)
+            .withItems(new Schema().withRefToSchema("TableMenuItem")))));
+      return (schema);
    }
 }

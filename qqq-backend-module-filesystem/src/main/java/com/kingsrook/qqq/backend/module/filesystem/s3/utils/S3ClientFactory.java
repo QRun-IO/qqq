@@ -42,12 +42,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.module.filesystem.s3.model.metadata.S3BackendMetaData;
 import com.kingsrook.qqq.backend.module.filesystem.s3.model.metadata.S3ChecksumMode;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.checksums.RequestChecksumCalculation;
@@ -217,12 +219,39 @@ public class S3ClientFactory
 
 
    /*******************************************************************************
-    ** Static keys when both are given, else the SDK's default chain (environment,
-    ** profile, web identity, container and instance roles).
+    ** The credentials a backend's clients sign with, in order of precedence:
+    ** - credentialsProviderCode: the application's own AwsCredentialsProvider
+    **   (it owns expiry and refresh, e.g., an STS assume-role provider);
+    ** - accessKey + secretKey (+ sessionToken): static keys, or temporary
+    **   session credentials when a session token is given;
+    ** - else the SDK's default chain (environment, profile, web identity,
+    **   container and instance roles), which refreshes its own credentials.
+    **
+    ** A session token without both keys is a configuration error.
     *******************************************************************************/
-   private static AwsCredentialsProvider buildCredentialsProvider(S3BackendMetaData backendMetaData)
+   public static AwsCredentialsProvider buildCredentialsProvider(S3BackendMetaData backendMetaData)
    {
-      if(StringUtils.hasContent(backendMetaData.getAccessKey()) && StringUtils.hasContent(backendMetaData.getSecretKey()))
+      if(backendMetaData.getCredentialsProviderCode() != null)
+      {
+         Object provider = QCodeLoader.getAdHoc(Object.class, backendMetaData.getCredentialsProviderCode());
+         if(provider instanceof AwsCredentialsProvider awsCredentialsProvider)
+         {
+            return (awsCredentialsProvider);
+         }
+         throw (new IllegalArgumentException("credentialsProviderCode for the S3 backend could not be loaded as an AwsCredentialsProvider: " + backendMetaData.getCredentialsProviderCode().getName()));
+      }
+
+      boolean hasKeys = StringUtils.hasContent(backendMetaData.getAccessKey()) && StringUtils.hasContent(backendMetaData.getSecretKey());
+      if(StringUtils.hasContent(backendMetaData.getSessionToken()))
+      {
+         if(!hasKeys)
+         {
+            throw (new IllegalArgumentException("sessionToken for the S3 backend requires accessKey and secretKey"));
+         }
+         return (StaticCredentialsProvider.create(AwsSessionCredentials.create(backendMetaData.getAccessKey(), backendMetaData.getSecretKey(), backendMetaData.getSessionToken())));
+      }
+
+      if(hasKeys)
       {
          return (StaticCredentialsProvider.create(AwsBasicCredentials.create(backendMetaData.getAccessKey(), backendMetaData.getSecretKey())));
       }
@@ -328,6 +357,8 @@ public class S3ClientFactory
          String.valueOf(backendMetaData.getRegion()),
          String.valueOf(backendMetaData.getAccessKey()),
          String.valueOf(backendMetaData.getSecretKey()),
+         String.valueOf(backendMetaData.getSessionToken()),
+         backendMetaData.getCredentialsProviderCode() == null ? "null" : String.valueOf(backendMetaData.getCredentialsProviderCode().getName()),
          String.valueOf(backendMetaData.getPathStyleAccess()),
          String.valueOf(getEffectiveChecksumMode(backendMetaData)),
          String.valueOf(backendMetaData.getTlsVerify()),

@@ -60,7 +60,8 @@ or `QQQ_UI_API_STRICT_ROUTES=false` only logs them, as a temporary opt-out.
 
 | Extension | Prefix | Version | Owner |
 |---|---|---|---|
-| esb | `/esb` | 1.0.0 | qqq-esb (`EsbJavalinMetaDataProducer`) |
+| esb | `/esb` | 1.1.0 | qqq-esb (`EsbJavalinMetaDataProducer`) |
+| health | `/health` | 1.1.0 | qqq-middleware-javalin (`HealthJavalinMetaDataProducer`) |
 
 ## Legacy unversioned routes (deprecated)
 
@@ -78,6 +79,64 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
   announced here.
 
 ## Versions
+
+### 1.6.0 (QQQ 4.1.0-RC.15) - native clients
+Ready for CLI, TUI and native clients (see `UI-API-CLIENTS.md`).
+
+- Typed widget scalars, chart datasets and subheaders, child records and metadata, process metadata, records, and composite styles.
+- Documented adornment and frontend-component values, menu values, weekday arguments and realtime event data.
+- Added `Icon.semanticName` and `iconSemanticName` beside Material UI names; unknown names have no semantic mapping.
+- Added server-computed `footerText`, `text`, `contentAsText` and `overlayText` alongside display HTML.
+- Added `supplementalInstanceMetaData.uiSettings` for process, record-view, weekday and color/font settings; legacy Material Dashboard settings are deprecated in the schema.
+- Retained documented extension maps and added an explicit open-map regression allow-list. [Validation record](UI-API-TYPED-SESSION.md).
+
+- **Bearer authentication.** Every secured operation now accepts any one of three security
+  schemes: the `sessionUuidCookie` (web), `bearerAuth` (`Authorization: Bearer <token>`) and
+  `oauth2` (documented flows). A bearer token is either an OAuth2 access token (JWT) from the app's
+  provider, verified against the provider's JWKS (signature with RS/PS/ES algorithms only, exact
+  issuer, audience, `exp`/`nbf`), or a session UUID from `POST /manageSession`. A JWT gives the same
+  user, permissions and credential scope as a web sign-in (the same authentication customizer runs).
+  Bearer sessions are stateless: no cookie is set, and they end at the token's `exp`. Bearer JWTs are
+  **opt-in** (`OAuth2AuthenticationMetaData.bearerTokensEnabled`, default false). Only access tokens
+  are accepted (ID tokens, with `nonce`/`at_hash` or without `scope`/`azp`/`client_id`, are refused),
+  with a bounded lifetime (`bearerTokenMaxLifetimeSeconds`, default one day). The token's issuer must
+  be configured before any discovery, a discovered issuer must equal the configured one, and failed
+  discovery is cached with backoff. `POST /manageSession` never turns a bearer JWT into a cookie
+  session. Machine tokens without `sub` need `bearerMachineTokenUsernameSubject`.
+- `GET /metaData/authentication` OAuth2 values add `nativeClientId` and `nativeClientBaseUrl` (the
+  public client and issuer for native clients) and `bearerTokensAccepted`.
+- **operationIds.** Every operation has a stable `operationId` (core names in `UiApiOperationIds`;
+  extension operations get one derived from method and path). The contract check now fails on a
+  missing, duplicate or non-camelCase operationId, and on any change to a released operationId.
+  A credential scope's `operationIds` may name operations by either form (`METHOD /path` or the
+  operationId).
+- **Tags and servers.** The document lists its `tags` (extension operations are tagged with the
+  extension name) and a relative `servers` entry.
+- **One error schema.** `BasicErrorResponseV1` is the error body of every operation, core and
+  extensions: `error` (kept), plus `code` (BAD_REQUEST, UNAUTHENTICATED, PERMISSION_DENIED,
+  NOT_FOUND, CONFLICT, RATE_LIMITED, INTERNAL_ERROR, ERROR), `message`, `fieldErrors[]` and
+  `traceId` (also the `X-QQQ-Trace-Id` response header; a safe client `X-Request-Id` is reused).
+  Every operation declares 400, 404, 409 and 429, and secured operations 401 and 403, with this
+  schema. Every extension document carries the schema.
+- Added `GET /branding/{role}` (`logo`, `icon`; no session): the app's declared branding image, so a
+  login screen or a standalone frontend server needs no route outside `/qqq/v1` (#1035).
+- The contract check also fails on a dangling `$ref`; this fixed the API-aware document, whose
+  bulk-load schemas were missing, and the `$ref: null` that content-less responses (204) had.
+- Fixed: `GET /metaData/authentication` `values` is an `anyOf` (was `oneOf`, which no OAuth2 or
+  Auth0 answer could satisfy, because the empty shape matches every object).
+- An unknown path under `/qqq/v1` answers a JSON 404 (`BasicErrorResponseV1`, code `NOT_FOUND`)
+  instead of the single-page app's HTML, so API clients can parse every answer.
+- Extensions esb and health 1.1.0: operationIds, tags and the standard error responses.
+- **Typed table capabilities.** `GET /metaData/table/{tableName}` adds `clientCapabilities`
+  (`TableCapabilitiesV1`): `savedViews` (query/store/delete process names), `audits` (level, and the
+  process or the audit tables to read them with), `sharing` (list/insert/edit/delete process
+  names, for shareable tables) and `bulkInsert`/`bulkEdit`/`bulkEditWithFile`/`bulkDelete`
+  (`ProcessCapabilityV1`). Each is computed for the current user, so clients no longer hard-code
+  process names. (The existing `capabilities` list of backend capabilities is unchanged.)
+- **Field validation rules.** Each field adds `validation` (`FieldValidationV1`): `required`,
+  `maxLength` with `tooLongBehavior`, `minValue`/`maxValue` with `minInclusive`/`maxInclusive`
+  (only ranges the server refuses), and `pattern` with `patternMessage`. Core adds
+  `ValuePatternBehavior` (a field must match a regular expression), enforced on insert and update.
 
 ### 1.5.0 (QQQ 4.1.0-RC.9)
 - Fixed: `GET /table/{tableName}/apis` answered 500 on a server, because `GET /table/{tableName}/{primaryKey}`

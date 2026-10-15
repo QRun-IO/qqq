@@ -30,6 +30,7 @@ import java.util.UUID;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.jobs.DurableJobsTables;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
+import com.kingsrook.qqq.middleware.javalin.QJavalinUtils;
 import com.kingsrook.qqq.middleware.javalin.executors.JobsExecutor;
 import com.kingsrook.qqq.middleware.javalin.executors.io.JobsInput;
 import com.kingsrook.qqq.middleware.javalin.executors.io.JobsOutput;
@@ -254,7 +255,7 @@ public class JobsSpecV1 extends AbstractEndpointSpec<JobsInput, JobsOutput, Jobs
    {
       if(exception instanceof JobsExecutor.Conflict)
       {
-         context.status(409).result(JsonUtils.toJson(Map.of("error", exception.getMessage())));
+         QJavalinUtils.respondWithError(context, org.eclipse.jetty.http.HttpStatus.Code.CONFLICT, exception.getMessage());
       }
       else
       {

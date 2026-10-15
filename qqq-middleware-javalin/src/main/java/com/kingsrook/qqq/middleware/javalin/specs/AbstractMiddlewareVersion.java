@@ -22,12 +22,14 @@ package com.kingsrook.qqq.middleware.javalin.specs;
 
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.Function;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QRuntimeException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -39,18 +41,23 @@ import com.kingsrook.qqq.middleware.javalin.schemabuilder.SchemaBuilder;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.specs.extensions.MiddlewareSpecExtension;
 import com.kingsrook.qqq.middleware.javalin.specs.extensions.MiddlewareSpecExtensionsMetaData;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.BasicErrorResponseV1;
 import com.kingsrook.qqq.openapi.model.Components;
 import com.kingsrook.qqq.openapi.model.Contact;
 import com.kingsrook.qqq.openapi.model.Content;
 import com.kingsrook.qqq.openapi.model.Example;
 import com.kingsrook.qqq.openapi.model.Info;
 import com.kingsrook.qqq.openapi.model.Method;
+import com.kingsrook.qqq.openapi.model.OAuth2;
+import com.kingsrook.qqq.openapi.model.OAuth2Flow;
 import com.kingsrook.qqq.openapi.model.OpenAPI;
 import com.kingsrook.qqq.openapi.model.Path;
 import com.kingsrook.qqq.openapi.model.Response;
 import com.kingsrook.qqq.openapi.model.Schema;
 import com.kingsrook.qqq.openapi.model.SecurityScheme;
 import com.kingsrook.qqq.openapi.model.SecuritySchemeType;
+import com.kingsrook.qqq.openapi.model.Server;
+import com.kingsrook.qqq.openapi.model.Tag;
 import com.kingsrook.qqq.openapi.model.Type;
 import io.javalin.apibuilder.EndpointGroup;
 import io.javalin.http.Context;
@@ -239,7 +246,7 @@ public abstract class AbstractMiddlewareVersion
          {
             specs.add(MiddlewareSpecExtensionsMetaData.instantiateSpec(reference));
          }
-         OpenAPI openAPI = generateOpenAPIModel(basePath, specs, false, extension.getSemanticVersion());
+         OpenAPI openAPI = generateOpenAPIModel(basePath, specs, false, extension.getSemanticVersion(), spec -> extension.getName());
          openAPI.getInfo()
             .withTitle("QQQ Middleware API extension: " + extension.getName())
             .withDescription(extension.getDescription());
@@ -258,6 +265,42 @@ public abstract class AbstractMiddlewareVersion
     *******************************************************************************/
    private OpenAPI generateOpenAPIModel(String basePath, List<AbstractEndpointSpec<?, ?, ?>> list, boolean includeCoreComponents, String semanticVersion) throws QException
    {
+      Map<Class<?>, String> extensionNameByClass = new HashMap<>();
+      for(MiddlewareSpecExtension extension : extensions.values())
+      {
+         for(QCodeReference reference : CollectionUtils.nonNullList(extension.getSpecs()))
+         {
+            extensionNameByClass.put(reference.getName() == null ? null : classForName(reference.getName()), extension.getName());
+         }
+      }
+      return (generateOpenAPIModel(basePath, list, includeCoreComponents, semanticVersion, spec -> extensionNameByClass.get(spec.getClass())));
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   private static Class<?> classForName(String name)
+   {
+      try
+      {
+         return (Class.forName(name));
+      }
+      catch(ClassNotFoundException e)
+      {
+         return (null);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Build the OpenAPI model for a list of specs.  extensionNameOf gives the
+    ** extension a spec belongs to (null for core), which tags its operations.
+    *******************************************************************************/
+   private OpenAPI generateOpenAPIModel(String basePath, List<AbstractEndpointSpec<?, ?, ?>> list, boolean includeCoreComponents, String semanticVersion, Function<AbstractEndpointSpec<?, ?, ?>, String> extensionNameOf) throws QException
+   {
 
       Map<String, Path>    paths             = new LinkedHashMap<>();
       Map<String, Example> componentExamples = new LinkedHashMap<>();
@@ -269,11 +312,14 @@ public abstract class AbstractMiddlewareVersion
          buildComponentSchemasFromComponentsPackage(componentSchemas, componentClasses);
       }
 
-      String sessionUuidCookieSchemeName = "sessionUuidCookie";
-      SecurityScheme sessionUuidCookieScheme = new SecurityScheme()
-         .withType(SecuritySchemeType.API_KEY)
-         .withName("sessionUUID")
-         .withIn("cookie");
+      ///////////////////////////////////////////////////////////////////////////////
+      // the one error schema of the UI API: every document carries it, and every //
+      // operation declares it for its standard error statuses (below)           //
+      ///////////////////////////////////////////////////////////////////////////////
+      componentSchemas.put(BasicErrorResponseV1.class.getSimpleName(), new BasicErrorResponseV1().toSchema());
+
+      Map<String, String> tagDescriptions = new TreeMap<>();
+      Set<String>         operationIds    = new HashSet<>();
 
       for(AbstractEndpointSpec<?, ?, ?> spec : list)
       {
@@ -284,14 +330,37 @@ public abstract class AbstractMiddlewareVersion
 
          /////////////////////////////////////////////////////////////////////////////////////////////////////////////
          // if this spec is supposed to be secured, but no security has been applied, then add our default security //
+         // - a session cookie, or a bearer token (an OAuth2 access token, or a session UUID); any one of them      //
          /////////////////////////////////////////////////////////////////////////////////////////////////////////////
          if(spec.isSecured() && method.getSecurity() == null)
          {
-            //////////////////////////////////////////////////////////////////////////////
-            // the N/A here refers to the lack of a 'scope' for this kind of permission //
-            //////////////////////////////////////////////////////////////////////////////
-            method.withSecurity(List.of(Map.of(sessionUuidCookieSchemeName, List.of("N/A"))));
+            method.withSecurity(UiApiSecuritySchemes.DEFAULT_SECURITY);
          }
+
+         if(method.getOperationId() == null)
+         {
+            method.withOperationId(UiApiOperationIds.of(completeOperation.getHttpMethod(), completeOperation.getPath()));
+         }
+         if(!operationIds.add(method.getOperationId()))
+         {
+            throw (new QException("Duplicate operationId [" + method.getOperationId() + "] at " + completeOperation.getHttpMethod() + " " + fullPath + " - set a unique one with BasicOperation.withOperationId"));
+         }
+
+         ////////////////////////////////////////////////////////////////////////
+         // extension operations are tagged with their extension's name;       //
+         // core operations keep their TagsV1 tag                              //
+         ////////////////////////////////////////////////////////////////////////
+         String extensionName = extensionNameOf == null ? null : extensionNameOf.apply(spec);
+         if(extensionName != null && CollectionUtils.nullSafeIsEmpty(method.getTags()))
+         {
+            method.withTag(extensionName);
+         }
+         for(String tag : CollectionUtils.nonNullList(method.getTags()))
+         {
+            tagDescriptions.putIfAbsent(tag, extensionName != null && tag.equals(extensionName) ? "Operations of the " + extensionName + " extension." : null);
+         }
+
+         addStandardErrorResponses(method, spec.isSecured());
 
          convertMethodSchemasToRefs(method, componentClasses);
 
@@ -327,12 +396,15 @@ public abstract class AbstractMiddlewareVersion
 
          for(Map.Entry<String, Schema> entry : CollectionUtils.nonNullMap(spec.defineComponentSchemas()).entrySet())
          {
-            if(componentSchemas.containsKey(entry.getKey()))
+            if(componentSchemas.containsKey(entry.getKey()) && !BasicErrorResponseV1.class.getSimpleName().equals(entry.getKey()))
             {
                LOG.warn("More than one endpoint spec defined a componentSchema named: " + entry.getKey() + ".  The last one encountered (from " + spec.getClass().getSimpleName() + ") will be used.");
             }
 
-            componentSchemas.put(entry.getKey(), entry.getValue());
+            if(!BasicErrorResponseV1.class.getSimpleName().equals(entry.getKey()))
+            {
+               componentSchemas.put(entry.getKey(), entry.getValue());
+            }
          }
       }
 
@@ -346,13 +418,72 @@ public abstract class AbstractMiddlewareVersion
 
       openAPI.withPaths(paths);
 
+      ////////////////////////////////////////////////////////////////////////////
+      // paths are absolute (/qqq/v1/...), so the server is the origin that    //
+      // served this document                                                  //
+      ////////////////////////////////////////////////////////////////////////////
+      openAPI.withServers(List.of(new Server().withUrl("/").withDescription("The QQQ server that serves this document (paths include /qqq/v1).")));
+
+      List<Tag> tags = new ArrayList<>();
+      for(Map.Entry<String, String> entry : tagDescriptions.entrySet())
+      {
+         tags.add(new Tag().withName(entry.getKey()).withDescription(entry.getValue()));
+      }
+      openAPI.withTags(tags);
+
       openAPI.withComponents(new Components()
          .withSchemas(componentSchemas)
          .withExamples(componentExamples)
-         .withSecuritySchemes(Map.of(sessionUuidCookieSchemeName, sessionUuidCookieScheme))
+         .withSecuritySchemes(UiApiSecuritySchemes.SCHEMES)
       );
 
       return openAPI;
+   }
+
+
+
+   /***************************************************************************
+    ** Declare the standard error statuses (with BasicErrorResponseV1) that an
+    ** operation does not already declare: 400, 404, 409, 429 always; 401 and
+    ** 403 for secured operations.
+    ***************************************************************************/
+   private static void addStandardErrorResponses(Method method, boolean secured)
+   {
+      Map<Integer, Response> responses = method.getResponses() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(method.getResponses());
+      method.withResponses(responses);
+
+      Map<Integer, String> standard = new LinkedHashMap<>();
+      standard.put(400, "Bad request: a parameter or the body is invalid (code BAD_REQUEST); fieldErrors may name the fields.");
+      if(secured)
+      {
+         standard.put(401, "Not authenticated, or the session or token is invalid or expired (code UNAUTHENTICATED). Sign in again, or refresh the token.");
+         standard.put(403, "The user (or the credential's scope) may not do this (code PERMISSION_DENIED).");
+      }
+      standard.put(404, "Not found, or not visible to this user (code NOT_FOUND).");
+      standard.put(409, "Conflict with the current state, e.g. an edit conflict or an invalid transition (code CONFLICT).");
+      standard.put(429, "Too many requests (code RATE_LIMITED); retry later.");
+
+      for(Map.Entry<Integer, String> entry : standard.entrySet())
+      {
+         if(!responses.containsKey(entry.getKey()))
+         {
+            responses.put(entry.getKey(), new Response()
+               .withDescription(entry.getValue())
+               .withContent(new LinkedHashMap<>(Map.of("application/json", new Content().withSchema(new Schema().withRefToSchema(BasicErrorResponseV1.class.getSimpleName()))))));
+         }
+      }
+   }
+
+
+
+   /***************************************************************************
+    ** The package whose components sub-package holds this version's component
+    ** schemas (a subclass in another package, e.g. the API-aware version, keeps
+    ** its parent's components).
+    ***************************************************************************/
+   protected String getComponentsBasePackage()
+   {
+      return (getClass().getPackageName());
    }
 
 
@@ -367,7 +498,7 @@ public abstract class AbstractMiddlewareVersion
          ////////////////////////////////////////////////////
          // find all classes in the components sub-package //
          ////////////////////////////////////////////////////
-         String         packageName      = getClass().getPackageName();
+         String         packageName      = getComponentsBasePackage();
          List<Class<?>> classesInPackage = ClassPathUtils.getClassesInPackage(packageName);
          for(Class<?> c : classesInPackage)
          {
@@ -427,7 +558,7 @@ public abstract class AbstractMiddlewareVersion
    {
       for(Response response : method.getResponses().values())
       {
-         for(Content content : response.getContent().values())
+         for(Content content : CollectionUtils.nonNullMap(response.getContent()).values())
          {
             Schema schema = content.getSchema();
             convertSchemaToRefs(schema, componentClasses);

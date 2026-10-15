@@ -103,7 +103,7 @@ public final class DurableJobDiversion
       {
          return (Optional.empty());
       }
-      if(Boolean.TRUE.equals(input.getValueBoolean(VALUE_RUN_INLINE)) || !DurableJobs.isEligible(process))
+      if(Boolean.TRUE.equals(input.getValueBoolean(VALUE_RUN_INLINE)) || !DurableJobs.isEligible(process) || JobSessions.isTokenSession(QContext.getQSession()))
       {
          return (Optional.empty());
       }

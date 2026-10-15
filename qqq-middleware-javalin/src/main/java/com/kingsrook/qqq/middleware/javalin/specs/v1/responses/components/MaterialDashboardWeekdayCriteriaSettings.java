@@ -25,7 +25,7 @@ import java.io.Serializable;
 import java.util.Map;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
-import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIHasAdditionalProperties;
+import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIMapKnownEntries;
 
 
 /***************************************************************************
@@ -40,7 +40,7 @@ public class MaterialDashboardWeekdayCriteriaSettings implements ToSchema
    private Boolean enabled;
 
    @OpenAPIDescription("Arguments for the WeekdayOfDateTime field function that a frontend sends with weekday criteria on date-time fields (for example timeZoneId or useSessionZoneId).")
-   @OpenAPIHasAdditionalProperties()
+   @OpenAPIMapKnownEntries(WeekdayCriteriaArguments.class)
    private Map<String, Serializable> dateTimeFieldFunctionArguments;
 
 
@@ -104,5 +104,6 @@ public class MaterialDashboardWeekdayCriteriaSettings implements ToSchema
       this.dateTimeFieldFunctionArguments = dateTimeFieldFunctionArguments;
       return (this);
    }
+
 
 }

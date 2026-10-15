@@ -36,12 +36,14 @@ import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.Auth0AuthenticationModule;
+import com.kingsrook.qqq.backend.core.modules.authentication.implementations.OAuth2AuthenticationModule;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.collections.MapBuilder;
 import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
 import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiInProcessSessions;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.TableVariant;
 import io.javalin.http.Context;
+import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
@@ -128,8 +130,12 @@ public class ExecutorSessionUtils
             {
                try
                {
+                  //////////////////////////////////////////////////////////////////////
+                  // the form-parameter fallback (legacy downloads) never carries a   //
+                  // bearer JWT: a form can be posted cross-site, a header cannot     //
+                  //////////////////////////////////////////////////////////////////////
                   String authorizationFormValue = context.formParam("Authorization");
-                  if(StringUtils.hasContent(authorizationFormValue))
+                  if(StringUtils.hasContent(authorizationFormValue) && !isBearerJwt(authorizationFormValue))
                   {
                      processAuthorizationValue(authenticationContext, authorizationFormValue);
                   }
@@ -156,7 +162,11 @@ public class ExecutorSessionUtils
          /////////////////////////////////////////////////////////////////////////////////
          // refresh cookies only for sessions created by the authentication module    //
          /////////////////////////////////////////////////////////////////////////////////
-         if(inProcessToken == null && authenticationModule.usesSessionIdCookie())
+         /////////////////////////////////////////////////////////////////////////////
+         // a bearer-token session (OAuth2 JWT) is stateless - the client sends the //
+         // token on each request, so it gets no cookie                             //
+         /////////////////////////////////////////////////////////////////////////////
+         if(inProcessToken == null && authenticationModule.usesSessionIdCookie() && !"true".equals(session.getValue(OAuth2AuthenticationModule.BEARER_SESSION_VALUE_KEY)))
          {
             QJavalinImplementation.setSessionCookie(context, SESSION_ID_COOKIE_NAME, session.getIdReference());
          }
@@ -245,24 +255,38 @@ public class ExecutorSessionUtils
    /*******************************************************************************
     **
     *******************************************************************************/
-   private static void processAuthorizationValue(Map<String, String> authenticationContext, String authorizationHeaderValue)
+   static void processAuthorizationValue(Map<String, String> authenticationContext, String authorizationHeaderValue)
    {
-      String basicPrefix  = "Basic ";
-      String bearerPrefix = "Bearer ";
-      if(authorizationHeaderValue.startsWith(basicPrefix))
+      //////////////////////////////////////////////////////////////////////
+      // auth schemes are case-insensitive (RFC 9110); never log the value //
+      //////////////////////////////////////////////////////////////////////
+      String value  = authorizationHeaderValue.strip();
+      int    space  = value.indexOf(' ');
+      String scheme = space < 0 ? value : value.substring(0, space);
+      String rest   = space < 0 ? "" : value.substring(space + 1).strip();
+      if("basic".equalsIgnoreCase(scheme))
       {
-         authorizationHeaderValue = authorizationHeaderValue.replaceFirst(basicPrefix, "");
-         authenticationContext.put(Auth0AuthenticationModule.BASIC_AUTH_KEY, authorizationHeaderValue);
+         authenticationContext.put(Auth0AuthenticationModule.BASIC_AUTH_KEY, rest);
       }
-      else if(authorizationHeaderValue.startsWith(bearerPrefix))
+      else if("bearer".equalsIgnoreCase(scheme))
       {
-         authorizationHeaderValue = authorizationHeaderValue.replaceFirst(bearerPrefix, "");
-         authenticationContext.put(Auth0AuthenticationModule.ACCESS_TOKEN_KEY, authorizationHeaderValue);
+         authenticationContext.put(Auth0AuthenticationModule.ACCESS_TOKEN_KEY, rest);
       }
       else
       {
-         LOG.debug("Authorization value did not have Basic or Bearer prefix. [" + authorizationHeaderValue + "]");
+         LOG.debug("Authorization value did not use the Basic or Bearer scheme", logPair("scheme", scheme.length() > 20 ? scheme.substring(0, 20) : scheme));
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** A Bearer authorization value carrying a JWT (three dot-separated parts).
+    *******************************************************************************/
+   static boolean isBearerJwt(String authorizationValue)
+   {
+      String value = authorizationValue.strip();
+      return (value.regionMatches(true, 0, "bearer ", 0, 7) && value.substring(7).strip().chars().filter(c -> c == '.').count() == 2);
    }
 
 

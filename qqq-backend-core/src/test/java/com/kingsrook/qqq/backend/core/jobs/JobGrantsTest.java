@@ -41,6 +41,7 @@ import com.kingsrook.qqq.backend.core.jobs.runtime.DurableJobsRuntime;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
+import com.kingsrook.qqq.backend.core.model.session.QCredentialScope;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.session.QUser;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.MockAuthenticationModule;
@@ -310,5 +311,26 @@ class JobGrantsTest extends DurableJobsTestBase
       assertThatThrownBy(() -> JobGrants.verify(instance, 7, "u2", grant, scope)).isInstanceOf(QPermissionDeniedException.class);
       assertThatThrownBy(() -> JobGrants.verify(instance, 7, "u1", grant, Map.of())).isInstanceOf(QPermissionDeniedException.class);
       assertThat(Instant.now()).isNotNull();
+   }
+
+
+   /*******************************************************************************
+    ** A scoped access token (PAT) or a bearer request cannot launch a durable
+    ** job: a worker could not hold the job to the token's scope or expiry
+    ** (security review N1). The user's own sign-in still can.
+    *******************************************************************************/
+   @Test
+   void tokenSessionsCannotLaunchDurableJobs() throws Exception
+   {
+      QContext.getQSession().setCredentialScope(new QCredentialScope().withCredentialId("pat-1").withProcesses(Set.of(DurableJobsTestSupport.PROCESS_THREE_STEPS)));
+      assertThatThrownBy(this::launch).isInstanceOf(QPermissionDeniedException.class).hasMessageContaining("access token");
+      assertThat(JobSessions.isTokenSession(QContext.getQSession())).isTrue();
+
+      QContext.getQSession().setCredentialScope(null);
+      QContext.getQSession().setValue("qqq.oauth2.bearer", "true");
+      assertThatThrownBy(this::launch).isInstanceOf(QPermissionDeniedException.class);
+
+      QContext.getQSession().setValue("qqq.oauth2.bearer", null);
+      assertThat(launch()).isNotNull();
    }
 }

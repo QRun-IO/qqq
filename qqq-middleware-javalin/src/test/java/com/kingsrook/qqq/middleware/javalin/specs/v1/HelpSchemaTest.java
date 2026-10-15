@@ -66,7 +66,7 @@ class HelpSchemaTest
          Schema values = (Schema) wrapper.toSchema().getProperties().get(property).getAdditionalProperties();
          assertEquals(ref, values.getItems().getRef(), wrapper.getClass().getSimpleName());
       }
-      assertThat(new HelpContentV1().toSchema().getProperties()).containsOnlyKeys("content", "contentAsHtml", "summary", "format", "roles");
+      assertThat(new HelpContentV1().toSchema().getProperties()).containsOnlyKeys("content", "contentAsHtml", "contentAsText", "summary", "format", "roles");
       assertThat(new HelpContentV1().toSchema().getProperties().get("format").getEnumValues()).containsExactly("TEXT", "HTML", "MARKDOWN");
       assertThat(new HelpSearchResultV1().toSchema().getProperties()).containsKeys("kind", "key", "summary", "text", "contentAsHtml", "href");
       assertThat(new HelpCoverageEntryV1().toSchema().getProperties()).containsKeys("kind", "key", "hidden", "hasSummary", "hasContent", "roles");

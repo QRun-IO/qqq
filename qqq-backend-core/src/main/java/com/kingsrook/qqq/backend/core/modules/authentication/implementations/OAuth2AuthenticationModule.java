@@ -26,6 +26,7 @@ import java.io.Serializable;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -36,8 +37,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.regex.Pattern;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.exceptions.JWTDecodeException;
 import com.auth0.jwt.interfaces.DecodedJWT;
@@ -75,6 +78,7 @@ import com.kingsrook.qqq.backend.core.modules.authentication.implementations.mod
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.memoization.Memoization;
+import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.oauth2.sdk.AccessTokenResponse;
 import com.nimbusds.oauth2.sdk.AuthorizationCode;
 import com.nimbusds.oauth2.sdk.AuthorizationCodeGrant;
@@ -124,6 +128,15 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
 
    private static boolean mayMemoize = true;
 
+   ///////////////////////////////////////////////////////////////////////////////
+   // session values (server-set only) that mark a stateless bearer-token      //
+   // session: it is valid until the token's exp, and has no userSession row.  //
+   ///////////////////////////////////////////////////////////////////////////////
+   public static final String BEARER_SESSION_VALUE_KEY            = "qqq.oauth2.bearer";
+   public static final String BEARER_SESSION_EXPIRES_AT_VALUE_KEY = "qqq.oauth2.bearerExpiresAt";
+
+   private static final Pattern UUID_PATTERN = Pattern.compile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
+
    ////////////////////////////////////////////////////////////////////////
    // session-keyed: cleared on every node when the session ends (logout, //
    // back-channel logout) through ClusterCaches; the TTL is the backstop //
@@ -165,11 +178,41 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
     **
     ***************************************************************************/
    @Override
-   public QSession createSession(QInstance qInstance, Map<String, String> context) throws QAuthenticationException
+   public QSession createSession(QInstance qInstance, Map<String, String> requestContext) throws QAuthenticationException
    {
+      Map<String, String> context = requestContext;
       try
       {
          OAuth2AuthenticationMetaData oauth2MetaData = (OAuth2AuthenticationMetaData) qInstance.getAuthentication();
+
+         ////////////////////////////////////////////////////////////////////////////
+         // Authorization: Bearer <token> (ExecutorSessionUtils puts the value in //
+         // as accessToken).  A JWT is verified against the provider's keys; a    //
+         // session UUID is resumed exactly like the sessionUUID cookie.          //
+         ////////////////////////////////////////////////////////////////////////////
+         String bearer = context.get(Auth0AuthenticationModule.ACCESS_TOKEN_KEY);
+         if(bearer != null && !context.containsKey("sessionUUID") && !context.containsKey("sessionId") && !context.containsKey("uuid"))
+         {
+            bearer = bearer.strip();
+            if(UUID_PATTERN.matcher(bearer).matches())
+            {
+               context = new HashMap<>(requestContext);
+               context.remove(Auth0AuthenticationModule.ACCESS_TOKEN_KEY);
+               context.put("sessionUUID", bearer);
+            }
+            else
+            {
+               ////////////////////////////////////////////////////////////////////////
+               // a bearer JWT is never turned into a stored (cookie) session: that  //
+               // would let a page sign a browser in as someone else (login CSRF)   //
+               ////////////////////////////////////////////////////////////////////////
+               if(requestContext.containsKey(Auth0AuthenticationModule.DO_STORE_USER_SESSION_KEY))
+               {
+                  throw (new QAuthenticationException("Bearer access tokens cannot create a stored session; send them as Authorization: Bearer"));
+               }
+               return (createSessionFromBearerToken(qInstance, oauth2MetaData, bearer));
+            }
+         }
 
          if(context.containsKey("code") && context.containsKey("state"))
          {
@@ -185,10 +228,10 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
             AtomicReference<String> redirectUri = new AtomicReference<>(null);
             QContext.withTemporaryContext(new CapturedContext(qInstance, new QSystemUserSession(qInstance)), () ->
             {
-               QRecord redirectStateRecord = GetAction.execute(oauth2MetaData.getRedirectStateTableName(), Map.of("state", context.get("state")));
+               QRecord redirectStateRecord = GetAction.execute(oauth2MetaData.getRedirectStateTableName(), Map.of("state", requestContext.get("state")));
                if(redirectStateRecord == null)
                {
-                  LOG.warn("OAuth callback state not found", logPair("state", context.get("state")));
+                  LOG.warn("OAuth callback state not found", logPair("state", requestContext.get("state")));
                   throw (new QAuthenticationException("State not found"));
                }
                redirectUri.set(redirectStateRecord.getValueString("redirectUri"));
@@ -231,9 +274,10 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
             // handle a "normal" request, where we aren't opening a new session //
             // per-se, but instead are looking for one in our userSession table //
             //////////////////////////////////////////////////////////////////////
-            String uuid = Objects.requireNonNullElseGet(context.get("sessionUUID"), () ->
-               Objects.requireNonNullElseGet(context.get("sessionId"), () ->
-                  context.get("uuid")));
+            Map<String, String> sessionContext = context;
+            String uuid = Objects.requireNonNullElseGet(sessionContext.get("sessionUUID"), () ->
+               Objects.requireNonNullElseGet(sessionContext.get("sessionId"), () ->
+                  sessionContext.get("uuid")));
 
             ///////////////////////////////////////////////////////////////////////////
             // if session store is enabled, try to load cached session first         //
@@ -249,6 +293,14 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
                Optional<QSession> cachedSession = QSessionStoreHelper.loadAndTouchSession(uuid);
                if(cachedSession.isPresent())
                {
+                  ///////////////////////////////////////////////////////////////////////
+                  // a bearer session's uuid is derived from its token: it is never a //
+                  // credential of its own                                            //
+                  ///////////////////////////////////////////////////////////////////////
+                  if("true".equals(cachedSession.get().getValue(BEARER_SESSION_VALUE_KEY)))
+                  {
+                     throw (new QAuthenticationException("Session not found"));
+                  }
                   return cachedSession.get();
                }
             }
@@ -297,6 +349,109 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
       {
          LOG.warn("Failed to create session", e, logPair("contextKeys", context.keySet()));
          throw (new QAuthenticationException("Failed to create session (token)", e));
+      }
+   }
+
+
+
+   /***************************************************************************
+    ** A stateless session for a verified bearer JWT: the same user, customizer
+    ** (permissions, credential scope) and session-store caching as a cookie
+    ** session, but no userSession row; it is valid until the token expires.
+    ** Its uuid is derived from the token, so repeated calls with one token are
+    ** one session (e.g. for a process's steps).
+    ***************************************************************************/
+   private QSession createSessionFromBearerToken(QInstance qInstance, OAuth2AuthenticationMetaData oauth2MetaData, String token) throws QException
+   {
+      JWTClaimsSet claims    = new OAuth2BearerTokenVerifier().verify(token, oauth2MetaData);
+      long         expiresAt = claims.getExpirationTime().toInstant().getEpochSecond();
+      String       uuid      = UUID.nameUUIDFromBytes(sha256("qqq-bearer:" + token)).toString();
+
+      boolean sessionStoreEnabled = Boolean.TRUE.equals(oauth2MetaData.getSessionStoreEnabled());
+      if(sessionStoreEnabled)
+      {
+         Optional<QSession> cachedSession = QSessionStoreHelper.loadAndTouchSession(uuid);
+         if(cachedSession.isPresent() && isBearerSessionUnexpired(cachedSession.get()))
+         {
+            return (cachedSession.get());
+         }
+      }
+
+      ////////////////////////////////////////////////////////////////////////////
+      // some providers omit sub on machine (client_credentials) tokens; then   //
+      // the signed preferred_username identifies the account                  //
+      ////////////////////////////////////////////////////////////////////////////
+      JSONObject payload = new JSONObject(claims.toJSONObject());
+      if(!StringUtils.hasContent(payload.optString("sub", null)))
+      {
+         payload.put("sub", "username:" + payload.getString("preferred_username"));
+      }
+
+      QSession session = createSessionFromPayload(payload, token, null);
+      session.setUuid(uuid);
+      session.setIdReference(uuid);
+      session.setValue(BEARER_SESSION_VALUE_KEY, "true");
+      session.setValue(BEARER_SESSION_EXPIRES_AT_VALUE_KEY, String.valueOf(expiresAt));
+
+      customizeBearerSession(qInstance, session, claims, token);
+      finalCustomizeSession(qInstance, session);
+
+      if(sessionStoreEnabled)
+      {
+         Duration untilExpiry = Duration.ofSeconds(Math.max(1, expiresAt - Instant.now().getEpochSecond()));
+         Duration defaultTtl  = QSessionStoreHelper.getDefaultTtl();
+         QSessionStoreHelper.storeSession(uuid, session, defaultTtl != null && defaultTtl.compareTo(untilExpiry) < 0 ? defaultTtl : untilExpiry);
+      }
+
+      return (session);
+   }
+
+
+
+   /***************************************************************************
+    ** Hook for subclasses: further checks of (or additions to) a bearer-token
+    ** session, after the token is verified and the customizer has run.  Throw
+    ** QAuthenticationException to refuse the token.
+    ***************************************************************************/
+   protected void customizeBearerSession(QInstance qInstance, QSession session, JWTClaimsSet claims, String token) throws QAuthenticationException
+   {
+      /////////////////////
+      // none by default //
+      /////////////////////
+   }
+
+
+
+   /***************************************************************************
+    ** True when the session is a bearer-token session whose token is unexpired.
+    ***************************************************************************/
+   public static boolean isBearerSessionUnexpired(QSession session)
+   {
+      try
+      {
+         return ("true".equals(session.getValue(BEARER_SESSION_VALUE_KEY))
+            && Instant.now().getEpochSecond() < Long.parseLong(session.getValue(BEARER_SESSION_EXPIRES_AT_VALUE_KEY)));
+      }
+      catch(Exception e)
+      {
+         return (false);
+      }
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   private static byte[] sha256(String value) throws QException
+   {
+      try
+      {
+         return (MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));
+      }
+      catch(Exception e)
+      {
+         throw (new QException("SHA-256 unavailable", e));
       }
    }
 
@@ -400,6 +555,11 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
       if(session instanceof QSystemUserSession)
       {
          return (true);
+      }
+
+      if(session != null && "true".equals(session.getValue(BEARER_SESSION_VALUE_KEY)))
+      {
+         return (isBearerSessionUnexpired(session));
       }
 
       try
@@ -514,7 +674,16 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
       Base64.Decoder decoder       = Base64.getUrlDecoder();
       String         payloadString = new String(decoder.decode(jwt.getPayload()));
       JSONObject     payload       = new JSONObject(payloadString);
+      return (createSessionFromPayload(payload, accessTokenValue, idTokenPayload));
+   }
 
+
+
+   /***************************************************************************
+    ** Create a session from an access token's claims (see createSessionFromToken).
+    ***************************************************************************/
+   private QSession createSessionFromPayload(JSONObject payload, String accessTokenValue, JSONObject idTokenPayload) throws QException
+   {
       QSession session = new QSession();
       QUser    user    = new QUser();
       session.setUser(user);

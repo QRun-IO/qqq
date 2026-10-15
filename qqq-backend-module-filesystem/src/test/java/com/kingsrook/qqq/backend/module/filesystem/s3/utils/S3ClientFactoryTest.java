@@ -23,15 +23,20 @@ package com.kingsrook.qqq.backend.module.filesystem.s3.utils;
 
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.storage.StorageInput;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.module.filesystem.TestUtils;
 import com.kingsrook.qqq.backend.module.filesystem.s3.BaseS3Test;
 import com.kingsrook.qqq.backend.module.filesystem.s3.actions.S3QueryAction;
@@ -40,13 +45,26 @@ import com.kingsrook.qqq.backend.module.filesystem.s3.model.S3ObjectSummary;
 import com.kingsrook.qqq.backend.module.filesystem.s3.model.metadata.S3BackendMetaData;
 import com.kingsrook.qqq.backend.module.filesystem.s3.model.metadata.S3ChecksumMode;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
+import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Exception;
+import software.amazon.awssdk.services.sts.StsClient;
+import software.amazon.awssdk.services.sts.model.AssumeRoleRequest;
+import software.amazon.awssdk.services.sts.model.Credentials;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -229,6 +247,143 @@ class S3ClientFactoryTest extends BaseS3Test
          ////////////////////////////////////////////////////////////////////
          assertTrue(withCa.listBuckets().buckets().stream().anyMatch(bucket -> BUCKET_NAME.equals(bucket.name())));
          assertTrue(noVerify.listBuckets().buckets().stream().anyMatch(bucket -> BUCKET_NAME.equals(bucket.name())));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Credentials precedence: provider code, then keys with a session token
+    ** (temporary credentials), then plain keys, then the SDK default chain.
+    *******************************************************************************/
+   @Test
+   void testCredentialsProvider()
+   {
+      AwsCredentials basic = S3ClientFactory.buildCredentialsProvider(new S3BackendMetaData().withAccessKey("ak").withSecretKey("sk")).resolveCredentials();
+      assertInstanceOf(AwsBasicCredentials.class, basic);
+      assertEquals("ak", basic.accessKeyId());
+
+      AwsCredentials        session            = S3ClientFactory.buildCredentialsProvider(new S3BackendMetaData().withAccessKey("ak").withSecretKey("sk").withSessionToken("tok")).resolveCredentials();
+      AwsSessionCredentials sessionCredentials = assertInstanceOf(AwsSessionCredentials.class, session);
+      assertEquals("ak", sessionCredentials.accessKeyId());
+      assertEquals("sk", sessionCredentials.secretAccessKey());
+      assertEquals("tok", sessionCredentials.sessionToken());
+
+      assertThatThrownBy(() -> S3ClientFactory.buildCredentialsProvider(new S3BackendMetaData().withAccessKey("ak").withSessionToken("secret-token-value")))
+         .isInstanceOf(IllegalArgumentException.class)
+         .hasMessageContaining("sessionToken")
+         .hasMessageNotContaining("secret-token-value");
+
+      assertInstanceOf(DefaultCredentialsProvider.class, S3ClientFactory.buildCredentialsProvider(new S3BackendMetaData()));
+
+      S3BackendMetaData withProvider = new S3BackendMetaData().withAccessKey("ignored").withSecretKey("ignored")
+         .withCredentialsProviderCode(new QCodeReference(TestCredentialsProvider.class));
+      assertInstanceOf(TestCredentialsProvider.class, S3ClientFactory.buildCredentialsProvider(withProvider));
+      assertEquals("provider-ak", S3ClientFactory.buildCredentialsProvider(withProvider).resolveCredentials().accessKeyId());
+
+      assertThatThrownBy(() -> S3ClientFactory.buildCredentialsProvider(new S3BackendMetaData().withCredentialsProviderCode(new QCodeReference(String.class))))
+         .isInstanceOf(IllegalArgumentException.class)
+         .hasMessageContaining("AwsCredentialsProvider");
+   }
+
+
+
+   /*******************************************************************************
+    ** The session token and the provider code are part of the client cache key.
+    *******************************************************************************/
+   @Test
+   void testCacheKeyIncludesSessionCredentials()
+   {
+      String cacheKey = S3ClientFactory.buildCacheKey(getMinioBackendMetaData());
+      assertThat(S3ClientFactory.buildCacheKey(getMinioBackendMetaData().withSessionToken("token-1"))).isNotEqualTo(cacheKey);
+      assertThat(S3ClientFactory.buildCacheKey(getMinioBackendMetaData().withSessionToken("token-1")))
+         .isNotEqualTo(S3ClientFactory.buildCacheKey(getMinioBackendMetaData().withSessionToken("token-2")))
+         .doesNotContain("token-1");
+      assertThat(S3ClientFactory.buildCacheKey(getMinioBackendMetaData().withCredentialsProviderCode(new QCodeReference(TestCredentialsProvider.class)))).isNotEqualTo(cacheKey);
+   }
+
+
+
+   /*******************************************************************************
+    ** enrich() resolves the session token like the keys, including from a mounted
+    ** secret file.
+    *******************************************************************************/
+   @Test
+   void testEnrichInterpretsSessionToken(@TempDir Path secretsRoot) throws Exception
+   {
+      Path tokenFile = Files.writeString(secretsRoot.resolve("session-token"), "file-token\n", StandardCharsets.UTF_8);
+      System.setProperty(QMetaDataVariableInterpreter.FILE_REFERENCE_ROOTS_PROPERTY, secretsRoot.toString());
+      System.setProperty("qqq.test.s3.accessKey", "prop-ak");
+      try
+      {
+         S3BackendMetaData backend = new S3BackendMetaData()
+            .withAccessKey("${prop.qqq.test.s3.accessKey}")
+            .withSecretKey("plain-sk")
+            .withSessionToken("${file." + tokenFile.toAbsolutePath() + "}");
+         backend.enrich();
+         assertEquals("prop-ak", backend.getAccessKey());
+         assertEquals("plain-sk", backend.getSecretKey());
+         assertEquals("file-token", backend.getSessionToken());
+      }
+      finally
+      {
+         System.clearProperty(QMetaDataVariableInterpreter.FILE_REFERENCE_ROOTS_PROPERTY);
+         System.clearProperty("qqq.test.s3.accessKey");
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Temporary credentials from MinIO's STS (AssumeRole): a client built with
+    ** the session token reads and writes; the same keys without the token, or
+    ** with a wrong one, are refused, so the token is really sent.
+    *******************************************************************************/
+   @Test
+   void testSessionCredentialsAgainstMinio()
+   {
+      Credentials credentials;
+      try(StsClient stsClient = StsClient.builder()
+         .endpointOverride(URI.create(getMinioEndpoint()))
+         .region(Region.US_EAST_1)
+         .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(MINIO_ACCESS_KEY, MINIO_SECRET_KEY)))
+         .build())
+      {
+         credentials = stsClient.assumeRole(AssumeRoleRequest.builder().roleArn("arn:xxx:xxx:xxx:xxxx").roleSessionName("qqq-test").durationSeconds(900).build()).credentials();
+      }
+
+      S3BackendMetaData sessionBackend = getMinioBackendMetaData()
+         .withAccessKey(credentials.accessKeyId())
+         .withSecretKey(credentials.secretAccessKey())
+         .withSessionToken(credentials.sessionToken());
+
+      String   key           = "session-tests/" + UUID.randomUUID() + ".txt";
+      S3Client sessionClient = S3ClientFactory.getClient(sessionBackend);
+      sessionClient.putObject(PutObjectRequest.builder().bucket(BUCKET_NAME).key(key).build(), RequestBody.fromString("via session credentials", StandardCharsets.UTF_8));
+      assertEquals("via session credentials", getObjectAsString(BUCKET_NAME, key));
+
+      try(S3Client noToken = S3ClientFactory.buildClient(getMinioBackendMetaData().withAccessKey(credentials.accessKeyId()).withSecretKey(credentials.secretAccessKey()));
+          S3Client badToken = S3ClientFactory.buildClient(getMinioBackendMetaData().withAccessKey(credentials.accessKeyId()).withSecretKey(credentials.secretAccessKey()).withSessionToken("not-the-token")))
+      {
+         assertThatThrownBy(noToken::listBuckets).isInstanceOf(S3Exception.class);
+         assertThatThrownBy(badToken::listBuckets).isInstanceOf(S3Exception.class);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** An application credentials provider, as named by credentialsProviderCode.
+    *******************************************************************************/
+   public static class TestCredentialsProvider implements AwsCredentialsProvider
+   {
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public AwsCredentials resolveCredentials()
+      {
+         return (AwsBasicCredentials.create("provider-ak", "provider-sk"));
       }
    }
 

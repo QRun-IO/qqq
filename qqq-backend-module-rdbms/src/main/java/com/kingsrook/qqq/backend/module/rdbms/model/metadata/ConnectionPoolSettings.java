@@ -42,6 +42,8 @@ public class ConnectionPoolSettings
    private Integer maxIdleTimeExcessConnectionsSeconds;
    private Integer checkoutTimeoutSeconds;
    private Boolean testConnectionOnCheckout;
+   private Integer leakDetectionThresholdSeconds;
+   private Integer unreturnedConnectionTimeoutSeconds;
 
 
 
@@ -319,6 +321,68 @@ public class ConnectionPoolSettings
    public ConnectionPoolSettings withCheckoutTimeoutSeconds(Integer checkoutTimeoutSeconds)
    {
       this.checkoutTimeoutSeconds = checkoutTimeoutSeconds;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for leakDetectionThresholdSeconds: log a warning (with the checkout stack trace) for any connection held longer than this; detect only, the connection is not reclaimed. Null or 0 disables.
+    *******************************************************************************/
+   public Integer getLeakDetectionThresholdSeconds()
+   {
+      return (this.leakDetectionThresholdSeconds);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for leakDetectionThresholdSeconds
+    *******************************************************************************/
+   public void setLeakDetectionThresholdSeconds(Integer leakDetectionThresholdSeconds)
+   {
+      this.leakDetectionThresholdSeconds = leakDetectionThresholdSeconds;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for leakDetectionThresholdSeconds
+    *******************************************************************************/
+   public ConnectionPoolSettings withLeakDetectionThresholdSeconds(Integer leakDetectionThresholdSeconds)
+   {
+      this.leakDetectionThresholdSeconds = leakDetectionThresholdSeconds;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for unreturnedConnectionTimeoutSeconds: hard reclaim: the pool destroys a connection held longer than this (C3P0 unreturnedConnectionTimeout). Off by default, because long jobs hold connections legitimately.
+    *******************************************************************************/
+   public Integer getUnreturnedConnectionTimeoutSeconds()
+   {
+      return (this.unreturnedConnectionTimeoutSeconds);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for unreturnedConnectionTimeoutSeconds
+    *******************************************************************************/
+   public void setUnreturnedConnectionTimeoutSeconds(Integer unreturnedConnectionTimeoutSeconds)
+   {
+      this.unreturnedConnectionTimeoutSeconds = unreturnedConnectionTimeoutSeconds;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for unreturnedConnectionTimeoutSeconds
+    *******************************************************************************/
+   public ConnectionPoolSettings withUnreturnedConnectionTimeoutSeconds(Integer unreturnedConnectionTimeoutSeconds)
+   {
+      this.unreturnedConnectionTimeoutSeconds = unreturnedConnectionTimeoutSeconds;
       return (this);
    }
 

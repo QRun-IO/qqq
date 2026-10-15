@@ -185,7 +185,7 @@ class QJavalinImplementationTest extends QJavalinTestBase
 
       assertEquals(HttpStatus.NOT_FOUND_404, response.getStatus());
       JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
-      assertEquals(1, jsonObject.keySet().size(), "Number of top-level keys");
+      assertEquals(java.util.Set.of("error", "code", "message", "traceId"), jsonObject.keySet(), "Error body keys");
       String error = jsonObject.getString("error");
       assertTrue(error.contains("not found"));
    }
@@ -230,7 +230,7 @@ class QJavalinImplementationTest extends QJavalinTestBase
 
       assertEquals(HttpStatus.NOT_FOUND_404, response.getStatus());
       JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
-      assertEquals(1, jsonObject.keySet().size(), "Number of top-level keys");
+      assertEquals(java.util.Set.of("error", "code", "message", "traceId"), jsonObject.keySet(), "Error body keys");
       String error = jsonObject.getString("error");
       assertTrue(error.contains("not found"));
    }
@@ -388,7 +388,7 @@ class QJavalinImplementationTest extends QJavalinTestBase
       HttpResponse<String> response = Unirest.get(BASE_URL + "/data/person/98765").asString();
       assertEquals(HttpStatus.NOT_FOUND_404, response.getStatus());
       JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
-      assertEquals(1, jsonObject.keySet().size(), "Number of top-level keys");
+      assertEquals(java.util.Set.of("error", "code", "message", "traceId"), jsonObject.keySet(), "Error body keys");
       String error = jsonObject.getString("error");
       assertEquals("Could not find Person with Id of 98765", error);
    }
@@ -405,7 +405,7 @@ class QJavalinImplementationTest extends QJavalinTestBase
       HttpResponse<String> response = Unirest.get(BASE_URL + "/data/person/not-an-integer").asString();
       assertEquals(HttpStatus.INTERNAL_SERVER_ERROR_500, response.getStatus());
       JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
-      assertEquals(1, jsonObject.keySet().size(), "Number of top-level keys");
+      assertEquals(java.util.Set.of("error", "code", "message", "traceId"), jsonObject.keySet(), "Error body keys");
    }
 
 

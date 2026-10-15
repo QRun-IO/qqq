@@ -80,6 +80,8 @@ public class QFrontendFieldMetaData implements Serializable
    private Number       minValue;
    private Number       maxValue;
 
+   private QFrontendFieldValidation validation;
+
    private List<FieldAdornment> adornments;
    private List<QHelpContent>   helpContents;
    private QPossibleValueSource inlinePossibleValueSource;
@@ -139,6 +141,7 @@ public class QFrontendFieldMetaData implements Serializable
             this.maxValue = valueRangeBehavior.getMaxValue();
          }
       }
+      this.validation = QFrontendFieldValidation.of(fieldMetaData);
       this.possibleValueSourceFilter = fieldMetaData.getPossibleValueSourceFilter();
       if(ContingentPossibleValueHelper.isContingent(fieldMetaData))
       {
@@ -402,6 +405,16 @@ public class QFrontendFieldMetaData implements Serializable
    public Number getMaxValue()
    {
       return maxValue;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for validation - the field's validation rules (null when it has none).
+    *******************************************************************************/
+   public QFrontendFieldValidation getValidation()
+   {
+      return (this.validation);
    }
 
 

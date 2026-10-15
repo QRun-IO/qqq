@@ -35,6 +35,7 @@ public class SecurityScheme
    private String in;
    private String scheme;
    private String bearerFormat;
+   private String description;
 
 
 
@@ -199,6 +200,37 @@ public class SecurityScheme
    public SecurityScheme withIn(String in)
    {
       this.in = in;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for description
+    *******************************************************************************/
+   public String getDescription()
+   {
+      return (this.description);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for description
+    *******************************************************************************/
+   public void setDescription(String description)
+   {
+      this.description = description;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for description
+    *******************************************************************************/
+   public SecurityScheme withDescription(String description)
+   {
+      this.description = description;
       return (this);
    }
 

@@ -54,11 +54,22 @@ public class OAuth2MetaDataProvider implements MetaDataProducerInterface<QAuthen
       String oauth2ClientSecret = qMetaDataVariableInterpreter.interpret("${env.OAUTH2_CLIENT_SECRET}");
       String oauth2Scopes       = qMetaDataVariableInterpreter.interpret("${env.OAUTH2_SCOPES}");
 
+      ////////////////////////////////////////////////////////////////////////////
+      // optional public client for CLI / TUI / native apps (UI API 1.6.0):     //
+      // its access tokens are accepted as Authorization: Bearer, and it is     //
+      // published in /qqq/v1/metaData/authentication as values.nativeClientId //
+      ////////////////////////////////////////////////////////////////////////////
+      String nativeClientId      = qMetaDataVariableInterpreter.interpret("${env.OAUTH2_NATIVE_CLIENT_ID}");
+      String nativeClientBaseUrl = qMetaDataVariableInterpreter.interpret("${env.OAUTH2_NATIVE_CLIENT_BASE_URL}");
+
       return (new OAuth2AuthenticationMetaData()
          .withBaseUrl(oauth2BaseUrl)
          .withClientId(oauth2ClientId)
          .withClientSecret(oauth2ClientSecret)
          .withScopes(oauth2Scopes)
+         .withNativeClientId(nativeClientId)
+         .withNativeClientBaseUrl(nativeClientBaseUrl)
+         .withBearerTokensEnabled(nativeClientId != null && !nativeClientId.isBlank())
          .withUserSessionTableName(UserSession.TABLE_NAME)
          .withRedirectStateTableName(RedirectStateMetaDataProducer.TABLE_NAME)
          .withName(NAME));

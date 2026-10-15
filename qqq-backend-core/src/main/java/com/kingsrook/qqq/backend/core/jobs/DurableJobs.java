@@ -214,6 +214,15 @@ public final class DurableJobs
       {
          throw (new QPermissionDeniedException("A durable job needs a signed-in user."));
       }
+      if(JobSessions.isTokenSession(session))
+      {
+         ///////////////////////////////////////////////////////////////////////
+         // an access token (PAT, scoped credential) or bearer request cannot //
+         // launch work that outlives it: a worker could not hold the job to  //
+         // the token's scope or expiry. Run it inline, or from the app.      //
+         ///////////////////////////////////////////////////////////////////////
+         throw (new QPermissionDeniedException("Background jobs cannot be started with an access token. Run the process directly, or start the job from the app."));
+      }
 
       QProcessMetaData process = instance.getProcess(request.getProcessName());
       if(process == null)

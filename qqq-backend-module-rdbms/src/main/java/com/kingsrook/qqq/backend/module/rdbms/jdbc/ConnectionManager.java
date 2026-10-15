@@ -195,6 +195,45 @@ public class ConnectionManager
 
 
    /*******************************************************************************
+    ** Pool gauges for a backend's connection provider, or an empty map when its
+    ** provider has no pool or has not been initialized yet (never initializes it).
+    *******************************************************************************/
+   public static Map<String, Number> getPoolMetrics(RDBMSBackendMetaData backend)
+   {
+      ConnectionProviderInterface connectionProvider = backend == null || backend.getName() == null ? null : connectionProviderMap.get(backend.getName());
+      return (connectionProvider == null ? Map.of() : connectionProvider.getPoolMetrics());
+   }
+
+
+
+   /*******************************************************************************
+    ** Close every connection provider (pools release their connections) and
+    ** forget them. Call at the end of an application's shutdown, after the work
+    ** that uses the database (requests, jobs, the scheduler) has stopped; a later
+    ** getConnection initializes a new provider.
+    *******************************************************************************/
+   public static void closeConnectionProviders()
+   {
+      synchronized(connectionProviderMap)
+      {
+         for(Map.Entry<String, ConnectionProviderInterface> entry : connectionProviderMap.entrySet())
+         {
+            try
+            {
+               entry.getValue().close();
+            }
+            catch(Exception e)
+            {
+               LOG.warn("Error closing connection provider", e, logPair("backendName", entry.getKey()));
+            }
+         }
+         connectionProviderMap.clear();
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** reset the map of connection providers - not necessarily meant to be useful
     ** in production code - written for use in qqq tests.
     *******************************************************************************/

@@ -23,25 +23,43 @@ package com.kingsrook.qqq.backend.module.rdbms.jdbc;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.time.Duration;
 import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.module.rdbms.model.metadata.ConnectionPoolSettings;
 import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSBackendMetaData;
 import com.mchange.v2.c3p0.ComboPooledDataSource;
 import org.json.JSONObject;
+import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 import static com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager.getJdbcUrl;
 
 
 /*******************************************************************************
+ ** C3P0 connection pool for an RDBMS backend, configured from the backend's
+ ** ConnectionPoolSettings.
  **
+ ** Checkout waits are bounded: without a checkoutTimeoutSeconds setting the
+ ** wait is DEFAULT_CHECKOUT_TIMEOUT_SECONDS (C3P0's own default is to wait
+ ** forever), and a timed-out checkout throws an SQLException naming the backend
+ ** and the pool's state. Connections returned to the pool are reset by C3P0
+ ** (see BaseC3P0ConnectionCustomizer).
  *******************************************************************************/
 public class C3P0PooledConnectionProvider implements ConnectionProviderInterface
 {
+   private static final QLogger LOG = QLogger.getLogger(C3P0PooledConnectionProvider.class);
+
+   public static final int DEFAULT_CHECKOUT_TIMEOUT_SECONDS = 30;
+
    private RDBMSBackendMetaData  backend;
    private ComboPooledDataSource connectionPool;
 
-   private long usageCount = 0;
+   private final AtomicLong usageCount         = new AtomicLong();
+   private final AtomicLong checkoutTimeouts   = new AtomicLong();
+   private volatile long    lastLeakScanMillis = 0;
 
 
 
@@ -110,16 +128,37 @@ public class C3P0PooledConnectionProvider implements ConnectionProviderInterface
             }
          }
 
+         ////////////////////////////////////////////////////////////////////////////
+         // bounded checkout wait: C3P0's default (0) waits forever for a free one //
+         ////////////////////////////////////////////////////////////////////////////
+         if(poolSettings == null || poolSettings.getCheckoutTimeoutSeconds() == null)
+         {
+            pool.setCheckoutTimeout(DEFAULT_CHECKOUT_TIMEOUT_SECONDS * 1000);
+         }
+
+         ///////////////////////////////////////////////////////////////////////////
+         // hard reclaim of connections held too long (off unless configured), with //
+         // the stack trace of the checkout logged when one is reclaimed            //
+         ///////////////////////////////////////////////////////////////////////////
+         if(poolSettings != null && poolSettings.getUnreturnedConnectionTimeoutSeconds() != null && poolSettings.getUnreturnedConnectionTimeoutSeconds() > 0)
+         {
+            pool.setUnreturnedConnectionTimeout(poolSettings.getUnreturnedConnectionTimeoutSeconds());
+            pool.setDebugUnreturnedConnectionStackTraces(true);
+         }
+
          pool.setIdentityToken(backend.getName());
 
-         //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-         // if the backend specifies queries to run for new connections, then set up a connection customizer to run them //
-         //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+         ///////////////////////////////////////////////////////////////////////////
+         // the customizer runs queries for new connections and tracks checkouts  //
+         // for leak detection (detect-and-log only; nothing is reclaimed)        //
+         ///////////////////////////////////////////////////////////////////////////
          if(CollectionUtils.nullSafeHasContents(backend.getQueriesForNewConnections()))
          {
             BaseC3P0ConnectionCustomizer.setQueriesForNewConnections(backend.getName(), backend.getQueriesForNewConnections());
-            pool.setConnectionCustomizerClassName(BaseC3P0ConnectionCustomizer.class.getName());
          }
+         Integer leakSeconds = poolSettings == null ? null : poolSettings.getLeakDetectionThresholdSeconds();
+         BaseC3P0ConnectionCustomizer.setLeakDetectionThreshold(backend.getName(), leakSeconds == null ? null : Duration.ofSeconds(leakSeconds));
+         pool.setConnectionCustomizerClassName(BaseC3P0ConnectionCustomizer.class.getName());
 
          customizePool(pool);
 
@@ -146,13 +185,122 @@ public class C3P0PooledConnectionProvider implements ConnectionProviderInterface
 
 
    /*******************************************************************************
-    **
+    ** Check a connection out of the pool. When none frees up within the checkout
+    ** timeout, throws an SQLException that names the backend and the pool state.
     *******************************************************************************/
    @Override
    public Connection getConnection() throws SQLException
    {
-      usageCount++;
-      return (this.connectionPool.getConnection());
+      usageCount.incrementAndGet();
+      scanForLeaksAtMostEverySecond();
+      try
+      {
+         return (this.connectionPool.getConnection());
+      }
+      catch(SQLException e)
+      {
+         if(isCheckoutTimeout(e))
+         {
+            checkoutTimeouts.incrementAndGet();
+            String message = "Timed out after " + connectionPool.getCheckoutTimeout() + "ms waiting for a pooled connection to backend [" + backend.getName() + "]: "
+               + "pool exhausted (" + describeState() + "). Raise maxPoolSize, or look for long transactions or leaked connections. (" + e.getMessage() + ")";
+            LOG.warn(message, logPair("backendName", backend.getName()));
+            throw (new SQLException(message, "08001", e));
+         }
+         throw (e);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** C3P0 reports a checkout timeout as an SQLException caused by its resource
+    ** pool's TimeoutException.
+    *******************************************************************************/
+   private static boolean isCheckoutTimeout(SQLException e)
+   {
+      for(Throwable t = e; t != null; t = t.getCause())
+      {
+         if(t instanceof com.mchange.v2.resourcepool.TimeoutException)
+         {
+            return (true);
+         }
+      }
+      return (e.getMessage() != null && e.getMessage().contains("checkout a Connection has timed out"));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private String describeState()
+   {
+      try
+      {
+         return ("max " + connectionPool.getMaxPoolSize() + ", busy " + connectionPool.getNumBusyConnectionsDefaultUser() + ", idle " + connectionPool.getNumIdleConnectionsDefaultUser()
+            + ", waiting " + connectionPool.getNumThreadsAwaitingCheckoutDefaultUser());
+      }
+      catch(Exception e)
+      {
+         return ("max " + connectionPool.getMaxPoolSize() + ", state unavailable");
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Leak detection runs on checkouts (and from getPoolMetrics), throttled so
+    ** a busy pool pays for one scan a second at most.
+    *******************************************************************************/
+   private void scanForLeaksAtMostEverySecond()
+   {
+      long now = System.currentTimeMillis();
+      if(now - lastLeakScanMillis >= 1000)
+      {
+         lastLeakScanMillis = now;
+         BaseC3P0ConnectionCustomizer.findLeaks(backend.getName());
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Pool gauges: connections total/busy/idle, threads waiting for a checkout,
+    ** the max size, checkout timeouts and suspected leaks so far.
+    *******************************************************************************/
+   @Override
+   public Map<String, Number> getPoolMetrics()
+   {
+      Map<String, Number> metrics = new LinkedHashMap<>();
+      try
+      {
+         metrics.put("connectionsTotal", connectionPool.getNumConnectionsDefaultUser());
+         metrics.put("connectionsBusy", connectionPool.getNumBusyConnectionsDefaultUser());
+         metrics.put("connectionsIdle", connectionPool.getNumIdleConnectionsDefaultUser());
+         metrics.put("threadsAwaitingCheckout", connectionPool.getNumThreadsAwaitingCheckoutDefaultUser());
+      }
+      catch(SQLException e)
+      {
+         LOG.debug("Could not read connection pool state", e, logPair("backendName", backend.getName()));
+      }
+      metrics.put("maxPoolSize", connectionPool.getMaxPoolSize());
+      metrics.put("checkoutTimeouts", checkoutTimeouts.get());
+      metrics.put("suspectedLeaks", BaseC3P0ConnectionCustomizer.findLeaks(backend.getName()).size());
+      return (metrics);
+   }
+
+
+
+   /*******************************************************************************
+    ** Close the pool and its connections.
+    *******************************************************************************/
+   @Override
+   public void close()
+   {
+      LOG.info("Closing connection pool", logPair("backendName", backend.getName()), logPair("state", describeState()));
+      connectionPool.close();
+      BaseC3P0ConnectionCustomizer.forget(backend.getName());
    }
 
 
@@ -179,7 +327,8 @@ public class C3P0PooledConnectionProvider implements ConnectionProviderInterface
 
       JSONObject state = new JSONObject(new LinkedHashMap<>());
       rs.put("state", state);
-      state.put("numUsages", usageCount);
+      state.put("numUsages", usageCount.get());
+      state.put("numCheckoutTimeouts", checkoutTimeouts.get());
       state.put("numConnections", connectionPool.getNumConnections());
       state.put("numBusyConnections", connectionPool.getNumBusyConnections());
       state.put("numIdleConnections", connectionPool.getNumIdleConnections());

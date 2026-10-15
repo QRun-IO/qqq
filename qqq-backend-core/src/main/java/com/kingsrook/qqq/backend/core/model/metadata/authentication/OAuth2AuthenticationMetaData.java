@@ -178,8 +178,8 @@ public class OAuth2AuthenticationMetaData extends QAuthenticationMetaData
       qInstanceValidator.assertCondition(maxSessionLifetimeSeconds == null || maxSessionLifetimeSeconds > 0, prefix + "maxSessionLifetimeSeconds must be positive when set");
 
       validateRefreshTokenEncryption(qInstance, qInstanceValidator, prefix);
-      qInstanceValidator.assertCondition(nativeClientBaseUrl == null || StringUtils.hasContent(nativeClientId), prefix + "nativeClientBaseUrl requires nativeClientId");
-      qInstanceValidator.assertCondition(nativeClientId == null || !nativeClientId.equals(clientId), prefix + "nativeClientId must be a separate (public) client, not clientId");
+      qInstanceValidator.assertCondition(!StringUtils.hasContent(nativeClientBaseUrl) || StringUtils.hasContent(nativeClientId), prefix + "nativeClientBaseUrl requires nativeClientId");
+      qInstanceValidator.assertCondition(!StringUtils.hasContent(nativeClientId) || !nativeClientId.equals(clientId), prefix + "nativeClientId must be a separate (public) client, not clientId");
    }
 
 

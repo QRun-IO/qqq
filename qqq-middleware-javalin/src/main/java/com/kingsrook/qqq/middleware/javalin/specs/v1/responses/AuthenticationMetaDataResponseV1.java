@@ -429,7 +429,7 @@ public class AuthenticationMetaDataResponseV1 implements AuthenticationMetaDataO
          oauth2Values.setClientId(oauth2MetaData.getClientId());
          oauth2Values.setBaseUrl(StringUtils.hasContent(oauth2MetaData.getExternalBaseUrl()) ? oauth2MetaData.getExternalBaseUrl() : oauth2MetaData.getBaseUrl());
          oauth2Values.setScopes(oauth2MetaData.getScopes());
-         oauth2Values.setNativeClientId(oauth2MetaData.getNativeClientId());
+         oauth2Values.setNativeClientId(StringUtils.hasContent(oauth2MetaData.getNativeClientId()) ? oauth2MetaData.getNativeClientId() : null);
          if(StringUtils.hasContent(oauth2MetaData.getNativeClientId()) && StringUtils.hasContent(oauth2MetaData.getNativeClientBaseUrl()))
          {
             oauth2Values.setNativeClientBaseUrl(oauth2MetaData.getNativeClientBaseUrl());

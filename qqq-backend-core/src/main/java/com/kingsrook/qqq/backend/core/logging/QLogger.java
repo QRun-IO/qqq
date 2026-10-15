@@ -215,10 +215,27 @@ public class QLogger
 
 
    /*******************************************************************************
+    ** In log4j, {@link Level#OFF} is the most-severe level, so a message logged AT
+    ** OFF is always emitted.  Callers that make their level configurable use OFF
+    ** (or null) to mean "don't log", so the {@code log(Level, ...)} methods treat
+    ** those as a no-op.
+    *******************************************************************************/
+   static boolean isLevelOff(Level level)
+   {
+      return (level == null || Level.OFF.equals(level));
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    public void log(Level level, String message)
    {
+      if(isLevelOff(level))
+      {
+         return;
+      }
       logger.log(level, () -> makeJsonString(message));
    }
 
@@ -229,6 +246,10 @@ public class QLogger
     *******************************************************************************/
    public void log(Level level, String message, Throwable t)
    {
+      if(isLevelOff(level))
+      {
+         return;
+      }
       logger.log(level, () -> makeJsonString(message, t));
    }
 
@@ -239,6 +260,10 @@ public class QLogger
     *******************************************************************************/
    public void log(Level level, String message, Throwable t, LogPair... logPairs)
    {
+      if(isLevelOff(level))
+      {
+         return;
+      }
       logger.log(level, () -> makeJsonString(message, t, logPairs));
    }
 
@@ -249,6 +274,10 @@ public class QLogger
     *******************************************************************************/
    public void log(Level level, Throwable t)
    {
+      if(isLevelOff(level))
+      {
+         return;
+      }
       logger.log(level, () -> makeJsonString(null, t));
    }
 

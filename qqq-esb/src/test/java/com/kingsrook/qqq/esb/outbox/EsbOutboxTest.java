@@ -437,6 +437,31 @@ class EsbOutboxTest extends EsbTestBase
 
 
    /*******************************************************************************
+    ** A row whose destination is no longer configured (renamed or removed between
+    ** deploys) is not a broker outage: it counts attempts and goes DEAD, so the
+    ** outbox stays bounded instead of retrying it forever.
+    *******************************************************************************/
+   @Test
+   void testUnknownDestinationGoesDead() throws Exception
+   {
+      setUpInstance(enabledConfig().withMaxAttempts(2), brokerQueueName);
+      insertOrders(null, "ORD-1");
+      QRecord pending = queryOutbox().get(0);
+      new UpdateAction().execute(new UpdateInput(EsbH2TestSupport.OUTBOX_TABLE).withRecord(new QRecord()
+         .withValue(EsbOutboxTable.FIELD_ID, pending.getValue(EsbOutboxTable.FIELD_ID))
+         .withValue(EsbOutboxTable.FIELD_DESTINATION_NAME, "removedDestination")));
+
+      assertThat(EsbOutboxRelay.getInstance().relayOnce()).isZero();
+      assertThat(EsbOutboxRelay.getInstance().relayOnce()).isZero();
+
+      QRecord row = queryOutbox().get(0);
+      assertThat(row.getValueString(EsbOutboxTable.FIELD_STATUS)).isEqualTo(EsbOutboxTable.STATUS_DEAD);
+      assertThat(row.getValueInteger(EsbOutboxTable.FIELD_ATTEMPTS)).isEqualTo(2);
+   }
+
+
+
+   /*******************************************************************************
     ** While the broker is unreachable, failed sends don't count as attempts.
     *******************************************************************************/
    @Test

@@ -112,6 +112,7 @@ import com.kingsrook.qqq.esb.model.EsbTrigger;
 import com.kingsrook.qqq.esb.model.QEsbDestinationMetaData;
 import com.kingsrook.qqq.esb.model.QEsbProviderMetaData;
 import com.kingsrook.qqq.esb.processes.EsbPauseQueueMetaDataProducer;
+import com.kingsrook.sampleapp.cluster.SampleClusterMode;
 import com.kingsrook.sampleapp.dashboard.widgets.PersonsByCreateDateBarChart;
 import com.kingsrook.sampleapp.processes.clonepeople.ClonePeopleTransformStep;
 import com.kingsrook.sampleapp.processes.syncperson.SyncPersonStep;
@@ -281,6 +282,16 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
       MetaDataProducerHelper.processAllMetaDataProducersInPackage(qInstance, EsbPauseQueueMetaDataProducer.class.getPackageName());
       MetaDataProducerHelper.processAllMetaDataProducersInPackage(qInstance, EsbJavalinMetaDataProducer.class.getPackageName());
 
+      ///////////////////////////////////////////////////////////////////
+      // opt-in multi-node mode (SAMPLE_CLUSTER_MODE): shared state, the //
+      // ESB cluster bus and probes. Off by default; see                  //
+      // docs/DEPLOYMENT-MODES.md                                         //
+      ///////////////////////////////////////////////////////////////////
+      if(SampleClusterMode.isEnabled())
+      {
+         SampleClusterMode.apply(qInstance);
+      }
+
       return (qInstance);
    }
 
@@ -337,7 +348,11 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
          // Connection providers are cached by backend name; refuse a reused external provider //
          // before any fixture SQL can reset data outside the sample's in-memory database.     //
          //////////////////////////////////////////////////////////////////////////////////////
-         if(!"jdbc:h2:mem:test_database".equals(connection.getMetaData().getURL()))
+         String sharedJdbcUrl = SampleClusterMode.getSharedJdbcUrl();
+         String url           = connection.getMetaData().getURL();
+         boolean ownedDatabase = "jdbc:h2:mem:test_database".equals(url)
+            || (sharedJdbcUrl != null && sharedJdbcUrl.startsWith("jdbc:h2:") && url != null && url.startsWith(sharedJdbcUrl.split(";")[0]));
+         if(!ownedDatabase)
          {
             throw new IllegalStateException("Sample reset requires the owned in-memory H2 database.");
          }
@@ -455,13 +470,24 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
     *******************************************************************************/
    public static RDBMSBackendMetaData defineRdbmsBackend()
    {
-      return new RDBMSBackendMetaData()
+      RDBMSBackendMetaData backend = new RDBMSBackendMetaData()
          .withName(RDBMS_BACKEND_NAME)
          .withVendor("h2")
          .withHostName("mem")
          .withDatabaseName("test_database")
          .withQueriesForNewConnections(List.of("SET TIME ZONE 'UTC'"))
          .withUsername("sa");
+
+      ////////////////////////////////////////////////////////////////
+      // in cluster mode, every node uses one shared database (H2 in //
+      // server mode for the acceptance test)                        //
+      ////////////////////////////////////////////////////////////////
+      String sharedJdbcUrl = SampleClusterMode.getSharedJdbcUrl();
+      if(sharedJdbcUrl != null)
+      {
+         backend.withJdbcUrl(sharedJdbcUrl);
+      }
+      return backend;
    }
 
 

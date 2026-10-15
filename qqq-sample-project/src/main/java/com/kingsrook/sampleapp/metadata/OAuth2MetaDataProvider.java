@@ -69,6 +69,7 @@ public class OAuth2MetaDataProvider implements MetaDataProducerInterface<QAuthen
          .withScopes(oauth2Scopes)
          .withNativeClientId(nativeClientId)
          .withNativeClientBaseUrl(nativeClientBaseUrl)
+         .withBearerTokensEnabled(nativeClientId != null && !nativeClientId.isBlank())
          .withUserSessionTableName(UserSession.TABLE_NAME)
          .withRedirectStateTableName(RedirectStateMetaDataProducer.TABLE_NAME)
          .withName(NAME));

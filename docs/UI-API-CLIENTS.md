@@ -211,7 +211,9 @@ Use `nativeClientId` with a redirect URI registered at the provider: a loopback 
 `kof22-admin-cli` provider, for example, allows `http://127.0.0.1:<port>/callback` and
 `http://localhost:<port>/callback`).
 
-**Calling the API.** Send `Authorization: Bearer {access_token}`. The server verifies the JWT
+**Calling the API.** The app must enable bearer tokens (`bearerTokensEnabled`;
+`values.bearerTokensAccepted` says so). Send `Authorization: Bearer {access_token}` (the access
+token, never the ID token). The server verifies the JWT
 against the provider's keys (issuer, audience = the app's client or `nativeClientId`, expiry,
 signature; `alg: none` and HMAC are refused) and maps it to the same user, permissions and token
 scope as a web sign-in. Bearer calls are stateless: no cookie is set.

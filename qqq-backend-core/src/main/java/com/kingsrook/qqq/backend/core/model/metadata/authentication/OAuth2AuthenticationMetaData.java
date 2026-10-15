@@ -55,7 +55,8 @@ public class OAuth2AuthenticationMetaData extends QAuthenticationMetaData
 {
    private static final QLogger LOG = QLogger.getLogger(OAuth2AuthenticationMetaData.class);
 
-   public static final int DEFAULT_REFRESH_TOKEN_SKEW_SECONDS = 60;
+   public static final int DEFAULT_REFRESH_TOKEN_SKEW_SECONDS        = 60;
+   public static final int DEFAULT_BEARER_TOKEN_MAX_LIFETIME_SECONDS = 24 * 60 * 60;
 
    ///////////////////////////////////////////////////////////////////////////////
    // URL used by the backend for OIDC discovery and token exchange.            //
@@ -115,7 +116,9 @@ public class OAuth2AuthenticationMetaData extends QAuthenticationMetaData
    // is nativeClientBaseUrl (default: baseUrl), since providers such as Authentik //
    // give each client its own issuer.                                            //
    ////////////////////////////////////////////////////////////////////////////////
-   private Boolean      bearerTokensEnabled = true;
+   private Boolean      bearerTokensEnabled                = false;
+   private Boolean      bearerMachineTokenUsernameSubject  = false;
+   private Integer      bearerTokenMaxLifetimeSeconds      = DEFAULT_BEARER_TOKEN_MAX_LIFETIME_SECONDS;
    private String       nativeClientId;
    private String       nativeClientBaseUrl;
    private List<String> additionalBearerAudiences;
@@ -180,6 +183,7 @@ public class OAuth2AuthenticationMetaData extends QAuthenticationMetaData
       validateRefreshTokenEncryption(qInstance, qInstanceValidator, prefix);
       qInstanceValidator.assertCondition(!StringUtils.hasContent(nativeClientBaseUrl) || StringUtils.hasContent(nativeClientId), prefix + "nativeClientBaseUrl requires nativeClientId");
       qInstanceValidator.assertCondition(!StringUtils.hasContent(nativeClientId) || !nativeClientId.equals(clientId), prefix + "nativeClientId must be a separate (public) client, not clientId");
+      qInstanceValidator.assertCondition(bearerTokenMaxLifetimeSeconds == null || bearerTokenMaxLifetimeSeconds > 0, prefix + "bearerTokenMaxLifetimeSeconds must be positive when set");
    }
 
 
@@ -735,7 +739,7 @@ public class OAuth2AuthenticationMetaData extends QAuthenticationMetaData
 
 
    /*******************************************************************************
-    ** Getter for bearerTokensEnabled - whether `Authorization: Bearer <JWT>` is accepted (default true).
+    ** Getter for bearerTokensEnabled - whether `Authorization: Bearer <JWT>` is accepted (opt-in; default false).
     *******************************************************************************/
    public Boolean getBearerTokensEnabled()
    {
@@ -853,6 +857,68 @@ public class OAuth2AuthenticationMetaData extends QAuthenticationMetaData
    public OAuth2AuthenticationMetaData withAdditionalBearerAudiences(List<String> additionalBearerAudiences)
    {
       this.additionalBearerAudiences = additionalBearerAudiences;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for bearerMachineTokenUsernameSubject - when true, a bearer token without `sub` (e.g. an Authentik client_credentials machine token) is identified by its signed `preferred_username` as `username:<name>`; default false.
+    *******************************************************************************/
+   public Boolean getBearerMachineTokenUsernameSubject()
+   {
+      return (this.bearerMachineTokenUsernameSubject);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for bearerMachineTokenUsernameSubject
+    *******************************************************************************/
+   public void setBearerMachineTokenUsernameSubject(Boolean bearerMachineTokenUsernameSubject)
+   {
+      this.bearerMachineTokenUsernameSubject = bearerMachineTokenUsernameSubject;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for bearerMachineTokenUsernameSubject
+    *******************************************************************************/
+   public OAuth2AuthenticationMetaData withBearerMachineTokenUsernameSubject(Boolean bearerMachineTokenUsernameSubject)
+   {
+      this.bearerMachineTokenUsernameSubject = bearerMachineTokenUsernameSubject;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for bearerTokenMaxLifetimeSeconds - the longest bearer token lifetime accepted (exp - iat, or exp - now without iat); default one day; null for no limit.
+    *******************************************************************************/
+   public Integer getBearerTokenMaxLifetimeSeconds()
+   {
+      return (this.bearerTokenMaxLifetimeSeconds);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for bearerTokenMaxLifetimeSeconds
+    *******************************************************************************/
+   public void setBearerTokenMaxLifetimeSeconds(Integer bearerTokenMaxLifetimeSeconds)
+   {
+      this.bearerTokenMaxLifetimeSeconds = bearerTokenMaxLifetimeSeconds;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for bearerTokenMaxLifetimeSeconds
+    *******************************************************************************/
+   public OAuth2AuthenticationMetaData withBearerTokenMaxLifetimeSeconds(Integer bearerTokenMaxLifetimeSeconds)
+   {
+      this.bearerTokenMaxLifetimeSeconds = bearerTokenMaxLifetimeSeconds;
       return (this);
    }
 

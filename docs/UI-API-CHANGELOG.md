@@ -96,7 +96,13 @@ Ready for CLI, TUI and native clients (see `UI-API-CLIENTS.md`).
   provider, verified against the provider's JWKS (signature with RS/PS/ES algorithms only, exact
   issuer, audience, `exp`/`nbf`), or a session UUID from `POST /manageSession`. A JWT gives the same
   user, permissions and credential scope as a web sign-in (the same authentication customizer runs).
-  Bearer sessions are stateless: no cookie is set, and they end at the token's `exp`.
+  Bearer sessions are stateless: no cookie is set, and they end at the token's `exp`. Bearer JWTs are
+  **opt-in** (`OAuth2AuthenticationMetaData.bearerTokensEnabled`, default false). Only access tokens
+  are accepted (ID tokens, with `nonce`/`at_hash` or without `scope`/`azp`/`client_id`, are refused),
+  with a bounded lifetime (`bearerTokenMaxLifetimeSeconds`, default one day). The token's issuer must
+  be configured before any discovery, a discovered issuer must equal the configured one, and failed
+  discovery is cached with backoff. `POST /manageSession` never turns a bearer JWT into a cookie
+  session. Machine tokens without `sub` need `bearerMachineTokenUsernameSubject`.
 - `GET /metaData/authentication` OAuth2 values add `nativeClientId` and `nativeClientBaseUrl` (the
   public client and issuer for native clients) and `bearerTokensAccepted`.
 - **operationIds.** Every operation has a stable `operationId` (core names in `UiApiOperationIds`;

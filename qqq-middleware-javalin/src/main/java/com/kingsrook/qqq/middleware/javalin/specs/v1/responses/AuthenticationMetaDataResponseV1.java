@@ -434,7 +434,7 @@ public class AuthenticationMetaDataResponseV1 implements AuthenticationMetaDataO
          {
             oauth2Values.setNativeClientBaseUrl(oauth2MetaData.getNativeClientBaseUrl());
          }
-         oauth2Values.setBearerTokensAccepted(!Boolean.FALSE.equals(oauth2MetaData.getBearerTokensEnabled()));
+         oauth2Values.setBearerTokensAccepted(Boolean.TRUE.equals(oauth2MetaData.getBearerTokensEnabled()));
       }
       else if(qAuthenticationMetaData instanceof Auth0AuthenticationMetaData auth0MetaData)
       {

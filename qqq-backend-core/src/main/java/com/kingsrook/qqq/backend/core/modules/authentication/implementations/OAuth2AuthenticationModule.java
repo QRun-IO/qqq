@@ -197,6 +197,14 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
             }
             else
             {
+               ////////////////////////////////////////////////////////////////////////
+               // a bearer JWT is never turned into a stored (cookie) session: that  //
+               // would let a page sign a browser in as someone else (login CSRF)   //
+               ////////////////////////////////////////////////////////////////////////
+               if(requestContext.containsKey(Auth0AuthenticationModule.DO_STORE_USER_SESSION_KEY))
+               {
+                  throw (new QAuthenticationException("Bearer access tokens cannot create a stored session; send them as Authorization: Bearer"));
+               }
                return (createSessionFromBearerToken(qInstance, oauth2MetaData, bearer));
             }
          }
@@ -275,6 +283,14 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
                Optional<QSession> cachedSession = QSessionStoreHelper.loadAndTouchSession(uuid);
                if(cachedSession.isPresent())
                {
+                  ///////////////////////////////////////////////////////////////////////
+                  // a bearer session's uuid is derived from its token: it is never a //
+                  // credential of its own                                            //
+                  ///////////////////////////////////////////////////////////////////////
+                  if("true".equals(cachedSession.get().getValue(BEARER_SESSION_VALUE_KEY)))
+                  {
+                     throw (new QAuthenticationException("Session not found"));
+                  }
                   return cachedSession.get();
                }
             }

@@ -119,6 +119,44 @@ class AbstractEndpointSpecTest
 
 
    /*******************************************************************************
+    ** The operationId a credential scope matches is the published one: the
+    ** spec's own, else the derived one (even when the spec's Method has none).
+    *******************************************************************************/
+   @Test
+   void testOpenApiOperationIdFallsBackToDerived()
+   {
+      AuthenticationMetaDataSpecV1 spec = new AuthenticationMetaDataSpecV1()
+      {
+         @Override
+         protected void customizeMethod(Method method)
+         {
+            method.setOperationId(null);
+         }
+      };
+      assertEquals("getAuthenticationMetaData", spec.getOpenApiOperationId());
+
+      AuthenticationMetaDataSpecV1 derived = new AuthenticationMetaDataSpecV1()
+      {
+         @Override
+         public BasicOperation defineBasicOperation()
+         {
+            return super.defineBasicOperation().withPath("/qbit/sample/things/{id}");
+         }
+
+
+
+         @Override
+         protected void customizeMethod(Method method)
+         {
+            method.setOperationId(null);
+         }
+      };
+      assertEquals("getQbitSampleThingsById", derived.getOpenApiOperationId());
+   }
+
+
+
+   /*******************************************************************************
     ** A response without a schema (e.g. 204) has no content - no $ref to null -
     ** and a document with it still generates.
     *******************************************************************************/

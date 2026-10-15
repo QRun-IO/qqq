@@ -114,6 +114,7 @@ class OAuth2BearerTokenTest extends BaseTest
       metaData.setClientSecret("secret");
       metaData.setNativeClientId(CLI_CLIENT);
       metaData.setNativeClientBaseUrl(NATIVE_BASE);
+      metaData.setBearerTokensEnabled(true);
       metaData.setCustomizer(new QCodeReference(GroupPermissionsCustomizer.class));
       qInstance.registerAuthenticationProvider(AuthScope.instanceDefault(), metaData);
    }
@@ -317,6 +318,7 @@ class OAuth2BearerTokenTest extends BaseTest
    @Test
    void testBearerTokensDisabled() throws Exception
    {
+      assertFalse(new OAuth2AuthenticationMetaData().getBearerTokensEnabled(), "bearer tokens are opt-in");
       metaData.setBearerTokensEnabled(false);
       assertRejected(sign(appKey, claims(APP_BASE, APP_CLIENT).build()));
    }
@@ -329,6 +331,8 @@ class OAuth2BearerTokenTest extends BaseTest
    @Test
    void testMachineTokenWithoutSub() throws Exception
    {
+      assertRejected(sign(appKey, claims(APP_BASE, APP_CLIENT).subject(null).claim("email", null).claim("preferred_username", "svc-export").build()));
+      metaData.setBearerMachineTokenUsernameSubject(true);
       QSession session = createSession(sign(appKey, claims(APP_BASE, APP_CLIENT).subject(null).claim("email", null).claim("preferred_username", "svc-export").build()));
       assertEquals("username:svc-export", session.getUser().getIdReference());
 
@@ -461,6 +465,7 @@ class OAuth2BearerTokenTest extends BaseTest
          .claim("email", "user@example.com")
          .claim("name", "Test User")
          .claim("groups", List.of("readers"))
+         .claim("scope", "openid profile email")
          .issueTime(new Date())
          .expirationTime(Date.from(Instant.now().plus(1, ChronoUnit.HOURS))));
    }

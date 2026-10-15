@@ -237,7 +237,13 @@ public abstract class AbstractEndpointSpec<
     ***************************************************************************/
    public String getOpenApiOperationId()
    {
-      return (defineMethod().getOperationId());
+      ////////////////////////////////////////////////////////////////////////////
+      // the same id the document publishes: the spec's own, else the derived  //
+      // one (a spec that builds its Method itself may leave it unset)         //
+      ////////////////////////////////////////////////////////////////////////////
+      CompleteOperation operation = defineCompleteOperation();
+      String            explicit  = operation.getMethod() == null ? null : operation.getMethod().getOperationId();
+      return (explicit != null ? explicit : UiApiOperationIds.of(operation.getHttpMethod(), operation.getPath()));
    }
 
 

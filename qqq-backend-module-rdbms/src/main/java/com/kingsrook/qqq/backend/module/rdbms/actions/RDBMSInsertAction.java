@@ -29,6 +29,8 @@ import java.util.List;
 import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.actions.interfaces.InsertInterface;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.instrumentation.StatementOperation;
+import com.kingsrook.qqq.backend.core.instrumentation.StatementTimer;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertOutput;
@@ -64,7 +66,8 @@ public class RDBMSInsertAction extends AbstractRDBMSAction implements InsertInte
 
       StringBuilder sql    = null;
       List<Object>  params = null;
-      Long          mark   = null;
+      Long           mark           = null;
+      StatementTimer statementTimer = StatementTimer.NOOP;
 
       try
       {
@@ -167,6 +170,7 @@ public class RDBMSInsertAction extends AbstractRDBMSAction implements InsertInte
             }
 
             mark = System.currentTimeMillis();
+            statementTimer = startStatementTimer(table.getName(), StatementOperation.INSERT);
 
             ///////////////////////////////////////////////////////////
             // execute the insert, then foreach record in the input, //
@@ -215,6 +219,7 @@ public class RDBMSInsertAction extends AbstractRDBMSAction implements InsertInte
                }
             }
 
+            statementTimer.succeeded(recordIndex).finish(sql);
             logSQL(sql, params, mark);
          }
 
@@ -222,6 +227,7 @@ public class RDBMSInsertAction extends AbstractRDBMSAction implements InsertInte
       }
       catch(Exception e)
       {
+         statementTimer.finish(sql);
          logSQL(sql, params, mark);
          throw new QException("Error executing insert: " + e.getMessage(), e);
       }

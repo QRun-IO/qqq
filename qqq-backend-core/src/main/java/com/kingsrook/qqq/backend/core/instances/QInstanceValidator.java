@@ -97,6 +97,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.joins.QJoinMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppChildMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppSection;
+import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppSectionRole;
 import com.kingsrook.qqq.backend.core.model.metadata.menus.QMenu;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.ClientChannelsMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValuePicker;
@@ -2407,7 +2408,15 @@ public class QInstanceValidator
       boolean hasTables    = CollectionUtils.nullSafeHasContents(section.getTables());
       boolean hasProcesses = CollectionUtils.nullSafeHasContents(section.getProcesses());
       boolean hasReports   = CollectionUtils.nullSafeHasContents(section.getReports());
-      if(assertCondition(hasTables || hasProcesses || hasReports, "App " + app.getName() + " section " + section.getName() + " does not have any children."))
+      boolean hasApps      = CollectionUtils.nullSafeHasContents(section.getApps());
+      assertCondition(section.getRole() != QAppSectionRole.GROUP || !(hasTables || hasProcesses || hasReports), "App " + app.getName() + " section " + section.getName() + " is a GROUP section, which may only list apps.");
+      for(String appName : CollectionUtils.nonNullList(section.getApps()))
+      {
+         assertCondition(CollectionUtils.nonNullList(app.getChildren()).stream().anyMatch(c -> c instanceof QAppMetaData && c.getName().equals(appName)), "App " + app.getName() + " section " + section.getName() + " specifies app " + appName + ", which is not a child of this app.");
+         assertCondition(!childNamesInSections.contains(appName), "App " + app.getName() + " has app " + appName + " listed more than once in its sections.");
+         childNamesInSections.add(appName);
+      }
+      if(assertCondition(hasTables || hasProcesses || hasReports || hasApps, "App " + app.getName() + " section " + section.getName() + " does not have any children."))
       {
          if(hasTables)
          {

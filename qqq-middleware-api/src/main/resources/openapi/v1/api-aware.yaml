@@ -25,6 +25,12 @@ components:
         icon:
           $ref: "#/components/schemas/Icon"
           description: "Icon to display for the app."
+        keywords:
+          description: "Search aliases (old labels, jargon, vendor names); match search\
+            \ on label, keywords and ancestor labels; never display"
+          items:
+            type: "string"
+          type: "array"
         label:
           description: "User-facing name for this app"
           type: "string"
@@ -50,6 +56,16 @@ components:
       type: "object"
     AppSection:
       properties:
+        apps:
+          description: "List of child app names for the section"
+          items:
+            type: "string"
+          type: "array"
+        collapsedByDefault:
+          description: "Whether the section is collapsed by default; SETTINGS defaults\
+            \ to true"
+          nullable: true
+          type: "boolean"
         icon:
           $ref: "#/components/schemas/Icon"
           description: "Icon to display for the section."
@@ -69,6 +85,16 @@ components:
           items:
             type: "string"
           type: "array"
+        role:
+          description: "PRIMARY: items shown without a heading; HISTORY: system-written\
+            \ records under a heading; SETTINGS: configuration under a heading, collapsed\
+            \ by default; GROUP: a heading grouping child apps, never navigable"
+          enum:
+          - "PRIMARY"
+          - "HISTORY"
+          - "SETTINGS"
+          - "GROUP"
+          type: "string"
         tables:
           description: "List of table names for the section"
           items:
@@ -86,6 +112,12 @@ components:
         icon:
           $ref: "#/components/schemas/Icon"
           description: "Icon to display for the item."
+        keywords:
+          description: "Search aliases (old labels, jargon, vendor names); match search\
+            \ on label, keywords and ancestor labels; never display"
+          items:
+            type: "string"
+          type: "array"
         label:
           description: "User-facing name of the element."
           type: "string"
@@ -8154,7 +8186,7 @@ info:
     \ its own\nconfiguration, identity and permission administration, audits, API\
     \ keys or secrets), exactly as if the user had\nno permission for them.\n"
   title: "QQQ Middleware API"
-  version: "1.6.0"
+  version: "1.7.0"
 openapi: "3.0.3"
 paths:
   /qqq/v1/{applicationApiPath}/{applicationApiVersion}/version:
@@ -8802,10 +8834,12 @@ paths:
                         label: "Home App"
                         name: "homeApp"
                         sections:
-                        - icon:
+                        - collapsedByDefault: false
+                          icon:
                             name: "badge"
                           label: "Home App"
                           name: "homeApp"
+                          role: "PRIMARY"
                           tables:
                           - "person"
                       childApp:
@@ -8829,12 +8863,14 @@ paths:
                         label: "Child App"
                         name: "childApp"
                         sections:
-                        - icon:
+                        - collapsedByDefault: false
+                          icon:
                             name: "badge"
                           label: "Child App"
                           name: "childApp"
                           processes:
                           - "samplePersonProcess"
+                          role: "PRIMARY"
                     metaDataGeneration: 0
                     processes:
                       person.bulkInsert:

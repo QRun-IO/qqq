@@ -47,6 +47,8 @@ import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
  *******************************************************************************/
 public class QAppMetaData implements QAppChildMetaData, MetaDataWithPermissionRules, TopLevelMetaDataInterface
 {
+   private List<String> keywords;
+
    public static final Integer DEFAULT_SORT_ORDER = 500;
 
    private String name;
@@ -639,4 +641,51 @@ public class QAppMetaData implements QAppChildMetaData, MetaDataWithPermissionRu
 
       QInstanceHelpContentManager.removeHelpContentByRoleSetFromList(roles, listForSlot);
    }
+
+
+   /*******************************************************************************
+    ** Search aliases: other words people use for this (old labels, jargon, vendor names).
+    ** Clients match search on label, keywords and ancestor labels. Never displayed as the label.
+    *******************************************************************************/
+   public List<String> getKeywords()
+   {
+      return (this.keywords);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for keywords
+    *******************************************************************************/
+   public void setKeywords(List<String> keywords)
+   {
+      this.keywords = keywords;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for keywords
+    *******************************************************************************/
+   public QAppMetaData withKeywords(List<String> keywords)
+   {
+      this.keywords = keywords;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Append a search alias.
+    *******************************************************************************/
+   public QAppMetaData withKeyword(String keyword)
+   {
+      if(keywords == null)
+      {
+         keywords = new ArrayList<>();
+      }
+      keywords.add(keyword);
+      return (this);
+   }
+
 }

@@ -24,6 +24,7 @@ package com.kingsrook.qqq.backend.core.model.metadata.layout;
 import java.util.ArrayList;
 import java.util.List;
 import com.kingsrook.qqq.backend.core.model.metadata.QMetaDataObject;
+import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 
 
 /*******************************************************************************
@@ -31,6 +32,9 @@ import com.kingsrook.qqq.backend.core.model.metadata.QMetaDataObject;
  *******************************************************************************/
 public class QAppSection implements Cloneable, QMetaDataObject
 {
+   private QAppSectionRole role;
+   private Boolean         collapsedByDefault;
+
    private String name;
    private String label;
    private QIcon  icon;
@@ -75,6 +79,10 @@ public class QAppSection implements Cloneable, QMetaDataObject
       try
       {
          QAppSection clone = (QAppSection) super.clone();
+         clone.tables = tables == null ? null : new ArrayList<>(tables);
+         clone.apps = apps == null ? null : new ArrayList<>(apps);
+         clone.processes = processes == null ? null : new ArrayList<>(processes);
+         clone.reports = reports == null ? null : new ArrayList<>(reports);
          return clone;
       }
       catch(CloneNotSupportedException e)
@@ -380,6 +388,105 @@ public class QAppSection implements Cloneable, QMetaDataObject
       }
       this.apps.add(appName);
       return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for role
+    *******************************************************************************/
+   public QAppSectionRole getRole()
+   {
+      return (this.role);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for role
+    *******************************************************************************/
+   public void setRole(QAppSectionRole role)
+   {
+      this.role = role;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for role
+    *******************************************************************************/
+   public QAppSection withRole(QAppSectionRole role)
+   {
+      this.role = role;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for collapsedByDefault
+    *******************************************************************************/
+   public Boolean getCollapsedByDefault()
+   {
+      return (this.collapsedByDefault);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for collapsedByDefault
+    *******************************************************************************/
+   public void setCollapsedByDefault(Boolean collapsedByDefault)
+   {
+      this.collapsedByDefault = collapsedByDefault;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for collapsedByDefault
+    *******************************************************************************/
+   public QAppSection withCollapsedByDefault(Boolean collapsedByDefault)
+   {
+      this.collapsedByDefault = collapsedByDefault;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Resolve the navigation role for explicit and legacy sections.
+    *******************************************************************************/
+   public QAppSectionRole getEffectiveRole()
+   {
+      if(role != null)
+      {
+         return (role);
+      }
+      if("settings".equalsIgnoreCase(name) || "Settings".equalsIgnoreCase(label))
+      {
+         return (QAppSectionRole.SETTINGS);
+      }
+      if("history".equalsIgnoreCase(name))
+      {
+         return (QAppSectionRole.HISTORY);
+      }
+      if(CollectionUtils.nullSafeHasContents(apps) && CollectionUtils.nullSafeIsEmpty(tables)
+         && CollectionUtils.nullSafeIsEmpty(processes) && CollectionUtils.nullSafeIsEmpty(reports))
+      {
+         return (QAppSectionRole.GROUP);
+      }
+      return (QAppSectionRole.PRIMARY);
+   }
+
+
+
+   /*******************************************************************************
+    ** Resolve the initial collapsed state, honoring an explicit override.
+    *******************************************************************************/
+   public Boolean getEffectiveCollapsedByDefault()
+   {
+      return (collapsedByDefault != null ? collapsedByDefault : getEffectiveRole() == QAppSectionRole.SETTINGS);
    }
 
 }

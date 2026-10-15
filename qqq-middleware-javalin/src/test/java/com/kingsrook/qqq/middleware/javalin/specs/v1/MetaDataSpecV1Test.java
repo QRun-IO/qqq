@@ -31,6 +31,9 @@ import java.util.Set;
 import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpRole;
+import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppSection;
+import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppSectionRole;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.DenyBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
@@ -971,4 +974,51 @@ class MetaDataSpecV1Test extends SpecTestBase
          assertFalse(content.has("clientChannel"));
       }
    }
+
+
+   /*******************************************************************************
+    ** Navigation roles and aliases survive the full HTTP metadata response.
+    *******************************************************************************/
+   @Test
+   void testNavigationSectionsAndKeywords()
+   {
+      QAppMetaData child = new QAppMetaData().withName("navChild").withLabel("Child").withSortOrder(2).withKeyword("vendor");
+      QAppMetaData parent = new QAppMetaData().withName("navParent").withLabel("Parent").withSortOrder(1).withKeyword("old name")
+         .withChild(child).withChild(serverQInstance.getTable(TestUtils.TABLE_NAME_PERSON))
+         .withSection(new QAppSection().withName("group").withLabel("Group").withRole(QAppSectionRole.GROUP).withApp("navChild"))
+         .withSection(new QAppSection().withName("settings").withLabel("Settings").withTable(TestUtils.TABLE_NAME_PERSON));
+      child.setParentAppName(parent.getName());
+      serverQInstance.addApp(parent);
+      serverQInstance.addApp(child);
+      serverQInstance.getTable(TestUtils.TABLE_NAME_PERSON).withKeyword("contacts");
+      JSONObject json = JsonUtils.toJSONObject(getMetaDataBody());
+      JSONObject app = json.getJSONObject("apps").getJSONObject("navParent");
+      assertEquals(List.of("old name"), app.getJSONArray("keywords").toList());
+      JSONArray sections = app.getJSONArray("sections");
+      assertEquals(List.of("navChild"), sections.getJSONObject(0).getJSONArray("apps").toList());
+      assertEquals("GROUP", sections.getJSONObject(0).getString("role"));
+      assertFalse(sections.getJSONObject(0).getBoolean("collapsedByDefault"));
+      assertEquals("SETTINGS", sections.getJSONObject(1).getString("role"));
+      assertTrue(sections.getJSONObject(1).getBoolean("collapsedByDefault"));
+      JSONObject parentNode = null;
+      for(Object node : json.getJSONArray("appTree"))
+      {
+         if("navParent".equals(((JSONObject) node).getString("name")))
+         {
+            parentNode = (JSONObject) node;
+         }
+      }
+      assertThat(parentNode).isNotNull();
+      assertEquals(List.of("old name"), parentNode.getJSONArray("keywords").toList());
+      JSONArray children = parentNode.getJSONArray("children");
+      assertEquals(List.of("vendor"), children.getJSONObject(0).getJSONArray("keywords").toList());
+      assertEquals(List.of("contacts"), children.getJSONObject(1).getJSONArray("keywords").toList());
+      child.withPermissionRules(new QPermissionRules().withLevel(PermissionLevel.READ_INSERT_EDIT_DELETE_PERMISSIONS));
+      json = JsonUtils.toJSONObject(getMetaDataBody());
+      sections = json.getJSONObject("apps").getJSONObject("navParent").getJSONArray("sections");
+      assertEquals(1, sections.length());
+      assertEquals("settings", sections.getJSONObject(0).getString("name"));
+      assertEquals(List.of("navChild"), parent.getSections().get(0).getApps());
+   }
+
 }

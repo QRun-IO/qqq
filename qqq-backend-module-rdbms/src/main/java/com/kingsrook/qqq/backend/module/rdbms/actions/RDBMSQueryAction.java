@@ -44,6 +44,8 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
+import com.kingsrook.qqq.backend.core.instrumentation.StatementOperation;
+import com.kingsrook.qqq.backend.core.instrumentation.StatementTimer;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.personalization.TableMetaDataPersonalizerInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QueryHint;
@@ -166,6 +168,8 @@ public class RDBMSQueryAction extends AbstractRDBMSAction implements QueryInterf
          }
 
          Long mark = System.currentTimeMillis();
+         StatementTimer statementTimer = startStatementTimer(table.getName(), StatementOperation.QUERY);
+         int[]          rowCounter     = new int[1];
 
          try
          {
@@ -228,6 +232,7 @@ public class RDBMSQueryAction extends AbstractRDBMSAction implements QueryInterf
                   }
 
                   queryOutput.addRecord(record);
+                  rowCounter[0]++;
 
                   if(queryInput.getAsyncJobCallback().wasCancelRequested())
                   {
@@ -243,11 +248,13 @@ public class RDBMSQueryAction extends AbstractRDBMSAction implements QueryInterf
 
             }), params);
 
+            statementTimer.succeeded(rowCounter[0]);
             return queryOutput;
          }
          finally
          {
             logSQL(sql, params, mark);
+            statementTimer.finish(sql);
 
             if(actionTimeoutHelper != null)
             {

@@ -37,6 +37,13 @@ public class HealthSchedulerCheck implements HealthCheck
    {
       try
       {
+         if(!QScheduleManager.isEnabledOnThisNode())
+         {
+            ///////////////////////////////////////////////////////////////////
+            // a node without the scheduler role is healthy in standby      //
+            ///////////////////////////////////////////////////////////////////
+            return (HealthCheckOutcome.up("Scheduler standby (not a scheduler node)"));
+         }
          return (QScheduleManager.getInstance().isStarted() ? HealthCheckOutcome.up("Scheduler started") : HealthCheckOutcome.down("Scheduler stopped"));
       }
       catch(IllegalStateException e)

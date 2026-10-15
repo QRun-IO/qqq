@@ -37,6 +37,8 @@ import java.util.Map;
 import com.kingsrook.qqq.backend.core.actions.interfaces.ConditionalUpdateInterface;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.instrumentation.StatementOperation;
+import com.kingsrook.qqq.backend.core.instrumentation.StatementTimer;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.JoinsContext;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.ConditionalUpdateInput;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
@@ -86,18 +88,24 @@ public class RDBMSConditionalUpdateAction extends AbstractRDBMSAction implements
          + " SET " + sets
          + " WHERE " + whereClause;
 
-      long mark = System.currentTimeMillis();
+      long           mark           = System.currentTimeMillis();
+      StatementTimer statementTimer = startStatementTimer(table.getName(), StatementOperation.UPDATE);
       try
       {
+         int rowCount;
          if(input.getTransaction() instanceof RDBMSTransaction rdbmsTransaction)
          {
-            return (getActionStrategy().executeUpdateForRowCount(rdbmsTransaction.getConnection(), sql, params.toArray()));
+            rowCount = getActionStrategy().executeUpdateForRowCount(rdbmsTransaction.getConnection(), sql, params.toArray());
          }
-
-         try(Connection connection = getConnection(input))
+         else
          {
-            return (getActionStrategy().executeUpdateForRowCount(connection, sql, params.toArray()));
+            try(Connection connection = getConnection(input))
+            {
+               rowCount = getActionStrategy().executeUpdateForRowCount(connection, sql, params.toArray());
+            }
          }
+         statementTimer.succeeded(rowCount);
+         return (rowCount);
       }
       catch(Exception e)
       {
@@ -106,6 +114,7 @@ public class RDBMSConditionalUpdateAction extends AbstractRDBMSAction implements
       finally
       {
          logSQL(sql, params, mark);
+         statementTimer.finish(sql);
       }
    }
 

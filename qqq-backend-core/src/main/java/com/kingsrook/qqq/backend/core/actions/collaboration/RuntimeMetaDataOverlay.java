@@ -30,6 +30,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
+import com.kingsrook.qqq.backend.core.cluster.ClusterBus;
+import com.kingsrook.qqq.backend.core.cluster.ClusterEvent;
+import com.kingsrook.qqq.backend.core.cluster.QNodeRoles;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.instances.QInstanceEnricher;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
@@ -60,6 +63,25 @@ public class RuntimeMetaDataOverlay
    private static final Map<QInstance, Map<String, AppliedTable>> APPLIED = new WeakHashMap<>();
    private static final QLogger LOG = QLogger.getLogger(RuntimeMetaDataOverlay.class);
 
+   static
+   {
+      ClusterBus.on(ClusterEvent.TYPE_METADATA_OVERLAY_CHANGED, (instance, event) ->
+      {
+         if(instance == null || QNodeRoles.nodeId().equals(event.getOriginNodeId()))
+         {
+            return;
+         }
+         try
+         {
+            refreshLocal(instance);
+         }
+         catch(QException e)
+         {
+            LOG.warn("Could not reload the runtime meta data overlay after another node changed it", e);
+         }
+      });
+   }
+
 
 
    /*******************************************************************************
@@ -67,6 +89,23 @@ public class RuntimeMetaDataOverlay
     ** their previous accepted values. Refresh also invalidates code declarations.
     *******************************************************************************/
    public static void refresh(QInstance instance) throws QException
+   {
+      if(refreshLocal(instance))
+      {
+         ///////////////////////////////////////////////////////////////////
+         // other nodes hold their own overlay: tell them to reload it    //
+         ///////////////////////////////////////////////////////////////////
+         ClusterBus.publish(instance, new ClusterEvent(ClusterEvent.TYPE_METADATA_OVERLAY_CHANGED, null, null));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Refresh this node's overlay only (another node changed it). Returns
+    ** whether the generation changed.
+    *******************************************************************************/
+   static boolean refreshLocal(QInstance instance) throws QException
    {
       long previousGeneration;
       long generation;
@@ -88,6 +127,7 @@ public class RuntimeMetaDataOverlay
             LOG.warn("Could not publish metadata change after runtime metadata refresh", e);
          }
       }
+      return (generation != previousGeneration);
    }
 
 

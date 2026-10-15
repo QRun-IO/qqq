@@ -24,8 +24,10 @@ package com.kingsrook.qqq.esb.runtime;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -33,6 +35,7 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QRuntimeException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.esb.connection.EsbConnectionManager;
@@ -40,10 +43,12 @@ import com.kingsrook.qqq.esb.envelope.EsbEvent;
 import com.kingsrook.qqq.esb.envelope.EsbEventCodec;
 import com.kingsrook.qqq.esb.envelope.EsbUnparseableMessageException;
 import com.kingsrook.qqq.esb.model.EsbDeadLetterAction;
+import com.kingsrook.qqq.esb.model.EsbDedupeConfig;
 import com.kingsrook.qqq.esb.model.EsbDestinationType;
 import com.kingsrook.qqq.esb.model.EsbTrigger;
 import com.kingsrook.qqq.esb.model.EsbTriggerMode;
 import com.kingsrook.qqq.esb.model.QEsbDestinationMetaData;
+import com.kingsrook.qqq.esb.outbox.EsbMessageDedupe;
 import com.kingsrook.qqq.esb.stats.EsbStats;
 import jakarta.jms.DeliveryMode;
 import jakarta.jms.Destination;
@@ -857,6 +862,7 @@ public class EsbTriggerRunner
             }
          }
 
+         List<String> messageKeys = removeAlreadyProcessed(runMessages, events);
          if(events.isEmpty())
          {
             commit(deadLettered);
@@ -872,6 +878,7 @@ public class EsbTriggerRunner
 
          if(result.error() == null)
          {
+            recordProcessed(messageKeys);
             commit(deadLettered);
             stats.succeeded(triggerName, result.ms());
             return;
@@ -898,6 +905,80 @@ public class EsbTriggerRunner
             deadLettered++;
          }
          commit(deadLettered);
+      }
+
+
+
+      /*******************************************************************************
+       ** With dedupe enabled (EsbDedupeConfig), drop (from both index-aligned
+       ** lists) the messages this trigger already processed - and repeats within
+       ** the batch - and return the keys of the rest; else return null.  Throws
+       ** if the processed-message table can't be read, so nothing runs unchecked
+       ** (the worker then rolls back, and the messages are redelivered).
+       *******************************************************************************/
+      private List<String> removeAlreadyProcessed(List<Message> runMessages, List<EsbEvent> events) throws JMSException
+      {
+         EsbDedupeConfig dedupeConfig = EsbMessageDedupe.getEnabledConfig(qInstance);
+         if(dedupeConfig == null || runMessages.isEmpty())
+         {
+            return (null);
+         }
+
+         List<String> keys = new ArrayList<>();
+         for(Message message : runMessages)
+         {
+            keys.add(EsbEventCodec.getMessageKey(message));
+         }
+
+         Set<String> processed;
+         try
+         {
+            processed = EsbMessageDedupe.findProcessed(dedupeConfig, triggerName, keys);
+         }
+         catch(QException e)
+         {
+            throw (new QRuntimeException("Could not check the ESB processed-message table for trigger " + triggerName, e));
+         }
+
+         List<String> keptKeys = new ArrayList<>();
+         Set<String>  kept     = new HashSet<>();
+         List<Integer> drop    = new ArrayList<>();
+         for(int i = 0; i < keys.size(); i++)
+         {
+            String key = keys.get(i);
+            if(processed.contains(key) || !kept.add(key))
+            {
+               LOG.info("Skipping an ESB message this trigger already processed", logPair("triggerName", triggerName), logPair("messageKey", key));
+               drop.add(i);
+            }
+            else
+            {
+               keptKeys.add(key);
+            }
+         }
+         for(int i = drop.size() - 1; i >= 0; i--)
+         {
+            int index = drop.get(i);
+            runMessages.remove(index);
+            events.remove(index);
+         }
+         return (keptKeys);
+      }
+
+
+
+      /*******************************************************************************
+       ** Record a successful run's messages as processed (if dedupe is on) -
+       ** before the session commits, so a redelivery after a lost commit skips
+       ** them.
+       *******************************************************************************/
+      private void recordProcessed(List<String> messageKeys)
+      {
+         EsbDedupeConfig dedupeConfig = EsbMessageDedupe.getEnabledConfig(qInstance);
+         if(dedupeConfig != null && messageKeys != null)
+         {
+            EsbMessageDedupe.recordProcessed(dedupeConfig, triggerName, messageKeys);
+         }
       }
 
 

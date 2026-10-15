@@ -25,6 +25,7 @@ import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import com.kingsrook.qqq.backend.core.cluster.ClusterCaches;
 import com.kingsrook.qqq.backend.core.instances.loaders.implementations.GenericMetaDataLoader;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.QMetaDataObject;
@@ -41,7 +42,7 @@ import com.kingsrook.qqq.backend.core.utils.memoization.Memoization;
  *******************************************************************************/
 public class ClassDetectingMetaDataLoader extends AbstractMetaDataLoader<QMetaDataObject>
 {
-   private static final Memoization<AnyKey, List<Class<?>>> memoizedMetaDataObjectClasses = new Memoization<>();
+   private static final Memoization<AnyKey, List<Class<?>>> memoizedMetaDataObjectClasses = ClusterCaches.nodeLocal(new Memoization<>(), "classes are the same on every node");
 
 
    /***************************************************************************

@@ -29,7 +29,7 @@ import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldMaskS
 /*******************************************************************************
  ** Define, for a field, a lock that controls if users can or cannot see the field.
  *******************************************************************************/
-public class FieldSecurityLock
+public class FieldSecurityLock implements Serializable
 {
    private FieldMaskStyle maskStyle;
    private String             securityKeyType;

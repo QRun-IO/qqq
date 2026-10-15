@@ -21,6 +21,8 @@
 package com.kingsrook.qqq.backend.core.model.metadata.fields;
 
 
+import java.io.IOException;
+import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -1304,5 +1306,37 @@ public class QFieldMetaData implements Cloneable, QMetaDataObject
    {
       this.validatePossibleValueSourceOnWrite = validatePossibleValueSourceOnWrite;
       return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Java serialization (field meta data can be part of process state, which a
+    ** multi-node application shares): supplemental meta data that is not
+    ** Serializable (a module's runtime strategy, for example) is left out - the
+    ** instance's own field meta data keeps it.
+    *******************************************************************************/
+   private void writeObject(ObjectOutputStream out) throws IOException
+   {
+      Map<String, QSupplementalFieldMetaData> original = supplementalMetaData;
+      if(original != null && original.values().stream().anyMatch(v -> !(v instanceof Serializable)))
+      {
+         Map<String, QSupplementalFieldMetaData> serializable = new HashMap<>();
+         original.forEach((key, value) ->
+         {
+            if(value instanceof Serializable)
+            {
+               serializable.put(key, value);
+            }
+         });
+         supplementalMetaData = serializable;
+      }
+      try
+      {
+         out.defaultWriteObject();
+      }
+      finally
+      {
+         supplementalMetaData = original;
+      }
    }
 }

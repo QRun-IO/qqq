@@ -66,6 +66,13 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  * can open new ones.  While it is reconnecting, openSession fails at once
  * rather than waiting - so a broker that is down holds up only the first
  * attempt (by at most the connect timeout), not every one after it.
+ *
+ * In HA mode (an Artemis failover url with reconnectAttempts), the client
+ * fails over by itself and reports it to the ExceptionListener as a failover,
+ * not a loss (EsbConnectionFactoryBuilder.isFailover): the manager keeps the
+ * connection (and its sessions, which the client re-attached) and only fires
+ * the connection listeners, so triggers rebuild their consumers on the new
+ * broker.
  *******************************************************************************/
 public final class EsbConnectionManager
 {
@@ -698,7 +705,17 @@ public final class EsbConnectionManager
          Connection newConnection = connectionFactory.createConnection();
          try
          {
-            newConnection.setExceptionListener(exception -> onConnectionLost(newConnection, exception));
+            newConnection.setExceptionListener(exception ->
+            {
+               if(connectionFactoryBuilder.isFailover(exception))
+               {
+                  onFailedOver(newConnection, exception);
+               }
+               else
+               {
+                  onConnectionLost(newConnection, exception);
+               }
+            });
             newConnection.start();
             return (newConnection);
          }
@@ -727,6 +744,32 @@ public final class EsbConnectionManager
          connection = null;
          invalidatePublishingSessions();
          startReconnecting(failedConnection);
+      }
+
+
+
+      /*******************************************************************************
+       ** Called (by the JMS client) when the current connection failed over to
+       ** another broker by itself: keep it, and tell the connection listeners
+       ** (on their own thread, off the client's).
+       *******************************************************************************/
+      private synchronized void onFailedOver(Connection failedOverConnection, Exception exception)
+      {
+         if(closed || connection != failedOverConnection)
+         {
+            return;
+         }
+         LOG.info("ESB provider failed over to another broker; rebuilding consumers", logPair("providerName", providerName), logPair("detail", exception.getMessage()));
+         Thread.ofPlatform()
+            .daemon()
+            .name("qqq-esb-failover-" + providerName)
+            .start(() ->
+            {
+               if(!isClosed())
+               {
+                  onReconnect.run();
+               }
+            });
       }
 
 

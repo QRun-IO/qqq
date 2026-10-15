@@ -81,6 +81,13 @@ public class EsbEventCodec
    public static final String PROPERTY_TYPE   = "ce_type";
    public static final String PROPERTY_SOURCE = "ce_source";
 
+   ///////////////////////////////////////////////////////////////////////
+   // the stable id of a message: the outbox row's uuid (the event's id  //
+   // when it was sent without the outbox).  A re-send of the same row   //
+   // has the same id, so consumers dedupe on it (at-least-once).        //
+   ///////////////////////////////////////////////////////////////////////
+   public static final String PROPERTY_MESSAGE_ID = "qqq_message_id";
+
    private static final JsonMapper MAPPER = JsonMapper.builder()
       .addModule(new JavaTimeModule())
       .configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false)
@@ -192,7 +199,42 @@ public class EsbEventCodec
       message.setStringProperty(PROPERTY_ID, event.getId());
       message.setStringProperty(PROPERTY_TYPE, event.getType());
       message.setStringProperty(PROPERTY_SOURCE, event.getSource());
+      message.setStringProperty(PROPERTY_MESSAGE_ID, event.getId());
       return (message);
+   }
+
+
+
+   /*******************************************************************************
+    ** Make a JMS TextMessage holding the event (see toMessage), whose stable
+    ** message id (the qqq_message_id property) is the given one - e.g., the
+    ** outbox row's uuid.
+    *******************************************************************************/
+   public static TextMessage toMessage(Session session, EsbEvent event, String messageId) throws JMSException
+   {
+      TextMessage message = toMessage(session, event);
+      if(StringUtils.hasContent(messageId))
+      {
+         message.setStringProperty(PROPERTY_MESSAGE_ID, messageId);
+      }
+      return (message);
+   }
+
+
+
+   /*******************************************************************************
+    ** The key a consumer dedupes a message on: its qqq_message_id property, else
+    ** its ce_id property (the event's id), else the broker's JMSMessageID.
+    *******************************************************************************/
+   public static String getMessageKey(Message message) throws JMSException
+   {
+      String messageId = message.getStringProperty(PROPERTY_MESSAGE_ID);
+      if(StringUtils.hasContent(messageId))
+      {
+         return (messageId);
+      }
+      String eventId = message.getStringProperty(PROPERTY_ID);
+      return (StringUtils.hasContent(eventId) ? eventId : message.getJMSMessageID());
    }
 
 

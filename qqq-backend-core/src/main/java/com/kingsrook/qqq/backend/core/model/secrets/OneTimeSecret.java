@@ -21,12 +21,17 @@
 package com.kingsrook.qqq.backend.core.model.secrets;
 
 
+import java.io.Serializable;
 
 
 /*******************************************************************************
- ** Returned once to the requesting client; never stored, logged, audited or put in process state.
+ ** Returned once to the requesting client; never logged, audited or put in
+ ** process state. Serializable only so that, in a multi-node application with an
+ ** encrypted shared state store, the async hand-off (OneTimeSecretHandoff) can
+ ** pass it - encrypted, for minutes, removed on first take - to the node that
+ ** answers the status poll.
  *******************************************************************************/
-public class OneTimeSecret
+public class OneTimeSecret implements Serializable
 {
    private String label;
    private String value;

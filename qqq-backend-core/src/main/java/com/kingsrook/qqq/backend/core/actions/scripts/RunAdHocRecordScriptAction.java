@@ -23,6 +23,7 @@ package com.kingsrook.qqq.backend.core.actions.scripts;
 
 import java.io.Serializable;
 import java.lang.reflect.Method;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -33,6 +34,7 @@ import com.kingsrook.qqq.backend.core.actions.audits.DMLAuditAction;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
+import com.kingsrook.qqq.backend.core.cluster.ClusterCaches;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -70,7 +72,7 @@ public class RunAdHocRecordScriptAction
    private Map<Integer, ScriptRevision> scriptRevisionCacheByScriptRevisionId = new HashMap<>();
    private Map<Integer, ScriptRevision> scriptRevisionCacheByScriptId         = new HashMap<>();
 
-   private static Memoization<Integer, Script> scriptMemoizationById = new Memoization<>();
+   private static Memoization<Integer, Script> scriptMemoizationById = ClusterCaches.shared("scripts.byId", new Memoization<Integer, Script>().withTimeout(Duration.ofSeconds(60)), Integer::valueOf);
 
 
 

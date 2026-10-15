@@ -31,9 +31,14 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldAdornment;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.DenyBehavior;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 import com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferenceSectionMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferencesMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.profile.UserProfilesMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.security.QSecurityKeyType;
+import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLock;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.UniqueKey;
 
@@ -75,6 +80,11 @@ public class UserProfileMetaDataProvider
          .withGravatarOptIn(gravatarOptIn)
          .withMaxAvatarBytes(maxAvatarBytes);
 
+      if(qInstance.getSecurityKeyType(UserProfilesMetaData.SECURITY_KEY_USER) == null)
+      {
+         qInstance.addSecurityKeyType(new QSecurityKeyType().withName(UserProfilesMetaData.SECURITY_KEY_USER).withAllAccessKeyName(UserProfilesMetaData.SECURITY_KEY_USER_ALL_ACCESS));
+      }
+
       QTableMetaData table = defineTable(tableName, backendName);
       if(tableCustomizer != null)
       {
@@ -87,7 +97,11 @@ public class UserProfileMetaDataProvider
 
 
    /*******************************************************************************
-    ** The audited profile table (one row per user; no foreign keys).
+    ** The audited profile table (one row per user; no foreign keys). Protected:
+    ** table permissions (user_profile.read ...), and each row is locked to its
+    ** owner (user_profile_user key; user_profile_admin sees all), so through the
+    ** standard table APIs a user reaches only their own row. Users change their
+    ** row through the Profile preferences section (no table permission needed).
     *******************************************************************************/
    public QTableMetaData defineTable(String tableName, String backendName)
    {
@@ -98,8 +112,17 @@ public class UserProfileMetaDataProvider
          .withRecordLabelFormatAndFields("%s", "userId")
          .withUniqueKey(new UniqueKey("userId"))
          .withAuditRules(new QAuditRules().withAuditLevel(AuditLevel.FIELD))
+         .withPermissionRules(new QPermissionRules()
+            .withLevel(PermissionLevel.READ_INSERT_EDIT_DELETE_PERMISSIONS)
+            .withPermissionBaseName(tableName)
+            .withDenyBehavior(DenyBehavior.HIDDEN))
+         .withRecordSecurityLock(new RecordSecurityLock()
+            .withSecurityKeyType(UserProfilesMetaData.SECURITY_KEY_USER)
+            .withFieldName("userId")
+            .withLockScope(RecordSecurityLock.LockScope.READ_AND_WRITE))
          .withField(new QFieldMetaData("id", QFieldType.INTEGER).withIsEditable(false))
-         .withField(new QFieldMetaData("userId", QFieldType.STRING).withLabel("User ID").withIsRequired(true).withMaxLength(255))
+         .withField(new QFieldMetaData("userId", QFieldType.STRING).withLabel("User ID").withIsRequired(true).withMaxLength(255).withIsEditable(false))
+         .withField(new QFieldMetaData("avatarId", QFieldType.STRING).withLabel("Avatar ID").withMaxLength(32).withIsEditable(false))
          .withField(new QFieldMetaData("displayName", QFieldType.STRING).withMaxLength(100))
          .withField(new QFieldMetaData("avatarKey", QFieldType.STRING).withLabel("Avatar Key").withMaxLength(64).withIsEditable(false))
          .withField(new QFieldMetaData("avatarUpdatedAt", QFieldType.DATE_TIME).withLabel("Avatar Updated At").withIsEditable(false))

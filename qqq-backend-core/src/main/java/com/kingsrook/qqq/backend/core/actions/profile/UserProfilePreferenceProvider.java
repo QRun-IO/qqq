@@ -36,7 +36,9 @@ import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
 import com.kingsrook.qqq.backend.core.jobs.uploads.UploadRefs;
+import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.storage.StorageInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferenceChange;
@@ -58,6 +60,8 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
  *******************************************************************************/
 public class UserProfilePreferenceProvider implements UserPreferenceProviderInterface
 {
+   private static final QLogger LOG = QLogger.getLogger(UserProfilePreferenceProvider.class);
+
    public static final String FIELD_AVATAR       = "avatar";
    public static final String FIELD_DISPLAY_NAME = "displayName";
    public static final String FIELD_USE_GRAVATAR = "useGravatar";
@@ -73,11 +77,10 @@ public class UserProfilePreferenceProvider implements UserPreferenceProviderInte
    {
       QRecord                   row    = UserProfiles.find(context.getUserId());
       Map<String, Serializable> values = new HashMap<>();
-      String                    key    = row == null ? null : row.getValueString("avatarKey");
-      values.put(FIELD_AVATAR, StringUtils.hasContent(key) ? UserProfiles.avatarUrl(context.getUserId(), new UserProfiles.Avatar(key, null)) : null);
+      values.put(FIELD_AVATAR, photoUrl(row));
       values.put(FIELD_DISPLAY_NAME, row == null ? null : row.getValueString("displayName"));
       UserProfiles.Avatar effective = UserProfiles.avatarOf(row);
-      values.put(FIELD_AVATAR_URL, effective == null ? null : UserProfiles.avatarUrl(context.getUserId(), effective));
+      values.put(FIELD_AVATAR_URL, effective == null ? null : UserProfiles.avatarUrl(effective));
       if(UserProfiles.settings().getGravatarOptIn())
       {
          values.put(FIELD_USE_GRAVATAR, row != null && Boolean.TRUE.equals(row.getValueBoolean("useGravatar")));
@@ -109,6 +112,12 @@ public class UserProfilePreferenceProvider implements UserPreferenceProviderInte
    @Override
    public void store(UserPreferenceRequestContext context, UserPreferenceChange change) throws QException
    {
+      ////////////////////////////////////////////////////////////////////////
+      // the row is locked to its owner: the session needs its own key to   //
+      // write it (a host that stamps keys at sign-in already did this)     //
+      ////////////////////////////////////////////////////////////////////////
+      UserProfiles.ensureSessionKeys(context.getSession());
+
       String                    userId   = context.getUserId();
       QRecord                   existing = UserProfiles.find(userId);
       String                    oldKey   = existing == null ? null : existing.getValueString("avatarKey");
@@ -126,6 +135,7 @@ public class UserProfilePreferenceProvider implements UserPreferenceProviderInte
          boolean useGravatar = Boolean.TRUE.equals(values.get(FIELD_USE_GRAVATAR));
          record.setValue("useGravatar", useGravatar);
          record.setValue("gravatarHash", useGravatar ? UserProfiles.gravatarHash(context.getUserEmailAddress()) : null);
+         record.setValue("avatarUpdatedAt", Instant.now());
       }
 
       String newKey = oldKey;
@@ -136,8 +146,9 @@ public class UserProfilePreferenceProvider implements UserPreferenceProviderInte
          {
             newKey = null;
          }
-         else if(!(oldKey != null && avatar.toString().equals(UserProfiles.avatarUrl(userId, new UserProfiles.Avatar(oldKey, null)))))
+         else if(!avatar.toString().equals(photoUrl(existing)))
          {
+            UploadRateLimit.check(userId);
             Map<Integer, byte[]> pngBySize = readAndConvert(userId, avatar.toString());
             newKey = UserProfiles.avatarKey(userId, pngBySize.get(UserProfilesMetaData.AVATAR_SIZES.get(UserProfilesMetaData.AVATAR_SIZES.size() - 1)));
             UserProfiles.writeAvatar(newKey, pngBySize);
@@ -145,7 +156,7 @@ public class UserProfilePreferenceProvider implements UserPreferenceProviderInte
          if(!Objects.equals(newKey, oldKey))
          {
             record.setValue("avatarKey", newKey);
-            record.setValue("avatarUpdatedAt", newKey == null ? null : Instant.now());
+            record.setValue("avatarUpdatedAt", Instant.now());
          }
       }
 
@@ -155,6 +166,10 @@ public class UserProfilePreferenceProvider implements UserPreferenceProviderInte
       }
 
       String tableName = UserProfiles.settings().getTableName();
+      if(existing == null || !StringUtils.hasContent(existing.getValueString("avatarId")))
+      {
+         record.setValue("avatarId", UserProfiles.newAvatarId());
+      }
       if(existing == null)
       {
          record.setValue("userId", userId);
@@ -197,7 +212,8 @@ public class UserProfilePreferenceProvider implements UserPreferenceProviderInte
          throw (new QBadRequestException("Photo: Upload not found. Upload the image again."));
       }
 
-      try(InputStream input = new StorageAction().getInputStream(UploadRefs.open(ref)))
+      StorageInput uploadObject = UploadRefs.open(ref);
+      try(InputStream input = new StorageAction().getInputStream(uploadObject))
       {
          byte[] bytes = AvatarImageProcessor.readBounded(input, UserProfiles.settings().getMaxAvatarBytes());
          return (AvatarImageProcessor.process(bytes));
@@ -214,5 +230,31 @@ public class UserProfilePreferenceProvider implements UserPreferenceProviderInte
       {
          throw (new QException("Error reading the uploaded photo", e));
       }
+      finally
+      {
+         ////////////////////////////////////////////////////////////////////
+         // the original (with its metadata) is never kept: only the       //
+         // re-encoded sizes are. Best effort; the ref also expires.        //
+         ////////////////////////////////////////////////////////////////////
+         try
+         {
+            new StorageAction().deleteObject(uploadObject);
+         }
+         catch(Exception e)
+         {
+            LOG.info("Could not delete a consumed avatar upload", e);
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** The URL of the row's photo (not a Gravatar), or null.
+    *******************************************************************************/
+   private static String photoUrl(QRecord row)
+   {
+      UserProfiles.Avatar avatar = UserProfiles.avatarOf(row);
+      return (avatar == null || avatar.avatarKey() == null ? null : UserProfiles.avatarUrl(avatar));
    }
 }

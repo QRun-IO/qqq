@@ -30,11 +30,19 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.actions.preferences.UserPreferencesAction;
+import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
+import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.tables.StorageAction;
+import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -42,9 +50,15 @@ import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.jobs.DurableJobsTestSupport;
 import com.kingsrook.qqq.backend.core.jobs.uploads.UploadRef;
 import com.kingsrook.qqq.backend.core.jobs.uploads.UploadRefs;
+import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertOutput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.storage.StorageInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.profile.UserProfilesMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.session.QUser;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
@@ -77,6 +91,8 @@ class UserProfilesTest extends BaseTest
       new UserProfileMetaDataProvider().withGravatarOptIn(true).defineAll(instance, TestUtils.MEMORY_BACKEND_NAME, TestUtils.TABLE_NAME_MEMORY_STORAGE);
       new QInstanceValidator().validate(instance);
       QContext.init(instance, session(ALICE));
+      UploadRateLimit.reset();
+      GravatarImages.setFetcher(null);
    }
 
 
@@ -94,7 +110,9 @@ class UserProfilesTest extends BaseTest
       QRecord row = UserProfiles.find(ALICE);
       String  key = row.getValueString("avatarKey");
       assertThat(key).hasSize(32);
-      assertThat(url).isEqualTo("/qqq/v1/avatars/alice%40example.com?v=" + key);
+      String avatarId = row.getValueString("avatarId");
+      assertThat(avatarId).matches("[0-9a-f]{32}");
+      assertThat(url).isEqualTo("/qqq/v1/avatars/" + avatarId + "?v=" + key).doesNotContain("alice");
       for(int size : UserProfilesMetaData.AVATAR_SIZES)
       {
          BufferedImage image = ImageIO.read(new ByteArrayInputStream(read(key, size)));
@@ -254,7 +272,7 @@ class UserProfilesTest extends BaseTest
       assertThat(row.getValueString("gravatarHash")).isEqualTo(UserProfiles.gravatarHash(ALICE)).hasSize(32);
       Map<String, Serializable> values = UserProfiles.frontendUserValues(QContext.getQInstance(), QContext.getQSession());
       assertThat(values).containsEntry("displayName", "Alice A.");
-      assertThat((String) values.get("avatarUrl")).endsWith("?v=g" + row.getValueString("gravatarHash"));
+      assertThat((String) values.get("avatarUrl")).matches("/qqq/v1/avatars/[0-9a-f]{32}\\?v=g\\d+").doesNotContain(row.getValueString("gravatarHash"));
       Map<String, Serializable> section = action.getSection(UserProfilesMetaData.SECTION_NAME).getValues().getValues();
       assertThat(section.get("avatar")).isNull();
       assertThat(section.get("avatarUrl")).isEqualTo(values.get("avatarUrl"));
@@ -272,6 +290,138 @@ class UserProfilesTest extends BaseTest
       QContext.setQSession(session(BOB));
       assertThat(avatarValue()).isNull();
       assertThat(UserProfiles.find(BOB)).isNull();
+   }
+
+
+
+   /*******************************************************************************
+    ** Through the standard table APIs a user reaches only their own row (record
+    ** lock on userId), even holding every table permission; user_profile_admin
+    ** sees all.
+    *******************************************************************************/
+   @Test
+   void testRowsLockedToTheirOwner() throws Exception
+   {
+      action.patchSection(UserProfilesMetaData.SECTION_NAME, Map.of("values", Map.of("displayName", "Alice")));
+      QContext.setQSession(session(BOB));
+      action.patchSection(UserProfilesMetaData.SECTION_NAME, Map.of("values", Map.of("displayName", "Bob")));
+      Integer aliceId = UserProfiles.find(ALICE).getValueInteger("id");
+
+      QSession bob = tablePermissions(session(BOB));
+      UserProfiles.applyToSession(bob);
+      QContext.setQSession(bob);
+      List<QRecord> visible = QueryAction.execute(UserProfilesMetaData.DEFAULT_TABLE_NAME, null);
+      assertThat(visible).extracting(r -> r.getValueString("userId")).containsExactly(BOB);
+
+      try
+      {
+         new UpdateAction().execute(new UpdateInput(UserProfilesMetaData.DEFAULT_TABLE_NAME).withRecord(new QRecord().withValue("id", aliceId).withValue("displayName", "Hacked")));
+      }
+      catch(QException e)
+      {
+         //////////////////////////////////////////
+         // refused outright is fine, too        //
+         //////////////////////////////////////////
+      }
+      assertThat(UserProfiles.find(ALICE).getValueString("displayName")).isEqualTo("Alice");
+
+      List<QRecord> before = allRows();
+      try
+      {
+         InsertOutput inserted = new InsertAction().execute(new InsertInput(UserProfilesMetaData.DEFAULT_TABLE_NAME).withRecord(new QRecord().withValue("userId", ALICE).withValue("displayName", "Fake")));
+         assertThat(inserted.getRecords().get(0).getErrors()).isNotEmpty();
+      }
+      catch(QException e)
+      {
+         //////////////////////////////////////////
+         // refused outright is fine, too        //
+         //////////////////////////////////////////
+      }
+      assertThat(allRows()).hasSameSizeAs(before);
+
+      QSession admin = tablePermissions(session("admin@example.com")).withPermission(UserProfilesMetaData.PERMISSION_ADMIN);
+      UserProfiles.applyToSession(admin);
+      QContext.setQSession(admin);
+      assertThat(QueryAction.execute(UserProfilesMetaData.DEFAULT_TABLE_NAME, null)).hasSize(2);
+
+      QTableMetaData table = QContext.getQInstance().getTable(UserProfilesMetaData.DEFAULT_TABLE_NAME);
+      assertThat(table.getField("userId").getIsEditable()).isFalse();
+      assertThat(table.getPermissionRules().getLevel()).isEqualTo(PermissionLevel.READ_INSERT_EDIT_DELETE_PERMISSIONS);
+   }
+
+
+
+   /*******************************************************************************
+    ** Converting writes no temporary files, and the original upload (with its
+    ** metadata) is deleted once converted.
+    *******************************************************************************/
+   @Test
+   void testNoTempFilesAndUploadDeleted() throws Exception
+   {
+      Path         tmp      = Path.of(System.getProperty("java.io.tmpdir"));
+      Set<Path>    before   = imageioTempFiles(tmp);
+      String       ref      = upload("me.jpg", withExif(encode(new BufferedImage(300, 200, BufferedImage.TYPE_INT_RGB), "jpeg"), 6));
+      StorageInput original = UploadRefs.open(ref);
+      setAvatar(ref);
+      assertThat(imageioTempFiles(tmp)).isEqualTo(before);
+      assertThatThrownBy(() -> new StorageAction().getInputStream(original).close()).isInstanceOf(QException.class);
+   }
+
+
+
+   /*******************************************************************************
+    ** A PNG with HTML/script appended (a polyglot) is converted, and nothing of
+    ** the appended content survives.
+    *******************************************************************************/
+   @Test
+   void testPolyglotIsDefused() throws Exception
+   {
+      byte[] png      = png(64, 64, Color.RED);
+      byte[] script   = "<html><script>alert(document.cookie)</script></html>".getBytes(StandardCharsets.UTF_8);
+      byte[] polyglot = new byte[png.length + script.length];
+      System.arraycopy(png, 0, polyglot, 0, png.length);
+      System.arraycopy(script, 0, polyglot, png.length, script.length);
+      setAvatar(upload("polyglot.png", polyglot));
+      byte[] stored = read(UserProfiles.find(ALICE).getValueString("avatarKey"), 256);
+      assertThat(new String(stored, StandardCharsets.ISO_8859_1)).doesNotContain("<script").doesNotContain("<html");
+   }
+
+
+
+   /*******************************************************************************
+    ** A user can't keep the decoder busy: conversions are rate limited.
+    *******************************************************************************/
+   @Test
+   void testRateLimited() throws Exception
+   {
+      for(int i = 0; i < UserProfilesMetaData.MAX_UPLOADS_PER_MINUTE; i++)
+      {
+         setAvatar(upload("me" + i + ".png", png(32 + i, 32, Color.BLUE)));
+      }
+      assertRefused(upload("one-more.png", png(20, 20, Color.GREEN)), "too many changes");
+   }
+
+
+
+   /*******************************************************************************
+    ** A chosen Gravatar is fetched by the server and re-encoded; lookups by user
+    ** id give opaque URLs, and only for users with an avatar.
+    *******************************************************************************/
+   @Test
+   void testGravatarProxyAndLookup() throws Exception
+   {
+      byte[] gravatar = png(80, 80, Color.MAGENTA);
+      GravatarImages.setFetcher(hash -> hash.equals(UserProfiles.gravatarHash(ALICE)) ? gravatar : null);
+      action.patchSection(UserProfilesMetaData.SECTION_NAME, Map.of("values", Map.of("useGravatar", true)));
+      BufferedImage image = ImageIO.read(new ByteArrayInputStream(GravatarImages.png(UserProfiles.gravatarHash(ALICE), 64)));
+      assertThat(image.getWidth()).isEqualTo(64);
+      assertThat(GravatarImages.png("0000", 64)).isNull();
+
+      QContext.setQSession(session(BOB));
+      setAvatar(upload("bob.png", png(40, 40, Color.BLUE)));
+      Map<String, String> found = UserProfiles.lookup(List.of(ALICE, BOB, "nobody@example.com"));
+      assertThat(found).containsOnlyKeys(ALICE, BOB);
+      assertThat(found.values()).allSatisfy(url -> assertThat(url).matches("/qqq/v1/avatars/[0-9a-f]{32}\\?v=.+").doesNotContain("@"));
    }
 
 
@@ -361,6 +511,40 @@ class UserProfilesTest extends BaseTest
       {
          return (false);
       }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static List<QRecord> allRows() throws QException
+   {
+      return (com.kingsrook.qqq.backend.core.jobs.SystemScope.call(() -> QueryAction.execute(UserProfilesMetaData.DEFAULT_TABLE_NAME, null)));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static Set<Path> imageioTempFiles(Path tmp) throws Exception
+   {
+      try(var files = Files.list(tmp))
+      {
+         return (files.filter(file -> file.getFileName().toString().startsWith("imageio")).collect(Collectors.toSet()));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static QSession tablePermissions(QSession session)
+   {
+      String table = UserProfilesMetaData.DEFAULT_TABLE_NAME;
+      return (session.withPermissions(table + ".read", table + ".insert", table + ".edit", table + ".delete"));
    }
 
 

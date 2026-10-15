@@ -24,7 +24,10 @@ package com.kingsrook.qqq.backend.core.actions.profile;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReadParam;
 import javax.imageio.ImageReader;
+import javax.imageio.ImageWriter;
 import javax.imageio.stream.ImageInputStream;
+import javax.imageio.stream.MemoryCacheImageInputStream;
+import javax.imageio.stream.MemoryCacheImageOutputStream;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
@@ -36,6 +39,8 @@ import java.io.InputStream;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.model.metadata.profile.UserProfilesMetaData;
 
@@ -52,7 +57,9 @@ import com.kingsrook.qqq.backend.core.model.metadata.profile.UserProfilesMetaDat
  **   metadata (EXIF and its GPS position, XMP, comments).
  **
  ** Inline and bounded (a few hundred milliseconds at the limits), so it runs
- ** in the request rather than as a durable job.
+ ** in the request rather than as a durable job; at most MAX_CONCURRENT_DECODES
+ ** run at once per node. Everything stays in memory: ImageIO's file cache is
+ ** never used (no temporary files).
  *******************************************************************************/
 public final class AvatarImageProcessor
 {
@@ -61,6 +68,8 @@ public final class AvatarImageProcessor
    private static final int MAX_EDGE   = 20_000;
    private static final int WORK_EDGE  = 256;
    private static final int DECODE_CAP = 1024;
+
+   private static final Semaphore DECODES = new Semaphore(UserProfilesMetaData.MAX_CONCURRENT_DECODES, true);
 
 
 
@@ -139,6 +148,37 @@ public final class AvatarImageProcessor
          throw (new QBadRequestException(REFUSED_TYPE));
       }
 
+      boolean acquired = false;
+      try
+      {
+         acquired = DECODES.tryAcquire(10, TimeUnit.SECONDS);
+         if(!acquired)
+         {
+            throw (new QBadRequestException("Photos are busy being processed. Try again in a moment."));
+         }
+         return (convert(bytes, format));
+      }
+      catch(InterruptedException e)
+      {
+         Thread.currentThread().interrupt();
+         throw (new QBadRequestException("Photos are busy being processed. Try again in a moment."));
+      }
+      finally
+      {
+         if(acquired)
+         {
+            DECODES.release();
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static Map<Integer, byte[]> convert(byte[] bytes, String format) throws QBadRequestException
+   {
       BufferedImage square = decodeSquare(bytes, format);
       BufferedImage work   = scale(square, WORK_EDGE);
       if("jpeg".equals(format))
@@ -163,7 +203,7 @@ public final class AvatarImageProcessor
    private static BufferedImage decodeSquare(byte[] bytes, String format) throws QBadRequestException
    {
       ImageReader reader = findReader(format);
-      try(ImageInputStream input = ImageIO.createImageInputStream(new ByteArrayInputStream(bytes)))
+      try(ImageInputStream input = new MemoryCacheImageInputStream(new ByteArrayInputStream(bytes)))
       {
          reader.setInput(input, true, true);
          int width  = reader.getWidth(0);
@@ -289,16 +329,22 @@ public final class AvatarImageProcessor
     *******************************************************************************/
    private static byte[] writePng(BufferedImage image) throws QBadRequestException
    {
-      try
+      ImageWriter           writer = ImageIO.getImageWritersByFormatName("png").next();
+      ByteArrayOutputStream out    = new ByteArrayOutputStream();
+      try(MemoryCacheImageOutputStream output = new MemoryCacheImageOutputStream(out))
       {
-         ByteArrayOutputStream out = new ByteArrayOutputStream();
-         ImageIO.write(image, "png", out);
-         return (out.toByteArray());
+         writer.setOutput(output);
+         writer.write(image);
       }
       catch(IOException e)
       {
          throw (new QBadRequestException("That image couldn't be converted."));
       }
+      finally
+      {
+         writer.dispose();
+      }
+      return (out.toByteArray());
    }
 
 

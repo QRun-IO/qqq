@@ -274,6 +274,27 @@ components:
           description: "Additional values, as determined by the type of authentication\
             \ provider.\n"
       type: "object"
+    AvatarLookupRequestV1:
+      additionalProperties: false
+      description: "The users to look up."
+      properties:
+        userIds:
+          description: "User ids (as in comments, presence and mentions); at most\
+            \ 200."
+          items:
+            type: "string"
+          type: "array"
+      type: "object"
+    AvatarLookupResponseV1:
+      description: "Avatar URLs by user id."
+      properties:
+        avatars:
+          additionalProperties:
+            type: "string"
+          description: "User id to avatar URL (relative; add size=32|64|128|256).\
+            \ Users without an avatar are absent."
+          type: "object"
+      type: "object"
     BackChannelLogoutResponseV1:
       type: "object"
     BasicErrorResponseV1:
@@ -1773,7 +1794,7 @@ components:
             \ the signed-in user: `name`, `email` or `username` (by authentication\
             \ module), and, when the application installs user profiles (since 1.7.0),\
             \ `displayName` (the name the user chose; prefer it to `name`) and `avatarUrl`\
-            \ (relative URL of GET /avatars/{userId} with its version; add `&size=32|64|128|256`).\
+            \ (relative URL of GET /avatars/{avatarId} with its version; add `&size=32|64|128|256`).\
             \ No `avatarUrl` means draw initials."
           type: "object"
       type: "object"
@@ -8510,20 +8531,92 @@ paths:
       summary: "Get a branding image"
       tags:
       - "Authentication"
-  /qqq/v1/{applicationApiPath}/{applicationApiVersion}/avatars/{userId}:
+  /qqq/v1/{applicationApiPath}/{applicationApiVersion}/avatars/lookup:
+    post:
+      description: "The avatar URL (GET /avatars/{avatarId}, with its version) of\
+        \ each user id given, for any signed-in user.\nUsers without an avatar are\
+        \ not in the result: draw their initials. At most 200 ids per call. Since\
+        \ 1.7.0."
+      operationId: "lookupAvatars"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AvatarLookupRequestV1"
+        required: true
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvatarLookupResponseV1"
+          description: "The avatar URLs of the users that have one."
+        400:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Bad request: a parameter or the body is invalid (code BAD_REQUEST);\
+            \ fieldErrors may name the fields."
+        401:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not authenticated, or the session or token is invalid or expired\
+            \ (code UNAUTHENTICATED). Sign in again, or refresh the token."
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "The user (or the credential's scope) may not do this (code\
+            \ PERMISSION_DENIED)."
+        404:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Not found, or not visible to this user (code NOT_FOUND)."
+        409:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Conflict with the current state, e.g. an edit conflict or\
+            \ an invalid transition (code CONFLICT)."
+        429:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "Too many requests (code RATE_LIMITED); retry later."
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      - bearerAuth:
+        - "N/A"
+      - oauth2:
+        - "openid"
+        - "profile"
+        - "email"
+      summary: "Look up users' avatars"
+      tags:
+      - "Authentication"
+  /qqq/v1/{applicationApiPath}/{applicationApiVersion}/avatars/{avatarId}:
     get:
-      description: "A user's avatar as a square PNG, for any signed-in user. 404 when\
-        \ the user has no avatar (draw their\ninitials instead). A user who turned\
-        \ on Gravatar (when the application allows it) is a 302 to Gravatar.\nThe\
-        \ signed-in user's own URL, with its `v` version, is `values.user.avatarUrl`\
-        \ of POST /manageSession, and\nthe photo is set in the `profile` preferences\
-        \ section. With `v` equal to the current version the response\nis cacheable\
+      description: "An avatar as a square PNG, by its opaque id, for any signed-in\
+        \ user. 404 when there is none (draw initials).\nAvatar URLs come from POST\
+        \ /avatars/lookup (other users), `values.user.avatarUrl` of POST /manageSession\
+        \ and\nthe `profile` preferences section (the signed-in user). A user's chosen\
+        \ Gravatar is fetched and re-encoded by\nthe server, so browsers never contact\
+        \ Gravatar. With `v` equal to the current version the response is\ncacheable\
         \ for a year; otherwise for five minutes, with an ETag. Since 1.7.0."
       operationId: "getAvatar"
       parameters:
-      - description: "The user's id (as in comments, presence and mentions)."
+      - description: "The avatar's opaque id (from an avatar URL)."
         in: "path"
-        name: "userId"
+        name: "avatarId"
         required: true
         schema:
           type: "string"
@@ -8548,9 +8641,6 @@ paths:
                 format: "binary"
                 type: "string"
           description: "The avatar (PNG)."
-        302:
-          description: "The user chose Gravatar: its image URL is in the Location\
-            \ header."
         304:
           description: "Not modified (If-None-Match matched the ETag)."
         400:
@@ -8602,7 +8692,7 @@ paths:
         - "openid"
         - "profile"
         - "email"
-      summary: "Get a user's avatar"
+      summary: "Get an avatar"
       tags:
       - "Authentication"
   /qqq/v1/{applicationApiPath}/{applicationApiVersion}/manageSession:

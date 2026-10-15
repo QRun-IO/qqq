@@ -69,6 +69,7 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
       list.add(new RealtimeSubscriptionsSpecV1(realtime::getHub));
       list.add(new AuthenticationMetaDataSpecV1());
       list.add(new BrandingAssetSpecV1());
+      list.add(new AvatarLookupSpecV1());
       list.add(new AvatarGetSpecV1());
       list.add(new ManageSessionSpecV1());
       list.add(new LogoutSpecV1());

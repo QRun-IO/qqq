@@ -25,6 +25,7 @@ import java.io.InputStream;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.kingsrook.qqq.backend.core.actions.profile.GravatarImages;
 import com.kingsrook.qqq.backend.core.actions.profile.UserProfiles;
 import com.kingsrook.qqq.backend.core.actions.tables.StorageAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -54,10 +55,11 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
- ** GET /avatars/{userId}: a user's avatar image, for any signed-in user (avatars
- ** appear beside comments, presence and mentions).  404 when the user has none:
- ** clients then draw initials.  A user who chose Gravatar (and whose app allows
- ** it) is a redirect there.  Since UI API 1.7.0.
+ ** GET /avatars/{avatarId}: an avatar image by its opaque id (never a user id or
+ ** email), for any signed-in user (avatars appear beside comments, presence and
+ ** mentions; POST /avatars/lookup maps user ids to avatar URLs).  404 when there
+ ** is none: clients then draw initials.  A chosen Gravatar is fetched and
+ ** re-encoded by the server.  Since UI API 1.7.0.
  *******************************************************************************/
 public class AvatarGetSpecV1 extends AbstractEndpointSpec<AbstractMiddlewareInput, AbstractMiddlewareOutputInterface, AbstractMiddlewareExecutor<AbstractMiddlewareInput, AbstractMiddlewareOutputInterface>>
 {
@@ -75,16 +77,16 @@ public class AvatarGetSpecV1 extends AbstractEndpointSpec<AbstractMiddlewareInpu
    public BasicOperation defineBasicOperation()
    {
       return (new BasicOperation()
-         .withPath("/avatars/{userId}")
+         .withPath("/avatars/{avatarId}")
          .withHttpMethod(HttpMethod.GET)
          .withTag(TagsV1.AUTHENTICATION)
-         .withShortSummary("Get a user's avatar")
+         .withShortSummary("Get an avatar")
          .withLongDescription("""
-            A user's avatar as a square PNG, for any signed-in user. 404 when the user has no avatar (draw their
-            initials instead). A user who turned on Gravatar (when the application allows it) is a 302 to Gravatar.
-            The signed-in user's own URL, with its `v` version, is `values.user.avatarUrl` of POST /manageSession, and
-            the photo is set in the `profile` preferences section. With `v` equal to the current version the response
-            is cacheable for a year; otherwise for five minutes, with an ETag. Since 1.7.0."""));
+            An avatar as a square PNG, by its opaque id, for any signed-in user. 404 when there is none (draw initials).
+            Avatar URLs come from POST /avatars/lookup (other users), `values.user.avatarUrl` of POST /manageSession and
+            the `profile` preferences section (the signed-in user). A user's chosen Gravatar is fetched and re-encoded by
+            the server, so browsers never contact Gravatar. With `v` equal to the current version the response is
+            cacheable for a year; otherwise for five minutes, with an ETag. Since 1.7.0."""));
    }
 
 
@@ -97,8 +99,8 @@ public class AvatarGetSpecV1 extends AbstractEndpointSpec<AbstractMiddlewareInpu
    {
       return (List.of(
          new Parameter()
-            .withName("userId")
-            .withDescription("The user's id (as in comments, presence and mentions).")
+            .withName("avatarId")
+            .withDescription("The avatar's opaque id (from an avatar URL).")
             .withRequired(true)
             .withSchema(new Schema().withType(Type.STRING))
             .withIn(In.PATH),
@@ -128,7 +130,6 @@ public class AvatarGetSpecV1 extends AbstractEndpointSpec<AbstractMiddlewareInpu
       rs.put(200, new Response()
          .withDescription("The avatar (PNG).")
          .withContent(Map.of("image/png", new Content().withSchema(new Schema().withType(Type.STRING).withFormat("binary")))));
-      rs.put(302, new Response().withDescription("The user chose Gravatar: its image URL is in the Location header."));
       rs.put(304, new Response().withDescription("Not modified (If-None-Match matched the ETag)."));
       return (rs);
    }
@@ -194,8 +195,8 @@ public class AvatarGetSpecV1 extends AbstractEndpointSpec<AbstractMiddlewareInpu
          throw (new QNotFoundException("No avatar."));
       }
 
-      String              userId = context.pathParam("userId");
-      UserProfiles.Avatar avatar = UserProfiles.avatarOf(UserProfiles.find(userId));
+      String              avatarId = context.pathParam("avatarId");
+      UserProfiles.Avatar avatar   = UserProfiles.avatarOf(UserProfiles.findByAvatarId(avatarId));
       if(avatar == null)
       {
          throw (new QNotFoundException("No avatar."));
@@ -203,13 +204,9 @@ public class AvatarGetSpecV1 extends AbstractEndpointSpec<AbstractMiddlewareInpu
 
       String version = avatar.version();
       context.header("X-Content-Type-Options", "nosniff");
+      context.header("Content-Security-Policy", "default-src 'none'; sandbox");
+      context.header("Content-Disposition", "inline");
       context.header("Cache-Control", version.equals(context.queryParam("v")) ? IMMUTABLE : SHORT);
-
-      if(avatar.avatarKey() == null)
-      {
-         context.redirect("https://www.gravatar.com/avatar/" + avatar.gravatarHash() + "?s=" + size + "&d=404", HttpStatus.FOUND);
-         return;
-      }
 
       String etag = "\"" + version + "-" + size + "\"";
       if(etag.equals(context.header("If-None-Match")))
@@ -220,9 +217,13 @@ public class AvatarGetSpecV1 extends AbstractEndpointSpec<AbstractMiddlewareInpu
       }
 
       byte[] bytes;
-      try(InputStream input = new StorageAction().getInputStream(UserProfiles.avatarObject(avatar.avatarKey(), size)))
+      try
       {
-         bytes = input.readAllBytes();
+         bytes = avatar.avatarKey() == null ? GravatarImages.png(avatar.gravatarHash(), size) : read(avatar.avatarKey(), size);
+         if(bytes == null)
+         {
+            throw (new QNotFoundException("No avatar."));
+         }
       }
       catch(Exception e)
       {
@@ -230,13 +231,29 @@ public class AvatarGetSpecV1 extends AbstractEndpointSpec<AbstractMiddlewareInpu
          // a row naming an object that is gone (storage restored or       //
          // expired) shows initials, not an error page in every comment    //
          ////////////////////////////////////////////////////////////////////
-         LOG.warn("Avatar object missing; serving none", e, logPair("avatarKey", avatar.avatarKey()), logPair("size", size));
+         if(avatar.avatarKey() != null)
+         {
+            LOG.warn("Avatar object missing; serving none", e, logPair("avatarKey", avatar.avatarKey()), logPair("size", size));
+         }
          context.header("Cache-Control", SHORT);
          throw (new QNotFoundException("No avatar."));
       }
       context.header("ETag", etag);
       context.contentType("image/png");
       context.result(bytes);
+   }
+
+
+
+   /***************************************************************************
+    ** One stored size of a photo.
+    ***************************************************************************/
+   private static byte[] read(String avatarKey, int size) throws Exception
+   {
+      try(InputStream input = new StorageAction().getInputStream(UserProfiles.avatarObject(avatarKey, size)))
+      {
+         return (input.readAllBytes());
+      }
    }
 
 

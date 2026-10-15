@@ -39,6 +39,18 @@ public class UserProfilesMetaData implements QSupplementalInstanceMetaData
    public static final String DEFAULT_TABLE_NAME = "user_profile";
    public static final String SECTION_NAME       = "profile";
 
+   ///////////////////////////////////////////////////////////////////////////
+   // record lock: a session's user_profile_user key must equal the row's   //
+   // userId; holders of user_profile_admin get the all-access key          //
+   ///////////////////////////////////////////////////////////////////////////
+   public static final String SECURITY_KEY_USER            = "user_profile_user";
+   public static final String SECURITY_KEY_USER_ALL_ACCESS = "user_profile_user_all_access";
+   public static final String PERMISSION_ADMIN             = "user_profile_admin";
+
+   public static final int MAX_LOOKUP_USER_IDS     = 200;
+   public static final int MAX_UPLOADS_PER_MINUTE  = 10;
+   public static final int MAX_CONCURRENT_DECODES  = 2;
+
    public static final List<Integer> AVATAR_SIZES        = List.of(32, 64, 128, 256);
    public static final int           DEFAULT_AVATAR_SIZE = 128;
    public static final long          DEFAULT_MAX_BYTES   = 5L * 1024 * 1024;

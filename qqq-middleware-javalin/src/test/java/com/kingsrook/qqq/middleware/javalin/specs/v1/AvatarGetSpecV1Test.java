@@ -30,6 +30,7 @@ import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
+import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.profile.UserProfileMetaDataProvider;
 import com.kingsrook.qqq.backend.core.actions.tables.StorageAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -88,7 +89,7 @@ class AvatarGetSpecV1Test extends SpecTestBase
    @Override
    protected List<AbstractEndpointSpec<?, ?, ?>> getAdditionalSpecs()
    {
-      return (List.of(new ManageSessionSpecV1(), new UploadsSpecV1(), new PreferenceSectionGetSpecV1(), new PreferenceSectionPatchSpecV1()));
+      return (List.of(new ManageSessionSpecV1(), new UploadsSpecV1(), new PreferenceSectionGetSpecV1(), new PreferenceSectionPatchSpecV1(), new AvatarLookupSpecV1()));
    }
 
 
@@ -192,7 +193,8 @@ class AvatarGetSpecV1Test extends SpecTestBase
       JSONObject user = login("alice").user();
       assertEquals("Alice A.", user.getString("displayName"));
       String url = user.getString("avatarUrl");
-      assertThat(url).startsWith("/qqq/v1/avatars/alice?v=");
+      assertThat(url).matches("/qqq/v1/avatars/[0-9a-f]{32}\\?v=[0-9a-f]{32}");
+      String path = url.substring("/qqq/v1".length(), url.indexOf('?'));
 
       String               bob      = login("bob").cookie();
       HttpResponse<byte[]> response = Unirest.get(getBaseUrlAndPath() + url.substring("/qqq/v1".length()) + "&size=64").header("Cookie", bob).asBytes();
@@ -200,21 +202,34 @@ class AvatarGetSpecV1Test extends SpecTestBase
       assertEquals("image/png", response.getHeaders().getFirst("Content-Type"));
       assertEquals("nosniff", response.getHeaders().getFirst("X-Content-Type-Options"));
       assertThat(response.getHeaders().getFirst("Cache-Control")).contains("immutable");
+      assertEquals("default-src 'none'; sandbox", response.getHeaders().getFirst("Content-Security-Policy"));
+      assertEquals("inline", response.getHeaders().getFirst("Content-Disposition"));
       BufferedImage image = ImageIO.read(new ByteArrayInputStream(response.getBody()));
       assertEquals(64, image.getWidth());
 
       ////////////////////////////////////////////////////////////////////
       // without the version: short cache and an ETag that answers 304 //
       ////////////////////////////////////////////////////////////////////
-      HttpResponse<byte[]> plain = Unirest.get(getBaseUrlAndPath() + "/avatars/alice").header("Cookie", bob).asBytes();
+      HttpResponse<byte[]> plain = Unirest.get(getBaseUrlAndPath() + path).header("Cookie", bob).asBytes();
       assertEquals(200, plain.getStatus());
       assertEquals("private, max-age=300", plain.getHeaders().getFirst("Cache-Control"));
       String etag = plain.getHeaders().getFirst("ETag");
-      assertEquals(304, Unirest.get(getBaseUrlAndPath() + "/avatars/alice").header("Cookie", bob).header("If-None-Match", etag).asBytes().getStatus());
+      assertEquals(304, Unirest.get(getBaseUrlAndPath() + path).header("Cookie", bob).header("If-None-Match", etag).asBytes().getStatus());
 
-      assertEquals(404, Unirest.get(getBaseUrlAndPath() + "/avatars/bob").header("Cookie", bob).asString().getStatus());
-      assertEquals(400, Unirest.get(getBaseUrlAndPath() + "/avatars/alice?size=7").header("Cookie", bob).asString().getStatus());
-      assertEquals(401, Unirest.get(getBaseUrlAndPath() + "/avatars/alice").asString().getStatus());
+      assertEquals(404, Unirest.get(getBaseUrlAndPath() + "/avatars/00000000000000000000000000000000").header("Cookie", bob).asString().getStatus());
+
+      ///////////////////////////////////////////////////////////////////////
+      // lookup by user id (POST: ids never in a URL); bob has no avatar   //
+      ///////////////////////////////////////////////////////////////////////
+      JSONObject avatars = ok(lookup(bob, "{\"userIds\":[\"alice\",\"bob\"]}")).getJSONObject("avatars");
+      assertEquals(Set.of("alice"), avatars.keySet());
+      assertEquals(url, avatars.getString("alice"));
+      assertEquals(400, lookup(bob, "{\"userIds\":\"alice\"}").getStatus());
+      assertEquals(400, lookup(bob, "{\"userIds\":[],\"extra\":1}").getStatus());
+      assertEquals(400, lookup(bob, "{\"userIds\":[" + "\"x\",".repeat(200) + "\"y\"]}").getStatus());
+      assertEquals(401, Unirest.post(getBaseUrlAndPath() + "/avatars/lookup").header("Content-Type", "application/json").body("{\"userIds\":[\"alice\"]}").asString().getStatus());
+      assertEquals(400, Unirest.get(getBaseUrlAndPath() + path + "?size=7").header("Cookie", bob).asString().getStatus());
+      assertEquals(401, Unirest.get(getBaseUrlAndPath() + path).asString().getStatus());
 
       ///////////////////////////////////////////////////////////////////
       // an object that is gone from storage is "no avatar", not a 500 //
@@ -222,11 +237,11 @@ class AvatarGetSpecV1Test extends SpecTestBase
       String key = url.substring(url.indexOf("?v=") + 3);
       QContext.init(serverQInstance, new QSystemUserSession());
       new StorageAction().deleteObject(new StorageInput(STORAGE_TABLE).withReference("avatars/" + key + "/32.png"));
-      assertEquals(404, Unirest.get(getBaseUrlAndPath() + "/avatars/alice?size=32").header("Cookie", bob).asString().getStatus());
-      assertEquals(200, Unirest.get(getBaseUrlAndPath() + "/avatars/alice?size=64").header("Cookie", bob).asBytes().getStatus());
+      assertEquals(404, Unirest.get(getBaseUrlAndPath() + path + "?size=32").header("Cookie", bob).asString().getStatus());
+      assertEquals(200, Unirest.get(getBaseUrlAndPath() + path + "?size=64").header("Cookie", bob).asBytes().getStatus());
 
       ok(patch(alice, "{\"values\":{\"avatar\":null}}"));
-      assertEquals(404, Unirest.get(getBaseUrlAndPath() + "/avatars/alice").header("Cookie", bob).asString().getStatus());
+      assertEquals(404, Unirest.get(getBaseUrlAndPath() + path).header("Cookie", bob).asString().getStatus());
    }
 
 
@@ -283,6 +298,17 @@ class AvatarGetSpecV1Test extends SpecTestBase
       HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/uploads").header("Cookie", cookie)
          .field("file", new ByteArrayInputStream(bytes), name).asString();
       return (ok(response).getString("ref"));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private HttpResponse<String> lookup(String cookie, String json)
+   {
+      return (Unirest.post(getBaseUrlAndPath() + "/avatars/lookup").header("Cookie", cookie)
+         .header("Content-Type", "application/json").body(json).asString());
    }
 
 

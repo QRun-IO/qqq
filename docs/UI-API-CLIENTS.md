@@ -53,13 +53,13 @@ General rules:
   `cli/qqq-cli 0.1.0`) so audits and the client-channel permissions attribute your calls. A
   credential-scoped token is always attributed to `token:<id>` instead.
 
-- **People and avatars (1.7.0, feature `avatars`).** Show a person with
-  `GET /avatars/{userId}?size=32|64|128|256` (a PNG; any signed-in user may load any user's). 404
-  means none: draw initials from the name. A 302 goes to the user's chosen Gravatar. The signed-in
-  user's own `avatarUrl` and `displayName` are in `values.user` of `POST /manageSession`; a bearer
-  client that never calls it uses `GET /avatars/{its user id}` and `GET /preferences/profile`.
-  `avatarUrl` carries `v`, which makes the image cacheable for a year; other loads revalidate with
-  the `ETag` after five minutes. Cache 404s for the session rather than asking again.
+- **People and avatars (1.7.0, feature `avatars`).** Batch the people on screen into
+  `POST /avatars/lookup` `{userIds}` (at most 200) and load each returned URL with `&size=32|64|128|256`
+  (a PNG; any signed-in user may load any user's). A user missing from the result has no avatar:
+  draw initials from the name. The signed-in user's own `avatarUrl` and `displayName` are in
+  `values.user` of `POST /manageSession` and in `GET /preferences/profile` (hidden field
+  `avatarUrl`). URLs carry an opaque id and a version `v`, which makes the image cacheable for a
+  year; never build them from user ids or emails.
 
 ## 2. Widgets (`POST /widget/{name}`)
 

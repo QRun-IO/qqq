@@ -66,3 +66,8 @@ It needs table read permission, and returns 404 for a record the user cannot see
   (an all-access key, a matching key value, or the lock's null-value behavior).
 * *ESB Events* (`qqq-esb`) - for tables that publish to the ESB: CloudEvents attributes, destinations, subscribed
   triggers with dead-letter counts, and a sample event for the record.
+* *Assistant* (`AiDeveloperPanelProvider`, in core beside the AI tool kernel; registered by the assistant qbit when it is
+  installed) - the table's assistant exposure, which generic tools apply to the record and why, each field's exposure
+  and whether it can be proposed, from `AiToolKernel.describeAccess` for the current user, and an "Ask the assistant
+  about this record" link (`/app/{table}/{id}?assistant=open&assistantPrompt=...`).  Subclass it to describe access with
+  the assistant's own `AiToolKernelSettings`.

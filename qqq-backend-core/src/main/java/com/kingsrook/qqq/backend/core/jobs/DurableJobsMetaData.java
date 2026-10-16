@@ -66,6 +66,7 @@ public class DurableJobsMetaData implements QSupplementalInstanceMetaData
    private Integer assistantMaxActiveJobs = 2;
    private Boolean scheduledRunsAsJobs = true;
    private String scheduledJobsUserId;
+   private String scheduledJobsServicePrincipal;
    private String jobGrantKey = "${env.QQQ_JOB_GRANT_KEY}";
    private Integer jobGrantTtlHours = 168;
    private List<QCodeReference> completionEffectProviders = new ArrayList<>();
@@ -503,6 +504,31 @@ public class DurableJobsMetaData implements QSupplementalInstanceMetaData
       this.scheduledJobsUserId = scheduledJobsUserId;
       return (this);
    }
+
+
+   /*******************************************************************************
+    ** Getter for scheduledJobsServicePrincipal: the declared service principal
+    ** (docs/SERVICE-IDENTITY.md) that owns jobs launched by the scheduler when
+    ** the scheduler runs as the system user. Takes precedence over
+    ** scheduledJobsUserId; workers re-mint the principal's session at every
+    ** claim. Unset (the default): unchanged behavior.
+    *******************************************************************************/
+   public String getScheduledJobsServicePrincipal()
+   {
+      return (this.scheduledJobsServicePrincipal);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for scheduledJobsServicePrincipal
+    *******************************************************************************/
+   public DurableJobsMetaData withScheduledJobsServicePrincipal(String scheduledJobsServicePrincipal)
+   {
+      this.scheduledJobsServicePrincipal = scheduledJobsServicePrincipal;
+      return (this);
+   }
+
 
 
    /*******************************************************************************

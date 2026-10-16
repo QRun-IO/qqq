@@ -429,6 +429,13 @@ class ServiceIdentitiesTest extends BaseTest
       customizer.preUpdate(new com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput(), List.of(edit), false, java.util.Optional.of(List.of(old)));
       assertThat(edit.getErrors()).isNullOrEmpty();
 
+      QContext.setQSession(new QSession().withUser(new com.kingsrook.qqq.backend.core.model.session.QUser().withIdReference("admin"))
+         .withPermission(com.kingsrook.qqq.backend.core.model.savedreports.ScheduledReportTableCustomizer.PERMISSION_ASSIGN_OWNER));
+      com.kingsrook.qqq.backend.core.model.data.QRecord assigned = new com.kingsrook.qqq.backend.core.model.data.QRecord()
+         .withValue("userId", "carol").withValue("cronExpression", "0 0 9 * * ?");
+      customizer.preInsert(new com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput(), List.of(assigned), false);
+      assertEquals("carol", assigned.getValueString("userId"), "an explicitly granted assigner may set the owner");
+
       QContext.setQSession(new QSystemUserSession(QContext.getQInstance()));
       com.kingsrook.qqq.backend.core.model.data.QRecord bySystem = new com.kingsrook.qqq.backend.core.model.data.QRecord()
          .withValue("userId", "bob").withValue("cronExpression", "0 0 9 * * ?");

@@ -156,6 +156,7 @@ public final class ScheduledJobs
          LOG.warn("Could not create the session of the scheduled jobs user", logPair("scheduledJobsUserId", userId));
          return (null);
       }
+      com.kingsrook.qqq.backend.core.actions.profile.UserProfiles.applyIfInstalled(instance, session);
       return (session);
    }
 }

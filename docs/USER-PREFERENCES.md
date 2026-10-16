@@ -181,7 +181,18 @@ PATCH body `PreferenceSectionPatchRequestV1`: `{ "values": {...}, "lists": { "<l
 - Tests: two users each see only their own values; a PATCH carrying `userId` is rejected; another
   user's rows are unchanged after a write; a section behind a permission is 404 without it.
 
-## 8. First sections
+## 8. Sections
+
+Registered today (2026-10-15): **Profile** (`profile`, core: photo, display name, optional
+Gravatar; see [USER-PROFILE-AVATARS.md](USER-PROFILE-AVATARS.md)), **Notifications**
+(`notifications`, qbit-alerts), **Slack** (`slack`, qbit-slack), **File transfer**
+(`file-transfer`, qbit-file-gateway: SSH keys), **QA capture** (`qa-capture`, qbit-qa-capture: QA
+mode). In review: **Assistant** (`assistant`, qbit-assistant#21) and **Personal access tokens**
+(`access-tokens`, qbit-authentik#25). A section that stores files declares a STRING field with a
+FILE_UPLOAD adornment and `valueIsUploadRef` (UI API 1.8.0); clients upload with `POST /uploads`
+and send the ref.
+
+First sections as designed:
 
 - **Notifications** (qbit-alerts): pause until; daily digest hour and time zone; alert email and
   in-app on/off; per category: in-app on/off, in-app minimum severity, email (off, immediate,

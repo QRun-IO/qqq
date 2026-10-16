@@ -152,6 +152,12 @@ public class ExecutorSessionUtils
             QContext.init(qInstance, null);
             session = authenticationModule.createSession(qInstance, authenticationContext);
          }
+
+         ////////////////////////////////////////////////////////////////////
+         // record-lock keys of the core user profile (own row; all rows   //
+         // for user_profile_admin), once the module set the permissions   //
+         ////////////////////////////////////////////////////////////////////
+         com.kingsrook.qqq.backend.core.actions.profile.UserProfiles.applyIfInstalled(qInstance, session);
          QContext.init(qInstance, session, null, null);
 
          //////////////////////////////////////////////////////////////////////////////////////////////

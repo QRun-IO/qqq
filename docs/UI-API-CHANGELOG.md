@@ -80,6 +80,24 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 
 ## Versions
 
+### 1.8.0 (QQQ 4.1.0-RC.17) - profiles and avatars
+See [USER-PROFILE-AVATARS.md](USER-PROFILE-AVATARS.md).
+
+- **`GET /avatars/{avatarId}`** (`getAvatar`): an avatar by its opaque id as a square PNG (`size` 32,
+  64, 128 or 256; default 128) for any signed-in user; 404 when none (clients draw initials). A
+  user's chosen Gravatar is fetched and re-encoded by the server. `v` (the version in an
+  `avatarUrl`) makes it cacheable for a year; otherwise five minutes with an `ETag` (304).
+  Hardened: `nosniff`, `Content-Security-Policy: default-src 'none'; sandbox`, `Content-Disposition:
+  inline`.
+- **`POST /avatars/lookup`** (`lookupAvatars`): avatar URLs by user id (at most 200 per call).
+- **`POST /manageSession`**: `values.user` adds `avatarUrl` and `displayName` when the application
+  installs user profiles (`UserProfileMetaDataProvider`).
+- **Preferences section `profile`** (core): `avatar` (photo), `displayName`, and `useGravatar` when
+  the application allows Gravatar.
+- **`FieldAdornment.values`** for FILE_UPLOAD: `valueIsUploadRef` (upload with `POST /uploads`, send
+  the ref as the value; the value read back is a URL), `accept`, `maxBytes` and `imageShape`.
+- `GET /version` features add `avatars`.
+
 ### 1.7.0 (QQQ 4.1.0-RC.16) - navigation sections and search aliases
 
 - Published `AppSection.apps` for child app names.

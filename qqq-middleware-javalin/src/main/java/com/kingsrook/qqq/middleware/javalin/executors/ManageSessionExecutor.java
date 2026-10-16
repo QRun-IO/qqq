@@ -25,6 +25,7 @@ import java.io.Serializable;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import com.kingsrook.qqq.backend.core.actions.profile.UserProfiles;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -94,8 +95,32 @@ public class ManageSessionExecutor extends AbstractMiddlewareExecutor<ManageSess
       if(session.getValuesForFrontend() != null)
       {
          LinkedHashMap<String, Serializable> valuesForFrontend = new LinkedHashMap<>(session.getValuesForFrontend());
+         addProfileValues(valuesForFrontend, session);
          output.setValues(valuesForFrontend);
       }
+   }
+
+
+
+   /***************************************************************************
+    ** Add the user's profile (avatarUrl, displayName) to values.user, when the
+    ** application installs profiles (UI API 1.8.0).  The session's own values
+    ** are not changed.
+    ***************************************************************************/
+   private static void addProfileValues(LinkedHashMap<String, Serializable> valuesForFrontend, QSession session)
+   {
+      Map<String, Serializable> profile = UserProfiles.frontendUserValues(QContext.getQInstance(), session);
+      if(profile.isEmpty())
+      {
+         return;
+      }
+      LinkedHashMap<String, Serializable> user = new LinkedHashMap<>();
+      if(valuesForFrontend.get("user") instanceof Map<?, ?> existing)
+      {
+         existing.forEach((key, value) -> user.put(String.valueOf(key), (Serializable) value));
+      }
+      user.putAll(profile);
+      valuesForFrontend.put("user", user);
    }
 
 

@@ -53,6 +53,14 @@ General rules:
   `cli/qqq-cli 0.1.0`) so audits and the client-channel permissions attribute your calls. A
   credential-scoped token is always attributed to `token:<id>` instead.
 
+- **People and avatars (1.8.0, feature `avatars`).** Batch the people on screen into
+  `POST /avatars/lookup` `{userIds}` (at most 200) and load each returned URL with `&size=32|64|128|256`
+  (a PNG; any signed-in user may load any user's). A user missing from the result has no avatar:
+  draw initials from the name. The signed-in user's own `avatarUrl` and `displayName` are in
+  `values.user` of `POST /manageSession` and in `GET /preferences/profile` (hidden field
+  `avatarUrl`). URLs carry an opaque id and a version `v`, which makes the image cacheable for a
+  year; never build them from user ids or emails.
+
 ## 2. Widgets (`POST /widget/{name}`)
 
 The response is the widget data itself. It is one of the `WidgetData` shapes, chosen by `type`
@@ -123,7 +131,7 @@ documented in the `FieldAdornment` schema.
 | RENDER_HTML | the value is HTML | strip the tags |
 | REVEAL | the value is secret until revealed | mask it and reveal on request |
 | FILE_DOWNLOAD | the value is a file: `GET /table/{t}/{pk}/{field}/{fileName}` | download on request |
-| FILE_UPLOAD | the field takes a file (accepted `format`) | file path prompt or picker |
+| FILE_UPLOAD | the field takes a file (accepted `format`). With `valueIsUploadRef` (1.8.0): `POST /uploads` first, then send the returned `ref` as the value (null removes); the value read back is a URL. `accept`, `maxBytes` and `imageShape` describe image fields | file path prompt or picker; iOS: photo picker with square crop |
 | FILE_PREVIEW | an image, video or PDF, with thumbnail/full-size/mime fields | iOS: QuickLook; CLI: print the URL |
 | TOOLTIP | help text for the value (`staticText`, or per record via the display value `{field}:tooltipDynamic`) | `?` help or detail line |
 | WIDGET | a widget renders the field (`widgetName`) | as in section 2 |

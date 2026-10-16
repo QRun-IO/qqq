@@ -21,6 +21,7 @@
 package com.kingsrook.qqq.backend.core.modules.authentication.implementations.metadata;
 
 
+import com.kingsrook.qqq.backend.core.actions.permissions.SystemTablePermissions;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducer;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -32,7 +33,10 @@ import com.kingsrook.qqq.backend.core.modules.authentication.implementations.mod
 
 
 /*******************************************************************************
- ** Meta Data Producer for UserSession
+ ** Meta Data Producer for UserSession.  The table holds session ids and access
+ ** tokens, so it is hidden and locked to every role, admins included (see
+ ** SystemTablePermissions); the authentication modules read and write it as
+ ** the system user.
  *******************************************************************************/
 public class UserSessionMetaDataProducer extends MetaDataProducer<QTableMetaData>
 {
@@ -66,7 +70,7 @@ public class UserSessionMetaDataProducer extends MetaDataProducer<QTableMetaData
          .withUniqueKey(new UniqueKey("uuid"))
          .withFieldsFromEntity(UserSession.class)
          .withAuditRules(new QAuditRules().withAuditLevel(AuditLevel.NONE));
-      return tableMetaData;
+      return (SystemTablePermissions.lockInternalTable(tableMetaData));
    }
 
 }

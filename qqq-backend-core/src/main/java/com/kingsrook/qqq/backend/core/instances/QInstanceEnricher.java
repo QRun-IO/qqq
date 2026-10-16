@@ -44,6 +44,7 @@ import com.kingsrook.qqq.backend.core.actions.collaboration.RecordFeaturesResolv
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.metadata.JoinGraph;
 import com.kingsrook.qqq.backend.core.actions.permissions.BulkTableActionProcessPermissionChecker;
+import com.kingsrook.qqq.backend.core.actions.permissions.SystemTablePermissions;
 import com.kingsrook.qqq.backend.core.actions.values.QCustomPossibleValueProvider;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QModuleDispatchException;
@@ -205,6 +206,7 @@ public class QInstanceEnricher
             qInstance.getBackends().values().forEach(this::disableCapabilitiesUnsupportedByModule);
          }
          protectTableBasedAuthenticationTables();
+         SystemTablePermissions.lockConfiguredAuthenticationTables(qInstance);
          qInstance.getTables().values().forEach(this::enrichTable);
          if((RecordFeaturesResolver.hasAnyMetaData(qInstance)
             || qInstance.getSupplementalMetaData(RealtimeMetaData.NAME) != null)

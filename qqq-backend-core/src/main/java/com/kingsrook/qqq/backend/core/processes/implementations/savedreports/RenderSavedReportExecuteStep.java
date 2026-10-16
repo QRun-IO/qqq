@@ -34,6 +34,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import com.kingsrook.qqq.backend.core.actions.messaging.SendMessageAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.actions.processes.ProcessFileDownload;
 import com.kingsrook.qqq.backend.core.actions.reporting.GenerateReportAction;
@@ -57,13 +59,16 @@ import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportFormatPossib
 import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportInput;
 import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.storage.StorageInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.reporting.QReportDataSource;
 import com.kingsrook.qqq.backend.core.model.metadata.reporting.QReportMetaData;
 import com.kingsrook.qqq.backend.core.model.savedreports.RenderedReport;
 import com.kingsrook.qqq.backend.core.model.savedreports.RenderedReportStatus;
 import com.kingsrook.qqq.backend.core.model.savedreports.SavedReport;
+import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.ExceptionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValidationUtils;
@@ -125,6 +130,14 @@ public class RenderSavedReportExecuteStep implements BackendStep
          LOG.info("Starting to render a report", logPair("savedReportId", savedReport.getId()), logPair("tableName", savedReport.getTableName()), logPair("storageReference", storageReference));
          runBackendStepInput.getAsyncJobCallback().updateStatus("Generating Report");
 
+         ////////////////////////////////////////////////////////////////////////////////////////////
+         // convert the report record to report meta-data, which the GenerateReportAction works on //
+         // - and make sure the caller may read every table it reads: the report runs its queries  //
+         // trusted, and a saved report's table and joins are whatever its author chose            //
+         ////////////////////////////////////////////////////////////////////////////////////////////
+         QReportMetaData reportMetaData = new SavedReportToReportMetaDataAdapter().adapt(savedReport, reportFormat);
+         checkTableReadPermissions(reportMetaData);
+
          //////////////////////////////////////////////////////////////////
          // insert a rendered-report record indicating that it's running //
          //////////////////////////////////////////////////////////////////
@@ -136,11 +149,6 @@ public class RenderSavedReportExecuteStep implements BackendStep
             .withReportFormat(ReportFormatPossibleValueEnum.valueOf(reportFormat.name()).getPossibleValueId())
          )).getRecords().get(0);
          runBackendStepOutput.addValue("renderedReportId", renderedReportRecord.getValue("id"));
-
-         ////////////////////////////////////////////////////////////////////////////////////////////
-         // convert the report record to report meta-data, which the GenerateReportAction works on //
-         ////////////////////////////////////////////////////////////////////////////////////////////
-         QReportMetaData reportMetaData = new SavedReportToReportMetaDataAdapter().adapt(savedReport, reportFormat);
 
          /////////////////////////////////////
          // setup & run the generate action //
@@ -251,6 +259,25 @@ public class RenderSavedReportExecuteStep implements BackendStep
             throw qException;
          }
          throw new QException("Error rendering saved report", e);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** The session must have READ on each data source's table, and on the tables
+    ** its joins (explicit, or implied by its filter) read.
+    *******************************************************************************/
+   static void checkTableReadPermissions(QReportMetaData reportMetaData) throws QException
+   {
+      for(QReportDataSource dataSource : CollectionUtils.nonNullList(reportMetaData.getDataSources()))
+      {
+         if(StringUtils.hasContent(dataSource.getSourceTable()))
+         {
+            QueryInput permissionInput = new QueryInput(dataSource.getSourceTable());
+            PermissionsHelper.checkTablePermissionThrowing(permissionInput, TablePermissionSubType.READ);
+            PermissionsHelper.checkJoinedTableReadPermissions(permissionInput, dataSource.getQueryJoins(), dataSource.getQueryFilter());
+         }
       }
    }
 

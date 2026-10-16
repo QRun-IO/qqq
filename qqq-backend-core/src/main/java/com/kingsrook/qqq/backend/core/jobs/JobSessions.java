@@ -41,6 +41,7 @@ import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
+import com.kingsrook.qqq.backend.core.serviceidentity.ServiceIdentities;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
@@ -120,8 +121,33 @@ public final class JobSessions
       List<Serializable>              grant = scope.get(JobGrants.SCOPE_GRANT);
 
       QSession session;
-      boolean  granted = grant != null && !grant.isEmpty();
-      if(granted)
+      boolean  granted   = grant != null && !grant.isEmpty();
+      String   principal = ServiceIdentities.principalNameFromId(userId);
+      if(principal != null && granted)
+      {
+         //////////////////////////////////////////////////////////////////
+         // a principal-owned job never carries a user's grant: refuse   //
+         // rather than guess which identity it should run as            //
+         //////////////////////////////////////////////////////////////////
+         throw (new QPermissionDeniedException("Could not establish the session of the job's owner."));
+      }
+      if(principal != null)
+      {
+         ////////////////////////////////////////////////////////////////////
+         // a job owned by a service principal: a fresh principal session  //
+         // at every claim (current authority; revoked = the job fails)    //
+         ////////////////////////////////////////////////////////////////////
+         try
+         {
+            session = ServiceIdentities.session(instance, principal);
+         }
+         catch(QException e)
+         {
+            LOG.warn("Could not establish the service principal session of a job", logPair("principal", principal), logPair("jobId", job.getValue("id")), logPair("reason", e.getMessage()));
+            throw (new QPermissionDeniedException("Could not establish the session of the job's owner."));
+         }
+      }
+      else if(granted)
       {
          session = sessionFromGrant(instance, auth, job, userId, String.valueOf(grant.get(0)), scope);
       }
@@ -168,6 +194,15 @@ public final class JobSessions
     *******************************************************************************/
    public static boolean isTokenSession(QSession session)
    {
+      if(ServiceIdentities.isMintedServiceSession(session))
+      {
+         //////////////////////////////////////////////////////////////////////
+         // a service principal's own session: workers re-mint it at every   //
+         // claim, so the job is always held to the principal's current     //
+         // authority - unlike a request's bearer token                     //
+         //////////////////////////////////////////////////////////////////////
+         return (false);
+      }
       return (session != null && (session.getCredentialScope() != null || StringUtils.hasContent(session.getValue("qqq.oauth2.bearer"))));
    }
 

@@ -30,6 +30,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.session.QUser;
+import com.kingsrook.qqq.backend.core.serviceidentity.QServiceIdentityProviderInterface;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import org.apache.commons.lang3.NotImplementedException;
@@ -85,6 +86,18 @@ public interface QAuthenticationModuleInterface
       }
       return session;
    }
+
+
+   /*******************************************************************************
+    ** How this module turns a declared service principal into a session
+    ** (docs/SERVICE-IDENTITY.md), or null when it does not support service
+    ** principals.
+    *******************************************************************************/
+   default QServiceIdentityProviderInterface getServiceIdentityProvider()
+   {
+      return (null);
+   }
+
 
 
    /*******************************************************************************

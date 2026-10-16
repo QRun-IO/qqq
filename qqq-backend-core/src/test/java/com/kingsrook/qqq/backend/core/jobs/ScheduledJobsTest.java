@@ -23,19 +23,27 @@ package com.kingsrook.qqq.backend.core.jobs;
 
 import java.util.List;
 import java.util.Map;
+import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.backend.core.jobs.model.JobStatus;
 import com.kingsrook.qqq.backend.core.jobs.runtime.DurableJobsRuntime;
+import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QBackendStepMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
+import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 import com.kingsrook.qqq.backend.core.scheduler.SchedulerUtils;
+import com.kingsrook.qqq.backend.core.serviceidentity.QServicePrincipalMetaData;
+import com.kingsrook.qqq.backend.core.serviceidentity.QServiceSession;
+import com.kingsrook.qqq.backend.core.serviceidentity.ServiceIdentitiesMetaData;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 
 /*******************************************************************************
@@ -135,5 +143,89 @@ class ScheduledJobsTest extends DurableJobsTestBase
       assertThat(ScheduledJobs.ownerSession(instance).getUser().getIdReference()).isEqualTo("scheduler-bot");
       settings.withScheduledJobsUserId(" ");
       assertThat(ScheduledJobs.ownerSession(instance)).isNull();
+   }
+
+
+
+   /*******************************************************************************
+    ** With scheduledJobsServicePrincipal, the principal owns the job and the
+    ** worker re-mints the principal's session at each claim.
+    *******************************************************************************/
+   @Test
+   void servicePrincipalOwnsScheduledJobs() throws Exception
+   {
+      ServiceIdentitiesMetaData.declare(instance, new QServicePrincipalMetaData().withName("scheduler"));
+      settings.withScheduledJobsServicePrincipal("scheduler").withScheduledJobsUserId("scheduler-bot");
+      QProcessMetaData process = instance.getProcess(DurableJobsTestSupport.PROCESS_THREE_STEPS);
+
+      SchedulerUtils.runProcess(instance, () -> new QSystemUserSession(instance), process, null, Map.of("seed", "nightly"));
+      QContext.init(instance, new QSystemUserSession(instance));
+
+      List<QRecord> jobs = SystemScope.call(() -> new QueryAction().execute(new QueryInput(DurableJobsTables.TABLE_JOB)).getRecords());
+      assertThat(jobs).singleElement().satisfies(job -> assertThat(job.getValueString("userId")).isEqualTo("service:scheduler"));
+
+      QSession claimSession = JobSessions.forJob(instance, jobs.get(0));
+      assertThat(claimSession).isInstanceOf(QServiceSession.class);
+      assertThat(claimSession.getUser().getIdReference()).isEqualTo("service:scheduler");
+      assertThat(JobSessions.isTokenSession(claimSession)).isFalse();
+
+      DurableJobsRuntime.start(instance);
+      await(jobs.get(0).getValueInteger("id"), JobStatus.COMPLETED);
+      assertThat(DurableJobsTestSupport.runs("step3")).isEqualTo(1);
+   }
+
+
+
+   /*******************************************************************************
+    ** Unfinished scheduler jobs of the old scheduledJobsUserId move to the
+    ** principal (once per node); finished ones and other owners are untouched.
+    *******************************************************************************/
+   @Test
+   void legacyScheduledJobsMoveToThePrincipal() throws Exception
+   {
+      ServiceIdentitiesMetaData.declare(instance, new QServicePrincipalMetaData().withName("scheduler"));
+      settings.withScheduledJobsUserId("scheduler-bot");
+      QProcessMetaData process = instance.getProcess(DurableJobsTestSupport.PROCESS_THREE_STEPS);
+      SchedulerUtils.runProcess(instance, () -> new QSystemUserSession(instance), process, null, Map.of("seed", "a"));
+      QContext.init(instance, new QSystemUserSession(instance));
+      Integer legacyId = SystemScope.call(() -> new QueryAction().execute(new QueryInput(DurableJobsTables.TABLE_JOB)).getRecords()).get(0).getValueInteger("id");
+      Integer doneId = SystemScope.call(() -> new InsertAction().execute(new InsertInput(DurableJobsTables.TABLE_JOB).withRecord(new QRecord()
+         .withValue("userId", "scheduler-bot").withValue("clientChannel", ScheduledJobs.CHANNEL_SCHEDULER).withValue("status", JobStatus.COMPLETED.getPossibleValueId())
+         .withValue("processName", DurableJobsTestSupport.PROCESS_THREE_STEPS))).getRecords().get(0).getValueInteger("id"));
+
+      settings.withScheduledJobsServicePrincipal("scheduler");
+      ScheduledJobs.ownerSession(instance);
+
+      assertThat(SystemScope.call(() -> DurableJobs.status(legacyId)).getValueString("userId")).isEqualTo("service:scheduler");
+      assertThat(SystemScope.call(() -> DurableJobs.status(doneId)).getValueString("userId")).isEqualTo("scheduler-bot");
+   }
+
+
+
+   /*******************************************************************************
+    ** A configured but undeclared/unavailable principal fails the tick: never a
+    ** fallback to the user or the system user.
+    *******************************************************************************/
+   @Test
+   void unavailablePrincipalFailsClosed()
+   {
+      settings.withScheduledJobsServicePrincipal("scheduler").withScheduledJobsUserId("scheduler-bot");
+      QContext.setQSession(new QSystemUserSession(instance));
+      assertThatThrownBy(() -> ScheduledJobs.ownerSession(instance)).isInstanceOf(QAuthenticationException.class);
+   }
+
+
+
+   /*******************************************************************************
+    ** Review H2: only a principal's own minted session may start a job owned by
+    ** a principal; a human whose id merely starts with service: cannot.
+    *******************************************************************************/
+   @Test
+   void humanCannotLaunchAPrincipalOwnedJob()
+   {
+      ServiceIdentitiesMetaData.declare(instance, new QServicePrincipalMetaData().withName("scheduler"));
+      QContext.setQSession(new QSession().withUser(new com.kingsrook.qqq.backend.core.model.session.QUser().withIdReference("service:scheduler")));
+      assertThatThrownBy(() -> DurableJobs.launch(new com.kingsrook.qqq.backend.core.jobs.model.LaunchRequest(DurableJobsTestSupport.PROCESS_THREE_STEPS).withValues(Map.of("seed", "x"))))
+         .isInstanceOf(com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException.class);
    }
 }

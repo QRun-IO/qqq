@@ -22,19 +22,31 @@ package com.kingsrook.qqq.backend.core.jobs;
 
 
 import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
+import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
 import com.kingsrook.qqq.backend.core.context.CapturedContext;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.jobs.model.JobStatus;
 import com.kingsrook.qqq.backend.core.jobs.model.LaunchRequest;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
+import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleDispatcher;
+import com.kingsrook.qqq.backend.core.serviceidentity.ServiceIdentities;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
@@ -57,6 +69,11 @@ public final class ScheduledJobs
    private static final QLogger LOG = QLogger.getLogger(ScheduledJobs.class);
 
    public static final String CHANNEL_SCHEDULER = "scheduler";
+
+   private static final Set<String>          MIGRATED_LEGACY_OWNER = ConcurrentHashMap.newKeySet();
+   private static final List<Serializable> UNFINISHED_STATUSES   = List.of(JobStatus.AWAITING_CONFIRMATION.getPossibleValueId(), JobStatus.QUEUED.getPossibleValueId(),
+      JobStatus.PLANNING.getPossibleValueId(), JobStatus.RUNNING.getPossibleValueId(), JobStatus.PAUSING.getPossibleValueId(), JobStatus.PAUSED.getPossibleValueId(),
+      JobStatus.NEEDS_REVIEW.getPossibleValueId());
 
    private static final Set<String> WARNED_NO_OWNER = ConcurrentHashMap.newKeySet();
 
@@ -134,6 +151,52 @@ public final class ScheduledJobs
 
 
    /*******************************************************************************
+    ** Once per node: unfinished scheduler-launched jobs still owned by the old
+    ** scheduledJobsUserId move to the service principal, so their next claims
+    ** (which re-mint the owner's session) do not fail after the upgrade.
+    *******************************************************************************/
+   static void migrateLegacyOwner(QInstance instance, String principal)
+   {
+      String legacyUserId = DurableJobsMetaData.of(instance).getScheduledJobsUserId();
+      if(!StringUtils.hasContent(legacyUserId) || !MIGRATED_LEGACY_OWNER.add(System.identityHashCode(instance) + ":" + principal))
+      {
+         return;
+      }
+      try
+      {
+         Integer moved = SystemScope.call(() ->
+         {
+            List<QRecord> jobs = new QueryAction().execute(new QueryInput(DurableJobsTables.TABLE_JOB).withFilter(new QQueryFilter()
+               .withCriteria(new QFilterCriteria("userId", QCriteriaOperator.EQUALS, legacyUserId))
+               .withCriteria(new QFilterCriteria("clientChannel", QCriteriaOperator.EQUALS, CHANNEL_SCHEDULER))
+               .withCriteria(new QFilterCriteria("status", QCriteriaOperator.IN, UNFINISHED_STATUSES)))).getRecords();
+            if(jobs.isEmpty())
+            {
+               return (0);
+            }
+            List<QRecord> updates = new ArrayList<>();
+            for(QRecord job : jobs)
+            {
+               updates.add(new QRecord().withValue("id", job.getValue("id")).withValue("userId", ServiceIdentities.PRINCIPAL_ID_PREFIX + principal));
+            }
+            new UpdateAction().execute(new UpdateInput(DurableJobsTables.TABLE_JOB).withRecords(updates));
+            return (updates.size());
+         });
+         if(moved > 0)
+         {
+            LOG.info("Moved unfinished scheduled jobs to the service principal", logPair("count", moved), logPair("principal", principal), logPair("previousOwner", legacyUserId));
+         }
+      }
+      catch(Exception e)
+      {
+         MIGRATED_LEGACY_OWNER.remove(System.identityHashCode(instance) + ":" + principal);
+         LOG.warn("Could not move unfinished scheduled jobs to the service principal; will retry", e, logPair("principal", principal));
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** The session that owns a scheduled job: the scheduler's own user, else the
     ** configured scheduledJobsUserId's automated session, else null.
     *******************************************************************************/
@@ -143,6 +206,20 @@ public final class ScheduledJobs
       if(current != null && !(current instanceof QSystemUserSession) && StringUtils.hasContent(DurableJobsSecurity.userId(current)))
       {
          return (current);
+      }
+
+      //////////////////////////////////////////////////////////////////////////
+      // a declared service principal owns scheduled jobs (no fallback to a  //
+      // user or the system user when it is unavailable: the tick fails and  //
+      // the principal's alert is raised)                                    //
+      //////////////////////////////////////////////////////////////////////////
+      String principal = DurableJobsMetaData.of(instance).getScheduledJobsServicePrincipal();
+      if(StringUtils.hasContent(principal))
+      {
+         migrateLegacyOwner(instance, principal);
+         QSession session = ServiceIdentities.session(instance, principal);
+         DurableJobsSecurity.applyToSession(session);
+         return (session);
       }
 
       String userId = DurableJobsMetaData.of(instance).getScheduledJobsUserId();

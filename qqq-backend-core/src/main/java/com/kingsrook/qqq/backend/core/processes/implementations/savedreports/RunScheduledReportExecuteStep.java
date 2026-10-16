@@ -41,6 +41,7 @@ import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
+import com.kingsrook.qqq.backend.core.serviceidentity.ServiceIdentities;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
@@ -138,12 +139,16 @@ public class RunScheduledReportExecuteStep implements BackendStep
          QAuthenticationModuleDispatcher qAuthenticationModuleDispatcher = new QAuthenticationModuleDispatcher();
          QAuthenticationModuleInterface  authenticationModule            = qAuthenticationModuleDispatcher.getQModule(qInstance.getAuthentication());
 
-         ///////////////////////////////////////
-         // create automated-session for user //
-         ///////////////////////////////////////
-         QSession session = authenticationModule.createAutomatedSessionForUser(qInstance, userId);
+         ///////////////////////////////////////////////////////////////////////
+         // with a declared scheduler principal: the owner's current access,  //
+         // via the principal (docs/SERVICE-IDENTITY.md); else, as before, an //
+         // automated session for the owner                                   //
+         ///////////////////////////////////////////////////////////////////////
+         QSession session = ServiceIdentities.isDeclared(qInstance, ServiceIdentities.SCHEDULER)
+            ? ServiceIdentities.sessionOnBehalfOf(qInstance, ServiceIdentities.SCHEDULER, userId)
+            : authenticationModule.createAutomatedSessionForUser(qInstance, userId);
          if(session == null || session instanceof QSystemUserSession || session.getUser() == null
-            || !Objects.equals(userId, session.getUser().getIdReference()) || !authenticationModule.isSessionValid(qInstance, session))
+            || !Objects.equals(userId, session.getUser().getIdReference()) || !ServiceIdentities.isSessionValid(qInstance, authenticationModule, session))
          {
             throw new QPermissionDeniedException("Could not establish the scheduled report owner's session.");
          }

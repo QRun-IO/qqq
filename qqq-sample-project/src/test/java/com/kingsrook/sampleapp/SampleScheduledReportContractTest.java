@@ -144,7 +144,8 @@ class SampleScheduledReportContractTest
       SampleMetaDataProvider.primeTestDatabase("prime-test-database.sql");
       instance = SampleMetaDataProvider.defineTestInstance();
       schedulerSession = new QSession().withUser(new QUser().withIdReference("owned-scheduler-service"))
-         .withPermissions(OWNER_PERMISSIONS).withSecurityKeyValue("schedulerOnly", "private-key")
+         .withPermissions(OWNER_PERMISSIONS).withPermission(com.kingsrook.qqq.backend.core.model.savedreports.ScheduledReportTableCustomizer.PERMISSION_ASSIGN_OWNER)
+         .withSecurityKeyValue("schedulerOnly", "private-key")
          .withBackendVariants(new HashMap<>(Map.of("ownedTenant", "owned-tenant")));
       schedulerSession.setIdReference("owned-scheduler-authentication");
       schedulerSession.withValue("apiName", "scheduler-api");

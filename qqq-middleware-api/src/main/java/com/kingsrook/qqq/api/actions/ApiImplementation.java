@@ -615,6 +615,7 @@ public class ApiImplementation
 
       PermissionsHelper.checkTablePermissionThrowing(getInput, TablePermissionSubType.READ);
 
+      throwNotFoundIfMalformedPrimaryKey(table, primaryKey);
       getInput.setPrimaryKey(primaryKey);
       getInput.setIncludeAssociations(true);
       getInput.setShouldFetchHeavyFields(true);
@@ -651,6 +652,7 @@ public class ApiImplementation
       updateInput.setTableName(tableName);
 
       PermissionsHelper.checkTablePermissionThrowing(updateInput, TablePermissionSubType.EDIT);
+      throwNotFoundIfMalformedPrimaryKey(table, primaryKey);
 
       try
       {
@@ -849,6 +851,7 @@ public class ApiImplementation
       deleteInput.setPrimaryKeys(List.of(primaryKey));
 
       PermissionsHelper.checkTablePermissionThrowing(deleteInput, TablePermissionSubType.DELETE);
+      throwNotFoundIfMalformedPrimaryKey(table, primaryKey);
 
       ///////////////////
       // do the delete //
@@ -1548,6 +1551,43 @@ public class ApiImplementation
       }
 
       return (table);
+   }
+
+
+
+   /*******************************************************************************
+    ** A primary key from the URL path that cannot be a value of the table's
+    ** (numeric) primary key field names no record: 404, not a backend error.
+    *******************************************************************************/
+   private static void throwNotFoundIfMalformedPrimaryKey(QTableMetaData table, String primaryKey) throws QNotFoundException
+   {
+      QFieldMetaData field = table.getFields().get(table.getPrimaryKeyField());
+      if(field == null || primaryKey == null)
+      {
+         return;
+      }
+
+      boolean valid = true;
+      try
+      {
+         if(field.getType() == QFieldType.INTEGER)
+         {
+            Integer.parseInt(primaryKey);
+         }
+         else if(field.getType() == QFieldType.LONG)
+         {
+            Long.parseLong(primaryKey);
+         }
+      }
+      catch(NumberFormatException e)
+      {
+         valid = false;
+      }
+
+      if(!valid)
+      {
+         throw (new QNotFoundException("Could not find " + table.getLabel() + " with " + field.getLabel() + " of " + primaryKey));
+      }
    }
 
 

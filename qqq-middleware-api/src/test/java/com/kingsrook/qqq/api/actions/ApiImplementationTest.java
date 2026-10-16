@@ -44,6 +44,7 @@ import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
@@ -77,6 +78,29 @@ class ApiImplementationTest extends BaseTest
    void beforeAndAfterEach()
    {
       GetTableApiFieldsAction.clearCaches();
+   }
+
+
+
+   /*******************************************************************************
+    ** A primary key that cannot be a number names no record: not found (404),
+    ** never a backend error (500).
+    *******************************************************************************/
+   @Test
+   void testMalformedPrimaryKeyIsNotFound()
+   {
+      QInstance           qInstance           = QContext.getQInstance();
+      ApiInstanceMetaData apiInstanceMetaData = ApiInstanceMetaDataContainer.of(qInstance).getApiInstanceMetaData(TestUtils.API_NAME);
+
+      for(String badId : new String[] { "none", "1.5", "12abc", "99999999999999999999" })
+      {
+         assertThatThrownBy(() -> ApiImplementation.get(apiInstanceMetaData, TestUtils.CURRENT_API_VERSION, "order", badId))
+            .isInstanceOf(QNotFoundException.class);
+         assertThatThrownBy(() -> ApiImplementation.update(apiInstanceMetaData, TestUtils.CURRENT_API_VERSION, "order", badId, "{}"))
+            .isInstanceOf(QNotFoundException.class);
+         assertThatThrownBy(() -> ApiImplementation.delete(apiInstanceMetaData, TestUtils.CURRENT_API_VERSION, "order", badId))
+            .isInstanceOf(QNotFoundException.class);
+      }
    }
 
 

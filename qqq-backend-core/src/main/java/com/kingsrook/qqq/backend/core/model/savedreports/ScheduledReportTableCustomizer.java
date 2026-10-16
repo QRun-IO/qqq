@@ -67,6 +67,12 @@ public class ScheduledReportTableCustomizer implements TableCustomizerInterface
 {
    private static final QLogger LOG = QLogger.getLogger(ScheduledReportTableCustomizer.class);
 
+   ///////////////////////////////////////////////////////////////////////////
+   // a named permission for sessions that may create or re-assign other    //
+   // users' schedules (e.g. an admin tool); never implied by table edit    //
+   ///////////////////////////////////////////////////////////////////////////
+   public static final String PERMISSION_ASSIGN_OWNER = "scheduledReport.assignOwner";
+
 
 
    /*******************************************************************************
@@ -105,10 +111,12 @@ public class ScheduledReportTableCustomizer implements TableCustomizerInterface
       // access): a signed-in user's schedules are always their own, and the   //
       // owner never changes afterwards - otherwise anyone who can edit a      //
       // schedule could render reports with someone else's access and email   //
-      // the result anywhere. System and service code may set it explicitly.   //
+      // the result anywhere. System and service code, and sessions holding    //
+      // PERMISSION_ASSIGN_OWNER (explicitly granted), may set it.             //
       ////////////////////////////////////////////////////////////////////////////
       QSession session      = QContext.getQSession();
-      boolean  userSession  = session != null && !(session instanceof QSystemUserSession) && !ServiceIdentities.isMintedServiceSession(session);
+      boolean  userSession  = session != null && !(session instanceof QSystemUserSession) && !ServiceIdentities.isMintedServiceSession(session)
+         && !session.hasPermission(PERMISSION_ASSIGN_OWNER);
       String   sessionOwner = userSession && session.getUser() != null ? session.getUser().getIdReference() : null;
 
       for(QRecord record : records)

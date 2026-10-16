@@ -73,6 +73,12 @@ public final class ServiceIdentities
    public static final String VALUE_ON_BEHALF_OF  = "qqq.service.onBehalfOf";
    public static final String CLIENT_CHANNEL      = "service";
 
+   /////////////////////////////////////////////////////////////////////////////
+   // the principal core's scheduled work uses when declared (scheduled       //
+   // reports and output deliveries run on behalf of their owners through it) //
+   /////////////////////////////////////////////////////////////////////////////
+   public static final String SCHEDULER = "scheduler";
+
 
 
    /*******************************************************************************
@@ -270,6 +276,22 @@ public final class ServiceIdentities
          return (module.getServiceIdentityProvider() instanceof LocalServiceIdentityProvider && LocalServiceIdentityProvider.isMinted(session));
       }
       return (module.isSessionValid(qInstance, session));
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether this is a principal's own session minted in this JVM (an OAuth2
+    ** service bearer session or a local QServiceSession) - as opposed to a
+    ** request's bearer token or a hand-made session. Delegated sessions are not.
+    *******************************************************************************/
+   public static boolean isMintedServiceSession(QSession session)
+   {
+      if(session == null || session instanceof QDelegatedSession || principalOf(session) == null)
+      {
+         return (false);
+      }
+      return (LocalServiceIdentityProvider.isMinted(session) || OAuth2ServiceIdentityProvider.accessTokenFor(session).isPresent());
    }
 
 

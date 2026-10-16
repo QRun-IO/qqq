@@ -346,6 +346,36 @@ class ServiceIdentitiesTest extends BaseTest
 
 
    /*******************************************************************************
+    ** Deliveries (and scheduled reports) with a declared scheduler principal run
+    ** on behalf of the owner via the principal, from the system scheduler or a
+    ** principal's own session; without one, behavior is unchanged.
+    *******************************************************************************/
+   @Test
+   void deliveriesRunOnBehalfOfTheOwnerViaThePrincipal() throws Exception
+   {
+      QInstance qInstance = QContext.getQInstance();
+
+      QContext.setQSession(new QSystemUserSession(qInstance));
+      QSession before = com.kingsrook.qqq.backend.core.delivery.DeliverySessions.forOwner("alice");
+      assertFalse(before instanceof QDelegatedSession);
+
+      ServiceIdentitiesMetaData.declare(qInstance, new QServicePrincipalMetaData().withName(ServiceIdentities.SCHEDULER).withMayActOnBehalfOfUsers(true));
+      QSession viaSystemScheduler = com.kingsrook.qqq.backend.core.delivery.DeliverySessions.forOwner("alice");
+      assertThat(viaSystemScheduler).isInstanceOf(QDelegatedSession.class);
+      assertEquals("alice", viaSystemScheduler.getUser().getIdReference());
+      assertEquals(ServiceIdentities.SCHEDULER, ServiceIdentities.principalOf(viaSystemScheduler));
+
+      ServiceIdentities.run(ServiceIdentities.SCHEDULER, () ->
+      {
+         QSession owner = com.kingsrook.qqq.backend.core.delivery.DeliverySessions.forOwner("alice");
+         assertThat(owner).isInstanceOf(QDelegatedSession.class);
+         QContext.withTemporaryContext(new com.kingsrook.qqq.backend.core.context.CapturedContext(qInstance, owner), () -> ActionHelper.validateSession(null));
+      });
+   }
+
+
+
+   /*******************************************************************************
     ** Only principals declared for it may act on behalf of users.
     *******************************************************************************/
    @Test

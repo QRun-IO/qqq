@@ -22,6 +22,7 @@
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
+import com.kingsrook.qqq.backend.core.actions.permissions.SystemTablePermissions;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.audits.AuditsMetaDataProvider;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -75,6 +76,16 @@ class TableCapabilitiesV1Test
       AuditsCapabilityV1 audits = TableCapabilitiesV1.of(person).getAudits();
       assertTrue(audits.getAvailable());
       assertEquals("NONE", audits.getLevel());
+      assertEquals(GetAuditsForRecordProcess.NAME, audits.getProcessName());
+
+      //////////////////////////////////////////////////////////////////////
+      // the audit tables themselves are offered only to audit.read holders //
+      //////////////////////////////////////////////////////////////////////
+      assertNull(audits.getTableName());
+      assertNull(audits.getDetailTableName());
+
+      QContext.setQSession(new QSession().withPermission(SystemTablePermissions.AUDIT_READ_PERMISSION));
+      audits = TableCapabilitiesV1.of(person).getAudits();
       assertEquals(GetAuditsForRecordProcess.NAME, audits.getProcessName());
       assertEquals(AuditsMetaDataProvider.TABLE_NAME_AUDIT, audits.getTableName());
       assertEquals(AuditsMetaDataProvider.TABLE_NAME_AUDIT_DETAIL, audits.getDetailTableName());

@@ -29,6 +29,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import com.kingsrook.qqq.backend.core.actions.audits.AuditAction;
 import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.RecordListWidgetRenderer;
+import com.kingsrook.qqq.backend.core.actions.permissions.SystemTablePermissions;
 import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessDecision;
 import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessEvent;
 import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessEventType;
@@ -59,7 +60,9 @@ import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRule
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QBackendStepMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
+import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
+import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleCustomizerInterface;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.middleware.javalin.TestUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
@@ -136,7 +139,26 @@ class FieldAccessUiApiTest extends SpecTestBase
       instance.addProcess(new QProcessMetaData().withName("securedProcess").withTableName("person")
          .withStep(new QBackendStepMetaData().withName("records").withCode(new QCodeReference(RecordsStep.class))));
       new AuditsMetaDataProvider().defineAll(instance, TestUtils.BACKEND_NAME_MEMORY, null);
+      instance.getAuthentication().withCustomizer(new QCodeReference(AuditReader.class));
       return (instance);
+   }
+
+
+
+   /*******************************************************************************
+    ** The audit tables need audit.read; these sessions read them directly, so
+    ** their field access (not their table permission) is what is under test.
+    *******************************************************************************/
+   public static class AuditReader implements QAuthenticationModuleCustomizerInterface
+   {
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public void customizeSession(QInstance instance, QSession session, Map<String, Object> context)
+      {
+         session.withPermission(SystemTablePermissions.AUDIT_READ_PERMISSION);
+      }
    }
 
 

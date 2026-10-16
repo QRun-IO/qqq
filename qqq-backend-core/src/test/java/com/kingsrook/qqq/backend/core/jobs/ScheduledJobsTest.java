@@ -213,4 +213,19 @@ class ScheduledJobsTest extends DurableJobsTestBase
       QContext.setQSession(new QSystemUserSession(instance));
       assertThatThrownBy(() -> ScheduledJobs.ownerSession(instance)).isInstanceOf(QAuthenticationException.class);
    }
+
+
+
+   /*******************************************************************************
+    ** Review H2: only a principal's own minted session may start a job owned by
+    ** a principal; a human whose id merely starts with service: cannot.
+    *******************************************************************************/
+   @Test
+   void humanCannotLaunchAPrincipalOwnedJob()
+   {
+      ServiceIdentitiesMetaData.declare(instance, new QServicePrincipalMetaData().withName("scheduler"));
+      QContext.setQSession(new QSession().withUser(new com.kingsrook.qqq.backend.core.model.session.QUser().withIdReference("service:scheduler")));
+      assertThatThrownBy(() -> DurableJobs.launch(new com.kingsrook.qqq.backend.core.jobs.model.LaunchRequest(DurableJobsTestSupport.PROCESS_THREE_STEPS).withValues(Map.of("seed", "x"))))
+         .isInstanceOf(com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException.class);
+   }
 }

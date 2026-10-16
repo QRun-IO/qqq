@@ -405,6 +405,40 @@ class ServiceIdentitiesTest extends BaseTest
 
 
    /*******************************************************************************
+    ** Review H1: a signed-in user's scheduled reports are always their own (the
+    ** owner is who they run as), and the owner never changes afterwards.
+    *******************************************************************************/
+   @Test
+   void scheduledReportOwnerIsStampedAndImmutable() throws Exception
+   {
+      com.kingsrook.qqq.backend.core.model.savedreports.ScheduledReportTableCustomizer customizer = new com.kingsrook.qqq.backend.core.model.savedreports.ScheduledReportTableCustomizer();
+      QContext.setQSession(new QSession().withUser(new com.kingsrook.qqq.backend.core.model.session.QUser().withIdReference("alice")));
+
+      com.kingsrook.qqq.backend.core.model.data.QRecord inserted = new com.kingsrook.qqq.backend.core.model.data.QRecord()
+         .withValue("userId", "victim").withValue("cronExpression", "0 0 9 * * ?");
+      customizer.preInsert(new com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput(), List.of(inserted), false);
+      assertEquals("alice", inserted.getValueString("userId"));
+
+      com.kingsrook.qqq.backend.core.model.data.QRecord old = new com.kingsrook.qqq.backend.core.model.data.QRecord()
+         .withValue("id", 1).withValue("userId", "alice").withValue("cronExpression", "0 0 9 * * ?");
+      com.kingsrook.qqq.backend.core.model.data.QRecord takeover = new com.kingsrook.qqq.backend.core.model.data.QRecord().withValue("id", 1).withValue("userId", "victim");
+      customizer.preUpdate(new com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput(), List.of(takeover), false, java.util.Optional.of(List.of(old)));
+      assertThat(takeover.getErrors()).isNotEmpty();
+
+      com.kingsrook.qqq.backend.core.model.data.QRecord edit = new com.kingsrook.qqq.backend.core.model.data.QRecord().withValue("id", 1).withValue("subject", "Weekly");
+      customizer.preUpdate(new com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput(), List.of(edit), false, java.util.Optional.of(List.of(old)));
+      assertThat(edit.getErrors()).isNullOrEmpty();
+
+      QContext.setQSession(new QSystemUserSession(QContext.getQInstance()));
+      com.kingsrook.qqq.backend.core.model.data.QRecord bySystem = new com.kingsrook.qqq.backend.core.model.data.QRecord()
+         .withValue("userId", "bob").withValue("cronExpression", "0 0 9 * * ?");
+      customizer.preInsert(new com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput(), List.of(bySystem), false);
+      assertEquals("bob", bySystem.getValueString("userId"));
+   }
+
+
+
+   /*******************************************************************************
     ** Only principals declared for it may act on behalf of users.
     *******************************************************************************/
    @Test

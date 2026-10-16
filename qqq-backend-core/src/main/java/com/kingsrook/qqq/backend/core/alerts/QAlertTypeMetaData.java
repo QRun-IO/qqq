@@ -54,6 +54,7 @@ public class QAlertTypeMetaData implements TopLevelMetaDataInterface, SourceQBit
    private Duration                  quietPeriod;
    private List<AlertDefaultMonitor> defaultMonitors       = new ArrayList<>();
    private DetailLevel               externalDetailCeiling = DetailLevel.STANDARD;
+   private Boolean                   notify                = true;
 
 
 
@@ -409,5 +410,51 @@ public class QAlertTypeMetaData implements TopLevelMetaDataInterface, SourceQBit
    {
       this.externalDetailCeiling = externalDetailCeiling;
       return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for notify: whether alerts of this type are delivered to people
+    ** (the in-app notification bell and any other channel) by default.  When
+    ** false the alert is still recorded and shown on alert and health screens,
+    ** it just does not notify anyone.  An alerts implementation seeds its
+    ** per-type notify switch from this; admins may still change it there.
+    ** Null is treated as true.
+    *******************************************************************************/
+   public Boolean getNotify()
+   {
+      return (this.notify);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for notify
+    *******************************************************************************/
+   public void setNotify(Boolean notify)
+   {
+      this.notify = notify;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for notify (default true; false = alert-only, no notifications)
+    *******************************************************************************/
+   public QAlertTypeMetaData withNotify(Boolean notify)
+   {
+      this.notify = notify;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether this type notifies by default (null counts as true).
+    *******************************************************************************/
+   public boolean isNotifyByDefault()
+   {
+      return (!Boolean.FALSE.equals(this.notify));
    }
 }

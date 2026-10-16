@@ -344,6 +344,16 @@ class QAlertsTest extends BaseTest
 
       type.withQuietPeriod(Duration.ofHours(24));
       assertEquals(ResolveMode.QUIET_PERIOD, type.getResolveMode());
+
+      ////////////////////////////////////////////
+      // types notify by default; false opts out //
+      ////////////////////////////////////////////
+      assertTrue(type.getNotify());
+      assertTrue(type.isNotifyByDefault());
+      type.setNotify(null);
+      assertTrue(type.isNotifyByDefault());
+      assertFalse(type.withNotify(false).getNotify());
+      assertFalse(type.isNotifyByDefault());
    }
 
 

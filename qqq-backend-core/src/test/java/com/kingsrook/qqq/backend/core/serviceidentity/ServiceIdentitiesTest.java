@@ -344,6 +344,15 @@ class ServiceIdentitiesTest extends BaseTest
       declare(true);
       StubTokenModule.groups = List.of("readers");
 
+      //////////////////////////////////////////////////////////////////////
+      // default (owner decision 2026-10-16): exactly the user's access,   //
+      // even beyond the principal's own grants                            //
+      //////////////////////////////////////////////////////////////////////
+      QSession full = ServiceIdentities.sessionOnBehalfOf(QContext.getQInstance(), "scheduler", "alice");
+      assertEquals(Set.of("person.read", "person.delete"), full.getPermissions());
+      assertEquals(Set.of("person.delete"), ServiceIdentities.sessionOnBehalfOf(QContext.getQInstance(), "scheduler", "bob").getPermissions());
+
+      ServiceIdentitiesMetaData.getPrincipal(QContext.getQInstance(), "scheduler").setDelegatedAccess(QServicePrincipalMetaData.DelegatedAccess.INTERSECT_WITH_PRINCIPAL);
       QSession alice = ServiceIdentities.sessionOnBehalfOf(QContext.getQInstance(), "scheduler", "alice");
       assertThat(alice).isInstanceOf(QDelegatedSession.class);
       assertEquals("alice", alice.getUser().getIdReference());
@@ -465,6 +474,71 @@ class ServiceIdentitiesTest extends BaseTest
          .withValue("userId", "bob").withValue("cronExpression", "0 0 9 * * ?");
       customizer.preInsert(new com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput(), List.of(bySystem), false);
       assertEquals("bob", bySystem.getValueString("userId"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Owner decision 2026-10-16: work on a user's behalf (scheduled reports,
+    ** deliveries, user-owned jobs) sees and does exactly what the user can -
+    ** the same rows (record locks), not fewer and not more, writes included -
+    ** even when the principal itself holds nothing.
+    *******************************************************************************/
+   @Test
+   void delegatedWorkHasExactlyTheUsersAccess() throws Exception
+   {
+      QInstance qInstance = QContext.getQInstance();
+      qInstance.getAuthentication().setCustomizer(new QCodeReference(StoreUserCustomizer.class));
+      ServiceIdentitiesMetaData.declare(qInstance, new QServicePrincipalMetaData().withName(ServiceIdentities.SCHEDULER).withMayActOnBehalfOfUsers(true));
+
+      QContext.setQSession(new QSystemUserSession(qInstance));
+      new com.kingsrook.qqq.backend.core.actions.tables.InsertAction().execute(new com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput(com.kingsrook.qqq.backend.core.utils.TestUtils.TABLE_NAME_ORDER).withRecords(List.of(
+         new com.kingsrook.qqq.backend.core.model.data.QRecord().withValue("orderNo", "a1").withValue("storeId", 1),
+         new com.kingsrook.qqq.backend.core.model.data.QRecord().withValue("orderNo", "a2").withValue("storeId", 1),
+         new com.kingsrook.qqq.backend.core.model.data.QRecord().withValue("orderNo", "b1").withValue("storeId", 2))));
+
+      QSession userOwn = new com.kingsrook.qqq.backend.core.modules.authentication.implementations.MockAuthenticationModule().createAutomatedSessionForUser(qInstance, "alice");
+      QSession viaScheduler = ServiceIdentities.sessionOnBehalfOf(qInstance, ServiceIdentities.SCHEDULER, "alice");
+      assertEquals(userOwn.getPermissions(), viaScheduler.getPermissions());
+      assertEquals(userOwn.getSecurityKeyValues(), viaScheduler.getSecurityKeyValues());
+      assertEquals("alice via service:scheduler", ServiceIdentities.attributionName(viaScheduler));
+
+      List<String> seen = new ArrayList<>();
+      QContext.withTemporaryContext(new com.kingsrook.qqq.backend.core.context.CapturedContext(qInstance, viaScheduler), () ->
+      {
+         for(com.kingsrook.qqq.backend.core.model.data.QRecord record : new com.kingsrook.qqq.backend.core.actions.tables.QueryAction().execute(
+            new com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput(com.kingsrook.qqq.backend.core.utils.TestUtils.TABLE_NAME_ORDER)).getRecords())
+         {
+            seen.add(record.getValueString("orderNo"));
+         }
+         //////////////////////////////////////////
+         // writes included, as the user could   //
+         //////////////////////////////////////////
+         new com.kingsrook.qqq.backend.core.actions.tables.InsertAction().execute(new com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput(com.kingsrook.qqq.backend.core.utils.TestUtils.TABLE_NAME_ORDER)
+            .withRecord(new com.kingsrook.qqq.backend.core.model.data.QRecord().withValue("orderNo", "a3").withValue("storeId", 1)));
+      });
+      assertThat(seen).containsExactlyInAnyOrder("a1", "a2");
+
+      QContext.setQSession(new QSystemUserSession(qInstance));
+      assertEquals(4, new com.kingsrook.qqq.backend.core.actions.tables.CountAction().execute(new com.kingsrook.qqq.backend.core.model.actions.tables.count.CountInput(com.kingsrook.qqq.backend.core.utils.TestUtils.TABLE_NAME_ORDER)).getCount());
+   }
+
+
+
+   /*******************************************************************************
+    ** Grants per user for automated sessions: alice store 1, bob store 2.
+    *******************************************************************************/
+   public static class StoreUserCustomizer implements QAuthenticationModuleCustomizerInterface
+   {
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public void customizeAutomatedSessionForUser(QInstance qInstance, QSession session, Serializable userId)
+      {
+         session.withPermissions("order.read", "order.insert", "order.edit");
+         session.withSecurityKeyValue(com.kingsrook.qqq.backend.core.utils.TestUtils.SECURITY_KEY_TYPE_STORE, "alice".equals(userId) ? 1 : 2);
+      }
    }
 
 

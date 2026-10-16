@@ -31,6 +31,7 @@ import com.kingsrook.qqq.backend.core.realtime.RealtimeBusInterface;
 import com.kingsrook.qqq.backend.core.realtime.RealtimeMessage;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.esb.connection.EsbConnectionManager;
+import com.kingsrook.qqq.esb.connection.EsbListenerDispatcher;
 import com.kingsrook.qqq.esb.model.EsbDestinationType;
 import com.kingsrook.qqq.esb.model.EsbInstanceMetaData;
 import com.kingsrook.qqq.esb.model.QEsbDestinationMetaData;
@@ -51,6 +52,7 @@ public class EsbRealtimeBus implements RealtimeBusInterface, AutoCloseable
    private final QEsbDestinationMetaData destination;
    private final InMemoryRealtimeBus local = new InMemoryRealtimeBus();
    private final Thread worker;
+   private final EsbListenerDispatcher dispatcher;
    private volatile boolean closed;
    private Session session;
 
@@ -89,6 +91,7 @@ public class EsbRealtimeBus implements RealtimeBusInterface, AutoCloseable
       }
       destination = configured;
       EsbConnectionManager.getInstance().addConnectionListener(destination.getProviderName(), this::invalidate);
+      dispatcher = new EsbListenerDispatcher("qqq-realtime-esb-dispatch", instance);
       worker = Thread.ofVirtual().name("qqq-realtime-esb").unstarted(this::listen);
       worker.start();
    }
@@ -216,7 +219,9 @@ public class EsbRealtimeBus implements RealtimeBusInterface, AutoCloseable
 
 
    /*******************************************************************************
-    ** Malformed messages and listener failures are acknowledged and isolated.
+    ** Malformed messages are acknowledged and dropped; subscribers run on the
+    ** dispatcher, off the JMS thread (they may publish, which opens and closes a
+    ** session - refused on a listener thread), in order, isolated from each other.
     *******************************************************************************/
    private void onMessage(Message message)
    {
@@ -224,7 +229,8 @@ public class EsbRealtimeBus implements RealtimeBusInterface, AutoCloseable
       {
          if(message instanceof TextMessage text)
          {
-            local.publish(JsonUtils.toObject(text.getText(), RealtimeMessage.class));
+            RealtimeMessage event = JsonUtils.toObject(text.getText(), RealtimeMessage.class);
+            dispatcher.dispatch(() -> local.publish(event));
          }
       }
       catch(Exception e)
@@ -280,6 +286,7 @@ public class EsbRealtimeBus implements RealtimeBusInterface, AutoCloseable
       closed = true;
       worker.interrupt();
       invalidate();
+      dispatcher.close();
       local.close();
    }
 }

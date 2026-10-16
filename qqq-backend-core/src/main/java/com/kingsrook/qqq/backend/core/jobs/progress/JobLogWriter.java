@@ -156,7 +156,7 @@ public class JobLogWriter
       CapturedContext original = QContext.capture();
       try
       {
-         QContext.init(new CapturedContext(original.qInstance(), new QSystemUserSession()));
+         QContext.init(new CapturedContext(original.qInstance(), new QSystemUserSession(original.qInstance())));
          try(QBackendTransaction transaction = QBackendTransaction.openFor(new InsertInput(TABLE_JOB)))
          {
             try

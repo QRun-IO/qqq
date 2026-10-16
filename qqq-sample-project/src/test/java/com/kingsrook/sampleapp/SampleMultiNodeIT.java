@@ -285,11 +285,46 @@ class SampleMultiNodeIT
 
 
    /*******************************************************************************
+    ** Realtime hints cross nodes over the ESB realtime topic: a hint sent on A
+    ** reaches the user's stream on B; and a cluster event from A whose handler
+    ** on B sends a hint (the path metadata overlay changes take) reaches the
+    ** stream on A. That handler runs from B's cluster bus listener, where the
+    ** JMS client refuses to close a session (AMQ139006), so neither node may log
+    ** it.
+    *******************************************************************************/
+   @Test
+   @Order(7)
+   void realtimeHintsReachUsersOnOtherNodes() throws Exception
+   {
+      try(SampleRealtimeStream streamOnA = SampleRealtimeStream.open(onA, "instance");
+         SampleRealtimeStream streamOnB = SampleRealtimeStream.open(onB, "instance"))
+      {
+         String direct = "direct-" + UUID.randomUUID();
+         assertEquals("node-a", onA.run(SampleClusterProcesses.PROCESS_REALTIME_HINT, "{\"marker\":\"" + direct + "\"}").getJSONObject("values").getString("sentFrom"));
+         JSONObject onBFromA = streamOnB.await(SampleClusterProcesses.REALTIME_HINT_EVENT, event -> direct.equals(event.getJSONObject("data").optString("marker")), Duration.ofSeconds(15));
+         assertEquals("node-a", onBFromA.getJSONObject("data").getString("node"));
+
+         String relayed = "relayed-" + UUID.randomUUID();
+         onA.run(SampleClusterProcesses.PROCESS_REALTIME_HINT, "{\"marker\":\"" + relayed + "\",\"relay\":true}");
+         JSONObject onAFromB = streamOnA.await(SampleClusterProcesses.REALTIME_HINT_EVENT, event -> relayed.equals(event.getJSONObject("data").optString("marker")), Duration.ofSeconds(15));
+         assertEquals("node-b", onAFromB.getJSONObject("data").getString("node"));
+         assertEquals("cluster-event", onAFromB.getJSONObject("data").getString("via"));
+      }
+      for(PackagedSampleServer node : List.of(nodeA, nodeB))
+      {
+         assertFalse(node.output().contains("AMQ139006"), "a JMS session was closed on a listener thread");
+         assertFalse(node.output().contains("QInstance was not supplied when creating a QSystemUserSession"), "a system session was built without its instance");
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Killing A in the middle of an async step: B reports the "server stopped"
     ** error within lostAfterSeconds instead of RUNNING forever.
     *******************************************************************************/
    @Test
-   @Order(7)
+   @Order(8)
    void killedNodeIsReportedAsStopped() throws Exception
    {
       JSONObject started = onA.init(SampleClusterProcesses.PROCESS_WORK, "{\"seconds\":120}", 1);
@@ -314,7 +349,7 @@ class SampleMultiNodeIT
     ** still finishes the requests it gets.
     *******************************************************************************/
    @Test
-   @Order(8)
+   @Order(9)
    void drainingNodeIsNotReady() throws Exception
    {
       JSONObject drained = onB.run(SampleClusterProcesses.PROCESS_DRAIN, null);
@@ -333,7 +368,7 @@ class SampleMultiNodeIT
     ** on application routes and 200 on its probes.
     *******************************************************************************/
    @Test
-   @Order(9)
+   @Order(10)
    void workerNodeServesProbesOnly() throws Exception
    {
       startWorkerNode();
@@ -353,7 +388,7 @@ class SampleMultiNodeIT
     ** the server stops. (Unix only: on Windows, Process.destroy is a hard kill.)
     *******************************************************************************/
    @Test
-   @Order(10)
+   @Order(11)
    void sigtermDrainsBeforeStopping() throws Exception
    {
       assumeFalse(System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win"), "SIGTERM is not available on Windows");

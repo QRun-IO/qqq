@@ -238,7 +238,7 @@ public final class ClusterBus
             }
             else
             {
-               QContext.withTemporaryContext(new CapturedContext(instance, new QSystemUserSession()), () -> handler.accept(instance, event));
+               QContext.withTemporaryContext(new CapturedContext(instance, new QSystemUserSession(instance)), () -> handler.accept(instance, event));
             }
          }
          catch(Exception e)

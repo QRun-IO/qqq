@@ -26,10 +26,12 @@ import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
+import com.kingsrook.qqq.backend.core.realtime.RealtimeMetaData;
 import com.kingsrook.qqq.backend.core.state.StateProviderMetaData;
 import com.kingsrook.qqq.backend.core.state.TableStateProvider;
 import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSTableBackendDetails;
 import com.kingsrook.qqq.esb.cluster.EsbClusterBus;
+import com.kingsrook.qqq.esb.realtime.EsbRealtimeBus;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
 import com.kingsrook.sampleapp.processes.cluster.SampleClusterProcesses;
 
@@ -45,6 +47,8 @@ import com.kingsrook.sampleapp.processes.cluster.SampleClusterProcesses;
  **   state; QQQ_STATE_ENCRYPTION_KEY is required, as in production);
  ** - ClusterBusMetaData with EsbClusterBus (cache invalidation over the sample's
  **   Artemis broker);
+ ** - RealtimeMetaData with EsbRealtimeBus (realtime hints reach users on every
+ **   node);
  ** - /health and /ready probes;
  ** - the demo processes in SampleClusterProcesses.
  **
@@ -127,6 +131,12 @@ public final class SampleClusterMode
       // the ESB topic qqq.cluster.control                         //
       ///////////////////////////////////////////////////////////////
       instance.withSupplementalMetaData(new ClusterBusMetaData().withBus(new QCodeReference(EsbClusterBus.class)));
+
+      ////////////////////////////////////////////////////////////////
+      // realtime hints (SSE /qqq/v1/realtime/stream) reach a user  //
+      // on any node over the ESB realtime topic                    //
+      ////////////////////////////////////////////////////////////////
+      instance.withSupplementalMetaData(new RealtimeMetaData().withBus(new QCodeReference(EsbRealtimeBus.class)));
 
       ////////////////////////////////////////////////////////////
       // liveness and readiness probes (/ready is 503 draining) //

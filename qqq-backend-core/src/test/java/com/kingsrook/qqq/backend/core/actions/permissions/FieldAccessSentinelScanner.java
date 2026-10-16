@@ -38,13 +38,28 @@ class FieldAccessSentinelScanner
     *******************************************************************************/
    static void assertSafe(Object output, String... privateParts)
    {
-      String serialized = JsonUtils.toJson(output);
+      String serialized = withoutInstants(JsonUtils.toJson(output));
       for(String privatePart : privateParts)
       {
          for(int offset = 0; offset + 5 <= privatePart.length(); offset++)
          {
-            assertFalse(serialized.contains(privatePart.substring(offset, offset + 5)), "Unmasked sentinel in output");
+            String window = privatePart.substring(offset, offset + 5);
+            int    found  = serialized.indexOf(window);
+            assertFalse(found >= 0, () -> "Unmasked sentinel in output: [" + window + "] in ..." + serialized.substring(Math.max(0, found - 40), Math.min(serialized.length(), found + 45)) + "...");
          }
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** System timestamps are not secured data, but their fraction digits can
+    ** contain any five-digit run - e.g. createDate 2026-10-16T14:15:57.918273645Z
+    ** matched the SSN sentinel and failed CI (qqq#1260). Replace ISO-8601
+    ** instants before scanning; every other digit run is still checked.
+    *******************************************************************************/
+   static String withoutInstants(String serialized)
+   {
+      return (serialized.replaceAll("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,9})?Z", "<instant>"));
    }
 }

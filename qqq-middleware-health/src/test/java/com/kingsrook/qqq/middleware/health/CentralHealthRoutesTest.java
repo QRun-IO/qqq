@@ -30,6 +30,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.health.HealthCheck;
 import com.kingsrook.qqq.backend.core.health.HealthCheckInput;
@@ -41,6 +42,7 @@ import com.kingsrook.qqq.backend.core.health.HealthMetaDataProvider;
 import com.kingsrook.qqq.backend.core.health.HealthMonitoringMetaData;
 import com.kingsrook.qqq.backend.core.health.HealthRunner;
 import com.kingsrook.qqq.backend.core.health.HealthStatus;
+import com.kingsrook.qqq.backend.core.health.JvmMemoryPressureCheck;
 import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -111,6 +113,36 @@ class CentralHealthRoutesTest
          assertThat(ready.statusCode()).isEqualTo(503);
          assertThat(ready.body()).contains("test.database", "DOWN").doesNotContain("test.provider", "details", "message", "timestamp", "sentinel");
          assertThat(dependencyRuns).hasValue(0);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** /live runs only checks a restart can fix: a failing database or another
+    ** liveness check never restarts the pod; a flagged check does. The core
+    ** memory-pressure checks are on /ready and /live without registration.
+    *******************************************************************************/
+   @Test
+   void liveProbeRunsOnlyRestartableChecks() throws Exception
+   {
+      QInstance instance = instance().withSupplementalMetaData(new HealthCheckMetaData());
+      AtomicReference<HealthStatus> restartable = new AtomicReference<>(HealthStatus.UP);
+      HealthChecksMetaData.ofOrWithNew(instance)
+         .withCheck(definition("test.database", HealthCheckKind.READINESS, input -> HealthCheckOutcome.down("db down")))
+         .withCheck(definition("test.alive", HealthCheckKind.LIVENESS, input -> HealthCheckOutcome.down("legacy liveness down")))
+         .withCheck(definition("test.restartable", HealthCheckKind.LIVENESS, input -> new HealthCheckOutcome().withStatus(restartable.get()))
+            .withIncludeInLivenessProbe(true).withProbeCache(false));
+      Javalin server = server(instance);
+      try(HttpClient client = HttpClient.newHttpClient())
+      {
+         var live = get(client, server, JavalinHealthRouteProvider.LIVE_PATH);
+         assertThat(live.statusCode()).isEqualTo(200);
+         assertThat(live.body()).contains("test.restartable", JvmMemoryPressureCheck.LIVENESS_NAME).doesNotContain("test.database", "test.alive");
+         assertThat(get(client, server, "/ready").body()).contains(JvmMemoryPressureCheck.READINESS_NAME, JvmMemoryPressureCheck.LIVENESS_NAME);
+
+         restartable.set(HealthStatus.DOWN);
+         assertThat(get(client, server, JavalinHealthRouteProvider.LIVE_PATH).statusCode()).isEqualTo(503);
       }
    }
 
@@ -203,8 +235,13 @@ class CentralHealthRoutesTest
       assertThat(outcome.getDetails().toJson()).contains("[redacted]", "H2").doesNotContain("sentinel", "nested");
       QInstance instance = instance().withSupplementalMetaData(new HealthCheckMetaData().withIndicators(List.of(indicator)));
       var response = HealthProbes.run(instance, false);
+      //////////////////////////////////////////////////////////////////////////
+      // the legacy body is unchanged; the core sustained-memory-pressure      //
+      // liveness check is the only addition (status only, like registry ones) //
+      //////////////////////////////////////////////////////////////////////////
       assertThat(response.get("checks")).isEqualTo(Map.of("diskSpace", Map.of("status", HealthStatus.UP, "durationMs", 7L,
-         "details", Map.of("password", "[redacted]", "vendor", "H2"))));
+            "details", Map.of("password", "[redacted]", "vendor", "H2")),
+         JvmMemoryPressureCheck.LIVENESS_NAME, Map.of("status", HealthStatus.UP)));
    }
 
 

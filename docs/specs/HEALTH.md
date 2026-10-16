@@ -362,7 +362,11 @@ non-web clients (CLI, TUI, iOS) and for the "status card" links on other app hom
   in-memory last result if it is younger than 2× its interval, else run inline with a 2s budget.
   503 when any included check is DOWN. Never runs a `DEPENDENCY` check, so a provider outage can
   never take pods out of service.
-- Both are unauthenticated, return only names and statuses (no details, no messages), and are
+- `GET /live`: **liveness for the orchestrator**. Runs only checks flagged `includeInLivenessProbe`
+  (core: `core.jvm.memory_pressure_sustained`), never draining, dependencies or the database, so
+  only a fault a restart can fix restarts the pod. Checks flagged `probeCache=false` (the JVM
+  memory checks) always run live on `/ready` and `/live`.
+- All are unauthenticated, return only names and statuses (no details, no messages), and are
   served outside `/qqq/v1`.
 
 ### 7.3 Prometheus (optional, off by default)

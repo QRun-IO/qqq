@@ -42,6 +42,8 @@ public class HealthCheckMetaData implements QMetaDataObject
    private int failureThreshold = 2;
    private int recoveryThreshold = 1;
    private boolean includeInReadiness = false;
+   private boolean includeInLivenessProbe = false;
+   private boolean probeCache = true;
    private QCodeReference check;
    private transient HealthCheck checkInstance;
 
@@ -383,6 +385,71 @@ public class HealthCheckMetaData implements QMetaDataObject
    public HealthCheckMetaData withIncludeInReadiness(boolean includeInReadiness)
    {
       setIncludeInReadiness(includeInReadiness);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for includeInLivenessProbe: a DOWN outcome fails /live, so the
+    ** orchestrator restarts the process. Only for checks a restart can fix.
+    *******************************************************************************/
+   public boolean getIncludeInLivenessProbe()
+   {
+      return (includeInLivenessProbe);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for includeInLivenessProbe
+    *******************************************************************************/
+   public void setIncludeInLivenessProbe(boolean includeInLivenessProbe)
+   {
+      this.includeInLivenessProbe = includeInLivenessProbe;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for includeInLivenessProbe
+    *******************************************************************************/
+   public HealthCheckMetaData withIncludeInLivenessProbe(boolean includeInLivenessProbe)
+   {
+      setIncludeInLivenessProbe(includeInLivenessProbe);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for probeCache: whether /ready may answer from the runner's last
+    ** outcome (true) or must run the check live on every probe (false; for
+    ** cheap, fast-changing checks such as memory pressure).
+    *******************************************************************************/
+   public boolean getProbeCache()
+   {
+      return (probeCache);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for probeCache
+    *******************************************************************************/
+   public void setProbeCache(boolean probeCache)
+   {
+      this.probeCache = probeCache;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for probeCache
+    *******************************************************************************/
+   public HealthCheckMetaData withProbeCache(boolean probeCache)
+   {
+      setProbeCache(probeCache);
       return (this);
    }
 

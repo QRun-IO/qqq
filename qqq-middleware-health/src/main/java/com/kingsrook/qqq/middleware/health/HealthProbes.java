@@ -43,6 +43,8 @@ import com.kingsrook.qqq.backend.core.health.HealthCheckOutcome;
 import com.kingsrook.qqq.backend.core.health.HealthChecksMetaData;
 import com.kingsrook.qqq.backend.core.health.HealthRunner;
 import com.kingsrook.qqq.backend.core.health.HealthStatus;
+import com.kingsrook.qqq.backend.core.health.JvmMemoryPressure;
+import com.kingsrook.qqq.backend.core.health.JvmMemoryPressureCheck;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
@@ -90,7 +92,26 @@ public final class HealthProbes
             definitions.putIfAbsent(definition.getName(), definition);
          });
       }
+      if(JvmMemoryPressure.get().getSettings().enabled())
+      {
+         JvmMemoryPressureCheck.definitions().forEach(definition -> definitions.putIfAbsent(definition.getName(), definition));
+      }
       return (new ArrayList<>(definitions.values()));
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether a probe runs a check.
+    *******************************************************************************/
+   static boolean includedIn(HealthCheckMetaData check, Probe probe)
+   {
+      return (switch(probe)
+      {
+         case HEALTH -> check.getKind() == HealthCheckKind.LIVENESS;
+         case READINESS -> check.getKind() == HealthCheckKind.LIVENESS || (check.getKind() == HealthCheckKind.READINESS && check.getIncludeInReadiness());
+         case LIVENESS -> check.getIncludeInLivenessProbe();
+      });
    }
 
 
@@ -100,7 +121,37 @@ public final class HealthProbes
     *******************************************************************************/
    public static Map<String, Object> run(QInstance instance, boolean readiness)
    {
-      long budgetMs = readiness ? 2000 : 1000;
+      return (run(instance, readiness ? Probe.READINESS : Probe.HEALTH));
+   }
+
+
+
+   /*******************************************************************************
+    ** Which endpoint is asking.
+    ** HEALTH (/health): LIVENESS checks, with legacy indicator details.
+    ** READINESS (/ready): LIVENESS checks plus READINESS checks marked includeInReadiness.
+    ** LIVENESS (/live): only checks marked includeInLivenessProbe, the ones a
+    ** restart can fix; a broken dependency must never restart the pod.
+    *******************************************************************************/
+   public enum Probe
+   {
+      HEALTH, READINESS, LIVENESS
+   }
+
+
+
+   /*******************************************************************************
+    ** Launch concurrently, then wait against one monotonic total budget.
+    *******************************************************************************/
+   public static Map<String, Object> run(QInstance instance, Probe probe)
+   {
+      boolean readiness = probe != Probe.HEALTH;
+      ///////////////////////////////////////////////////////////////////////
+      // resolve definitions before the clock starts: the first call loads //
+      // the JVM-wide memory monitor, which must not eat the probe budget  //
+      ///////////////////////////////////////////////////////////////////////
+      List<HealthCheckMetaData> checkDefinitions = definitions(instance);
+      long budgetMs = probe == Probe.READINESS ? 2000 : 1000;
       long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(budgetMs);
       Instant now = Instant.now();
       Map<String, HealthStatus> statuses = new LinkedHashMap<>();
@@ -112,9 +163,9 @@ public final class HealthProbes
       /////////////////////////////////////////////////////////////////////////
       Map<String, Map<String, Object>> legacyBodies = new ConcurrentHashMap<>();
       HealthRunner runner = HealthRunner.getForInstance(instance);
-      for(HealthCheckMetaData check : definitions(instance))
+      for(HealthCheckMetaData check : checkDefinitions)
       {
-         if(check.getKind() != HealthCheckKind.LIVENESS && !(readiness && check.getKind() == HealthCheckKind.READINESS && check.getIncludeInReadiness()))
+         if(!includedIn(check, probe))
          {
             continue;
          }
@@ -122,7 +173,7 @@ public final class HealthProbes
          String  name           = legacyOnHealth ? check.getLabel() : check.getName();
          Instant cachedAt = runner == null ? null : runner.getLastOutcomeAt(check.getName());
          HealthCheckOutcome cached = runner == null ? null : runner.getLastOutcome(check.getName());
-         if(readiness && cached != null && cachedAt != null && cachedAt.isAfter(now.minusSeconds(2L * check.getIntervalSeconds())))
+         if(readiness && check.getProbeCache() && cached != null && cachedAt != null && cachedAt.isAfter(now.minusSeconds(2L * check.getIntervalSeconds())))
          {
             statuses.put(name, cached.getStatus());
             continue;

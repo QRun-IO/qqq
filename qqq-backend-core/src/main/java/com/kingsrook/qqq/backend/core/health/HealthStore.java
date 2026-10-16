@@ -92,10 +92,12 @@ final class HealthStore
 
    /*******************************************************************************
     ** Inserts return row-level failures as well as throwing action failures.
+    ** A lost slot claim (another pod inserted the same check and slot first) is an
+    ** expected unique-key failure, so InsertAction does not log it.
     *******************************************************************************/
    static QRecord insert(String table, QRecord record) throws QException
    {
-      List<QRecord> records = new InsertAction().execute(new InsertInput().withTableName(table).withRecord(record)).getRecords();
+      List<QRecord> records = new InsertAction().execute(new InsertInput().withTableName(table).withRecord(record).withQuietRecordErrors(true)).getRecords();
       if(records.isEmpty())
       {
          throw new QException("Health insert returned no record");

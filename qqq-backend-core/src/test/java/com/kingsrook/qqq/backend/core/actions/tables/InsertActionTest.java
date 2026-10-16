@@ -41,6 +41,8 @@ import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeListe
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeType;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.logging.QCollectingLogger;
+import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.InputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
@@ -158,6 +160,43 @@ class InsertActionTest extends BaseTest
       assertEquals(1, insertOutput.getRecords().get(1).getErrors().size());
       assertEquals(0, insertOutput.getRecords().get(2).getErrors().size());
 
+   }
+
+
+
+   /*******************************************************************************
+    ** A writer that expects to lose a unique-key race can ask InsertAction not to
+    ** log the row error; the error is still returned on the record.
+    *******************************************************************************/
+   @Test
+   void testQuietRecordErrorsSkipsTheErrorLog() throws QException
+   {
+      QCollectingLogger collectingLogger = QLogger.activateCollectingLoggerForClass(InsertAction.class);
+      try
+      {
+         InsertInput insertInput = new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY)
+            .withRecord(new QRecord().withValue("firstName", "Darin").withValue("lastName", "Kelkhoff"));
+         new InsertAction().execute(insertInput);
+
+         ////////////////////////////////////////////////////////////////////////////
+         // a duplicate is logged by default, and not when the input asks for quiet //
+         ////////////////////////////////////////////////////////////////////////////
+         InsertOutput loud = new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY)
+            .withRecord(new QRecord().withValue("firstName", "Darin").withValue("lastName", "Kelkhoff")));
+         assertEquals(1, loud.getRecords().get(0).getErrors().size());
+         assertThat(collectingLogger.getCollectedMessages()).anyMatch(clm -> clm.getMessage().contains("Errors in insertAction"));
+
+         collectingLogger.clear();
+         InsertOutput quiet = new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY)
+            .withRecord(new QRecord().withValue("firstName", "Darin").withValue("lastName", "Kelkhoff"))
+            .withQuietRecordErrors(true));
+         assertEquals(1, quiet.getRecords().get(0).getErrors().size());
+         assertThat(collectingLogger.getCollectedMessages()).noneMatch(clm -> clm.getMessage().contains("Errors in insertAction"));
+      }
+      finally
+      {
+         QLogger.deactivateCollectingLoggerForClass(InsertAction.class);
+      }
    }
 
 

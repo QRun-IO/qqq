@@ -214,6 +214,15 @@ public final class DurableJobs
       {
          throw (new QPermissionDeniedException("A durable job needs a signed-in user."));
       }
+      if(userId.startsWith(com.kingsrook.qqq.backend.core.serviceidentity.ServiceIdentities.PRINCIPAL_ID_PREFIX)
+         && !com.kingsrook.qqq.backend.core.serviceidentity.ServiceIdentities.isMintedServiceSession(session))
+      {
+         //////////////////////////////////////////////////////////////////////
+         // only a principal's own minted session may launch a job owned by //
+         // a principal (workers re-mint that principal for every claim)    //
+         //////////////////////////////////////////////////////////////////////
+         throw (new QPermissionDeniedException("Only a service principal can start a job owned by a service principal."));
+      }
       if(JobSessions.isTokenSession(session))
       {
          ///////////////////////////////////////////////////////////////////////

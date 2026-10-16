@@ -375,6 +375,77 @@ class ServiceIdentitiesTest extends BaseTest
 
 
    /*******************************************************************************
+    ** Deliveries (and scheduled reports) with a declared scheduler principal run
+    ** on behalf of the owner via the principal, from the system scheduler or a
+    ** principal's own session; without one, behavior is unchanged.
+    *******************************************************************************/
+   @Test
+   void deliveriesRunOnBehalfOfTheOwnerViaThePrincipal() throws Exception
+   {
+      QInstance qInstance = QContext.getQInstance();
+
+      QContext.setQSession(new QSystemUserSession(qInstance));
+      QSession before = com.kingsrook.qqq.backend.core.delivery.DeliverySessions.forOwner("alice");
+      assertFalse(before instanceof QDelegatedSession);
+
+      ServiceIdentitiesMetaData.declare(qInstance, new QServicePrincipalMetaData().withName(ServiceIdentities.SCHEDULER).withMayActOnBehalfOfUsers(true));
+      QSession viaSystemScheduler = com.kingsrook.qqq.backend.core.delivery.DeliverySessions.forOwner("alice");
+      assertThat(viaSystemScheduler).isInstanceOf(QDelegatedSession.class);
+      assertEquals("alice", viaSystemScheduler.getUser().getIdReference());
+      assertEquals(ServiceIdentities.SCHEDULER, ServiceIdentities.principalOf(viaSystemScheduler));
+
+      ServiceIdentities.run(ServiceIdentities.SCHEDULER, () ->
+      {
+         QSession owner = com.kingsrook.qqq.backend.core.delivery.DeliverySessions.forOwner("alice");
+         assertThat(owner).isInstanceOf(QDelegatedSession.class);
+         QContext.withTemporaryContext(new com.kingsrook.qqq.backend.core.context.CapturedContext(qInstance, owner), () -> ActionHelper.validateSession(null));
+      });
+   }
+
+
+
+   /*******************************************************************************
+    ** Review H1: a signed-in user's scheduled reports are always their own (the
+    ** owner is who they run as), and the owner never changes afterwards.
+    *******************************************************************************/
+   @Test
+   void scheduledReportOwnerIsStampedAndImmutable() throws Exception
+   {
+      com.kingsrook.qqq.backend.core.model.savedreports.ScheduledReportTableCustomizer customizer = new com.kingsrook.qqq.backend.core.model.savedreports.ScheduledReportTableCustomizer();
+      QContext.setQSession(new QSession().withUser(new com.kingsrook.qqq.backend.core.model.session.QUser().withIdReference("alice")));
+
+      com.kingsrook.qqq.backend.core.model.data.QRecord inserted = new com.kingsrook.qqq.backend.core.model.data.QRecord()
+         .withValue("userId", "victim").withValue("cronExpression", "0 0 9 * * ?");
+      customizer.preInsert(new com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput(), List.of(inserted), false);
+      assertEquals("alice", inserted.getValueString("userId"));
+
+      com.kingsrook.qqq.backend.core.model.data.QRecord old = new com.kingsrook.qqq.backend.core.model.data.QRecord()
+         .withValue("id", 1).withValue("userId", "alice").withValue("cronExpression", "0 0 9 * * ?");
+      com.kingsrook.qqq.backend.core.model.data.QRecord takeover = new com.kingsrook.qqq.backend.core.model.data.QRecord().withValue("id", 1).withValue("userId", "victim");
+      customizer.preUpdate(new com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput(), List.of(takeover), false, java.util.Optional.of(List.of(old)));
+      assertThat(takeover.getErrors()).isNotEmpty();
+
+      com.kingsrook.qqq.backend.core.model.data.QRecord edit = new com.kingsrook.qqq.backend.core.model.data.QRecord().withValue("id", 1).withValue("subject", "Weekly");
+      customizer.preUpdate(new com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput(), List.of(edit), false, java.util.Optional.of(List.of(old)));
+      assertThat(edit.getErrors()).isNullOrEmpty();
+
+      QContext.setQSession(new QSession().withUser(new com.kingsrook.qqq.backend.core.model.session.QUser().withIdReference("admin"))
+         .withPermission(com.kingsrook.qqq.backend.core.model.savedreports.ScheduledReportTableCustomizer.PERMISSION_ASSIGN_OWNER));
+      com.kingsrook.qqq.backend.core.model.data.QRecord assigned = new com.kingsrook.qqq.backend.core.model.data.QRecord()
+         .withValue("userId", "carol").withValue("cronExpression", "0 0 9 * * ?");
+      customizer.preInsert(new com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput(), List.of(assigned), false);
+      assertEquals("carol", assigned.getValueString("userId"), "an explicitly granted assigner may set the owner");
+
+      QContext.setQSession(new QSystemUserSession(QContext.getQInstance()));
+      com.kingsrook.qqq.backend.core.model.data.QRecord bySystem = new com.kingsrook.qqq.backend.core.model.data.QRecord()
+         .withValue("userId", "bob").withValue("cronExpression", "0 0 9 * * ?");
+      customizer.preInsert(new com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput(), List.of(bySystem), false);
+      assertEquals("bob", bySystem.getValueString("userId"));
+   }
+
+
+
+   /*******************************************************************************
     ** Only principals declared for it may act on behalf of users.
     *******************************************************************************/
    @Test

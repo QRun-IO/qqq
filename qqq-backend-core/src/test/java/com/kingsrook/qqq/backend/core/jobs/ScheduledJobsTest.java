@@ -228,4 +228,30 @@ class ScheduledJobsTest extends DurableJobsTestBase
       assertThatThrownBy(() -> DurableJobs.launch(new com.kingsrook.qqq.backend.core.jobs.model.LaunchRequest(DurableJobsTestSupport.PROCESS_THREE_STEPS).withValues(Map.of("seed", "x"))))
          .isInstanceOf(com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException.class);
    }
+
+
+
+   /*******************************************************************************
+    ** A user-owned job with no grant runs on that user's behalf through the
+    ** scheduler principal - the user's full access, attributed to both - and
+    ** completes (owner decision 2026-10-16).
+    *******************************************************************************/
+   @Test
+   void userOwnedJobRunsWithTheUsersAccessViaTheScheduler() throws Exception
+   {
+      ServiceIdentitiesMetaData.declare(instance, new QServicePrincipalMetaData().withName("scheduler").withMayActOnBehalfOfUsers(true));
+      QProcessMetaData process = instance.getProcess(DurableJobsTestSupport.PROCESS_THREE_STEPS);
+      Integer jobId = ScheduledJobs.launchIfDurable(process, Map.of("seed", "mine"));
+      QRecord job = DurableJobs.status(jobId);
+      assertThat(job.getValueString("userId")).isEqualTo(DEFAULT_USER_ID);
+
+      QSession claim = JobSessions.forJob(instance, job);
+      assertThat(claim).isInstanceOf(com.kingsrook.qqq.backend.core.serviceidentity.QDelegatedSession.class);
+      assertThat(claim.getUser().getIdReference()).isEqualTo(DEFAULT_USER_ID);
+      assertThat(com.kingsrook.qqq.backend.core.serviceidentity.ServiceIdentities.attributionName(claim)).endsWith("via service:scheduler");
+
+      DurableJobsRuntime.start(instance);
+      await(jobId, JobStatus.COMPLETED);
+      assertThat(DurableJobsTestSupport.runs("step3")).isEqualTo(1);
+   }
 }

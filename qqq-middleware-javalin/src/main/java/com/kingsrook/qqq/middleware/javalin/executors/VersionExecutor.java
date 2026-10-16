@@ -26,6 +26,7 @@ import java.util.List;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.ClientChannelsMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.profile.UserProfilesMetaData;
 import com.kingsrook.qqq.middleware.javalin.executors.io.VersionInput;
 import com.kingsrook.qqq.middleware.javalin.executors.io.VersionOutputInterface;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractMiddlewareVersion;
@@ -40,6 +41,7 @@ import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.UiApiE
  *******************************************************************************/
 public class VersionExecutor extends AbstractMiddlewareExecutor<VersionInput, VersionOutputInterface>
 {
+   private static final String FEATURE_AVATARS = "avatars";
 
    /***************************************************************************
     **
@@ -53,7 +55,7 @@ public class VersionExecutor extends AbstractMiddlewareExecutor<VersionInput, Ve
       output.setApiVersion(semver);
       output.setBasePath(("/qqq/" + version.getVersionBasePath()).replaceAll("/+", "/").replaceFirst("/$", ""));
       output.setSupportedMajorVersions(List.of(majorOf(semver)));
-      output.setFeatures(version.getFeatures());
+      output.setFeatures(advertisedFeatures(version.getFeatures()));
 
       List<UiApiExtensionInfo> extensions = new ArrayList<>();
       for(MiddlewareSpecExtension extension : version.getExtensions().values())
@@ -66,6 +68,22 @@ public class VersionExecutor extends AbstractMiddlewareExecutor<VersionInput, Ve
       }
       output.setExtensions(extensions);
       output.setClientChannels(new ArrayList<>(ClientChannelsMetaData.of(QContext.getQInstance()).getChannels().keySet()));
+   }
+
+
+
+   /***************************************************************************
+    ** The version's features, less those that need something this instance
+    ** has not installed: "avatars" is advertised only when user profiles
+    ** (the profile table and the avatar storage behind GET /avatars) are
+    ** installed.
+    ***************************************************************************/
+   static List<String> advertisedFeatures(List<String> features)
+   {
+      boolean profilesInstalled = UserProfilesMetaData.of(QContext.getQInstance()) != null;
+      return (features.stream()
+         .filter(feature -> profilesInstalled || !FEATURE_AVATARS.equals(feature))
+         .toList());
    }
 
 

@@ -96,7 +96,7 @@ See [USER-PROFILE-AVATARS.md](USER-PROFILE-AVATARS.md).
   the application allows Gravatar.
 - **`FieldAdornment.values`** for FILE_UPLOAD: `valueIsUploadRef` (upload with `POST /uploads`, send
   the ref as the value; the value read back is a URL), `accept`, `maxBytes` and `imageShape`.
-- `GET /version` features add `avatars`.
+- `GET /version` features add `avatars`, but only when the application installs user profiles.
 
 ### 1.7.0 (QQQ 4.1.0-RC.16) - navigation sections and search aliases
 

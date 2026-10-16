@@ -52,6 +52,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLock
 import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLockFilters;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QUser;
+import com.kingsrook.qqq.backend.core.serviceidentity.ServiceIdentities;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.Pair;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
@@ -525,6 +526,15 @@ public class AuditAction extends AbstractQActionFunction<AuditInput, AuditOutput
     *******************************************************************************/
    private static String getSessionUserName()
    {
+      ///////////////////////////////////////////////////////////////////////
+      // service principals: service:{name}, or {user} via service:{name}  //
+      ///////////////////////////////////////////////////////////////////////
+      String serviceAttribution = ServiceIdentities.attributionName(QContext.getQSession());
+      if(serviceAttribution != null)
+      {
+         return (serviceAttribution);
+      }
+
       QUser user = QContext.getQSession().getUser();
       if(user == null)
       {

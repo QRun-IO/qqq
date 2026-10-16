@@ -269,6 +269,17 @@ public final class ServiceIdentities
       {
          return (module.getServiceIdentityProvider() instanceof LocalServiceIdentityProvider && LocalServiceIdentityProvider.isMinted(session));
       }
+
+      //////////////////////////////////////////////////////////////////////////
+      // the service: identity namespace belongs to principals: any other    //
+      // session that claims it (a username, sub or email starting with     //
+      // service:) is refused, so it can never own or run principal work     //
+      //////////////////////////////////////////////////////////////////////////
+      if(session != null && session.getUser() != null && session.getUser().getIdReference() != null
+         && session.getUser().getIdReference().startsWith(PRINCIPAL_ID_PREFIX) && !OAuth2ServiceIdentityProvider.accessTokenFor(session).isPresent())
+      {
+         return (false);
+      }
       return (module.isSessionValid(qInstance, session));
    }
 

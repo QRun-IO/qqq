@@ -166,6 +166,35 @@ class ServiceIdentitiesTest extends BaseTest
 
 
    /*******************************************************************************
+    ** Security review fixes: the token must name the configured account; each
+    ** call returns a fresh session (never shared through the session store);
+    ** the token request has bounded timeouts; the service: namespace is
+    ** refused for any session that is not a minted principal session.
+    *******************************************************************************/
+   @Test
+   void reviewHardening() throws Exception
+   {
+      useOAuth2(true);
+      declare(false);
+
+      QSession first  = ServiceIdentities.session("scheduler");
+      QSession second = ServiceIdentities.session("scheduler");
+      assertThat(first).isNotSameAs(second);
+      assertThat(StubTokenModule.timeouts).containsExactly(5_000, 10_000);
+
+      OAuth2ServiceIdentityProvider.clearLocal();
+      StubTokenModule.claimedUsername = "svc-someone-else";
+      assertThrows(QAuthenticationException.class, () -> ServiceIdentities.session("scheduler"));
+
+      QSession impostor = new QSession().withUser(new com.kingsrook.qqq.backend.core.model.session.QUser().withIdReference("service:scheduler"));
+      assertFalse(ServiceIdentities.isSessionValid(QContext.getQInstance(), new com.kingsrook.qqq.backend.core.modules.authentication.implementations.MockAuthenticationModule(), impostor));
+      assertTrue(ServiceIdentities.isSessionValid(QContext.getQInstance(), new com.kingsrook.qqq.backend.core.modules.authentication.implementations.MockAuthenticationModule(),
+         new QSession().withUser(new com.kingsrook.qqq.backend.core.model.session.QUser().withIdReference("alice"))));
+   }
+
+
+
+   /*******************************************************************************
     ** A principal whose groups grant nothing gets nothing (least privilege).
     *******************************************************************************/
    @Test
@@ -423,6 +452,8 @@ class ServiceIdentitiesTest extends BaseTest
       static Duration                        lifetime  = Duration.ofMinutes(5);
       static String                          refuseWith;
       static AtomicReference<String>         lastToken = new AtomicReference<>();
+      static String                          claimedUsername;
+      static List<Integer>                   timeouts  = new ArrayList<>();
 
 
 
@@ -436,6 +467,8 @@ class ServiceIdentitiesTest extends BaseTest
          lifetime = Duration.ofMinutes(5);
          refuseWith = null;
          lastToken.set(null);
+         claimedUsername = null;
+         timeouts = new ArrayList<>();
       }
 
 
@@ -459,6 +492,9 @@ class ServiceIdentitiesTest extends BaseTest
       {
          Map<String, List<String>> params = new HashMap<>(httpRequest.getBodyAsFormParameters());
          requests.add(params);
+         timeouts.add(httpRequest.getConnectTimeout());
+         timeouts.add(httpRequest.getReadTimeout());
+         assertFalse(httpRequest.getFollowRedirects());
          HTTPResponse response;
          if(refuseWith != null)
          {
@@ -471,7 +507,7 @@ class ServiceIdentitiesTest extends BaseTest
             Instant now = Instant.now();
             JWTClaimsSet claims = new JWTClaimsSet.Builder()
                .issuer(APP_BASE).audience(APP_CLIENT).subject("svc-sub-" + requests.size())
-               .claim("preferred_username", params.get("username").get(0))
+               .claim("preferred_username", claimedUsername != null ? claimedUsername : params.get("username").get(0))
                .claim("groups", groups).claim("scope", "openid profile")
                .issueTime(Date.from(now)).expirationTime(Date.from(now.plus(lifetime)))
                .build();

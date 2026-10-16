@@ -365,11 +365,57 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
     ***************************************************************************/
    private QSession createSessionFromBearerToken(QInstance qInstance, OAuth2AuthenticationMetaData oauth2MetaData, String token) throws QException
    {
-      JWTClaimsSet claims    = new OAuth2BearerTokenVerifier().verify(token, oauth2MetaData);
-      long         expiresAt = claims.getExpirationTime().toInstant().getEpochSecond();
-      String       uuid      = UUID.nameUUIDFromBytes(sha256("qqq-bearer:" + token)).toString();
+      JWTClaimsSet claims = new OAuth2BearerTokenVerifier().verify(token, oauth2MetaData);
+      return (createSessionFromVerifiedBearer(qInstance, oauth2MetaData, token, claims, Boolean.TRUE.equals(oauth2MetaData.getSessionStoreEnabled())));
+   }
 
-      boolean sessionStoreEnabled = Boolean.TRUE.equals(oauth2MetaData.getSessionStoreEnabled());
+
+
+   /***************************************************************************
+    ** A service principal's session from the access token QQQ itself obtained
+    ** (docs/SERVICE-IDENTITY.md): the same verification and customizer as any
+    ** bearer token, plus the token must be for the configured account
+    ** (preferred_username). Never cached in or loaded from the session store:
+    ** every call returns a fresh object, so no two units of work share one.
+    ***************************************************************************/
+   public QSession createServiceSession(QInstance qInstance, String token, String expectedUsername) throws QAuthenticationException
+   {
+      OAuth2AuthenticationMetaData oauth2MetaData = getOAuth2MetaData(qInstance);
+      if(oauth2MetaData == null || !Boolean.TRUE.equals(oauth2MetaData.getBearerTokensEnabled()))
+      {
+         throw (new QAuthenticationException("Service principals need OAuth2 with bearerTokensEnabled."));
+      }
+      try
+      {
+         JWTClaimsSet claims    = new OAuth2BearerTokenVerifier().verify(token, oauth2MetaData);
+         String       preferred = claims.getStringClaim("preferred_username");
+         if(!StringUtils.hasContent(expectedUsername) || !expectedUsername.equals(preferred))
+         {
+            throw (new QAuthenticationException("The service token is not for the configured service account."));
+         }
+         return (createSessionFromVerifiedBearer(qInstance, oauth2MetaData, token, claims, false));
+      }
+      catch(QAuthenticationException e)
+      {
+         throw (e);
+      }
+      catch(Exception e)
+      {
+         LOG.warn("Could not build a service session", logPair("errorType", e.getClass().getSimpleName()));
+         throw (new QAuthenticationException("Could not build a service session."));
+      }
+   }
+
+
+
+   /***************************************************************************
+    ** Build the session for an already verified bearer token.
+    ***************************************************************************/
+   private QSession createSessionFromVerifiedBearer(QInstance qInstance, OAuth2AuthenticationMetaData oauth2MetaData, String token, JWTClaimsSet claims, boolean sessionStoreEnabled) throws QException
+   {
+      long   expiresAt = claims.getExpirationTime().toInstant().getEpochSecond();
+      String uuid      = UUID.nameUUIDFromBytes(sha256("qqq-bearer:" + token)).toString();
+
       if(sessionStoreEnabled)
       {
          Optional<QSession> cachedSession = QSessionStoreHelper.loadAndTouchSession(uuid);
@@ -846,6 +892,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
          HTTPRequest httpRequest = new HTTPRequest(HTTPRequest.Method.POST, getServiceTokenEndpoint(oauth2MetaData));
          httpRequest.setEntityContentType(com.nimbusds.common.contenttype.ContentType.APPLICATION_URLENCODED);
          httpRequest.setBody(com.nimbusds.oauth2.sdk.util.URLUtils.serializeParameters(form));
+         boundServiceTokenRequest(httpRequest);
          TokenResponse tokenResponse = sendServiceTokenRequest(httpRequest);
          if(!tokenResponse.indicatesSuccess())
          {
@@ -892,6 +939,19 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
    protected TokenResponse sendServiceTokenRequest(HTTPRequest httpRequest) throws Exception
    {
       return (TokenResponse.parse(httpRequest.send()));
+   }
+
+
+
+   /***************************************************************************
+    ** Bounded connect/read timeouts and no redirects for service token
+    ** requests (they run while a principal's single-flight lock is held).
+    ***************************************************************************/
+   static void boundServiceTokenRequest(HTTPRequest httpRequest)
+   {
+      httpRequest.setConnectTimeout(5_000);
+      httpRequest.setReadTimeout(10_000);
+      httpRequest.setFollowRedirects(false);
    }
 
 

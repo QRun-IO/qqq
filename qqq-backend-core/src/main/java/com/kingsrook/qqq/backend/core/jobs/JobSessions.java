@@ -153,7 +153,14 @@ public final class JobSessions
       }
       else
       {
-         session = auth.createAutomatedSessionForUser(instance, userId);
+         ////////////////////////////////////////////////////////////////////
+         // a user-owned job with no grant (e.g. a scheduled job a user     //
+         // owns): on the user's behalf via the scheduler principal when    //
+         // declared (a real token under OAuth2), else as before            //
+         ////////////////////////////////////////////////////////////////////
+         session = ServiceIdentities.isDeclared(instance, ServiceIdentities.SCHEDULER)
+            ? ServiceIdentities.sessionOnBehalfOf(instance, ServiceIdentities.SCHEDULER, userId)
+            : auth.createAutomatedSessionForUser(instance, userId);
       }
       scope.remove(JobGrants.SCOPE_GRANT);
 

@@ -154,6 +154,7 @@ public final class JobSessions
       String launchChannel = job.getValueString("clientChannel");
       session.setClientChannel(granted ? (StringUtils.hasContent(launchChannel) ? CHANNEL_JOB + ":" + launchChannel : CHANNEL_JOB) : launchChannel);
       DurableJobsSecurity.applyToSession(session);
+      com.kingsrook.qqq.backend.core.actions.profile.UserProfiles.applyIfInstalled(instance, session);
       return (session);
    }
 

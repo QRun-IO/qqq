@@ -629,6 +629,7 @@ public class QJavalinImplementation
             QContext.init(qInstance, null);
             session = authenticationModule.createSession(qInstance, authMetaData, authenticationContext);
          }
+         com.kingsrook.qqq.backend.core.actions.profile.UserProfiles.applyIfInstalled(qInstance, session);
          QContext.init(qInstance, session, null, input);
 
          String tableVariant = QJavalinUtils.getFormParamOrQueryParam(context, "tableVariant");

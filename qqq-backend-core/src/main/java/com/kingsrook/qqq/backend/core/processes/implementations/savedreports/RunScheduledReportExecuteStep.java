@@ -147,6 +147,7 @@ public class RunScheduledReportExecuteStep implements BackendStep
          {
             throw new QPermissionDeniedException("Could not establish the scheduled report owner's session.");
          }
+         com.kingsrook.qqq.backend.core.actions.profile.UserProfiles.applyIfInstalled(qInstance, session);
 
          /////////////////////////////////////////////
          // set that session in the current context //

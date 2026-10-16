@@ -75,6 +75,8 @@ import com.kingsrook.qqq.backend.core.modules.authentication.QSessionStoreHelper
 import com.kingsrook.qqq.backend.core.modules.authentication.QSessionStoreRegistry;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.model.UserSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.model.UserSessionRefreshToken;
+import com.kingsrook.qqq.backend.core.serviceidentity.OAuth2ServiceIdentityProvider;
+import com.kingsrook.qqq.backend.core.serviceidentity.QServiceIdentityProviderInterface;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.memoization.Memoization;
@@ -777,6 +779,151 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
          getCustomizer().customizeAutomatedSessionForUser(qInstance, session, userId);
       }
       return session;
+   }
+
+
+
+   /***************************************************************************
+    ** Service principals get real access tokens (client_credentials) and their
+    ** sessions are ordinary bearer-token sessions (docs/SERVICE-IDENTITY.md).
+    ***************************************************************************/
+   @Override
+   public QServiceIdentityProviderInterface getServiceIdentityProvider()
+   {
+      return (new OAuth2ServiceIdentityProvider(this));
+   }
+
+
+
+   /***************************************************************************
+    ** An access token issued to a service principal, and when it expires.
+    ***************************************************************************/
+   public record ServiceToken(String accessToken, Instant expiresAt)
+   {
+      /***************************************************************************
+       ** Never print the token.
+       ***************************************************************************/
+      @Override
+      public String toString()
+      {
+         return ("ServiceToken[expiresAt=" + expiresAt + "]");
+      }
+   }
+
+
+
+   /***************************************************************************
+    ** Obtain an access token for a service account with the client_credentials
+    ** grant: client_id is this app's client, the account is identified by
+    ** username and authenticated by its secret (for Authentik: an app-password
+    ** token). The token is not trusted here: callers build the session from it
+    ** through createSession (Authorization: Bearer), i.e. full verification.
+    ***************************************************************************/
+   public ServiceToken requestServiceToken(QInstance qInstance, String username, String secret) throws QAuthenticationException
+   {
+      OAuth2AuthenticationMetaData oauth2MetaData = getOAuth2MetaData(qInstance);
+      if(oauth2MetaData == null || !Boolean.TRUE.equals(oauth2MetaData.getBearerTokensEnabled()))
+      {
+         throw (new QAuthenticationException("Service principals need OAuth2 with bearerTokensEnabled."));
+      }
+      try
+      {
+         ////////////////////////////////////////////////////////////////////////
+         // the account (not the app's client secret) authenticates: client_id  //
+         // names the app's provider, username + password the service account  //
+         // (Authentik machine-to-machine).  Built by hand: nimbus refuses a    //
+         // client_credentials request without client authentication.         //
+         ////////////////////////////////////////////////////////////////////////
+         Map<String, List<String>> form = new java.util.LinkedHashMap<>();
+         form.put("grant_type", List.of("client_credentials"));
+         form.put("client_id", List.of(oauth2MetaData.getClientId()));
+         form.put("username", List.of(username));
+         form.put("password", List.of(secret));
+         if(StringUtils.hasContent(oauth2MetaData.getScopes()))
+         {
+            form.put("scope", List.of(oauth2MetaData.getScopes()));
+         }
+         HTTPRequest httpRequest = new HTTPRequest(HTTPRequest.Method.POST, getServiceTokenEndpoint(oauth2MetaData));
+         httpRequest.setEntityContentType(com.nimbusds.common.contenttype.ContentType.APPLICATION_URLENCODED);
+         httpRequest.setBody(com.nimbusds.oauth2.sdk.util.URLUtils.serializeParameters(form));
+         TokenResponse tokenResponse = sendServiceTokenRequest(httpRequest);
+         if(!tokenResponse.indicatesSuccess())
+         {
+            ErrorObject error = tokenResponse.toErrorResponse().getErrorObject();
+            throw (new ServiceTokenRefusedException(error == null || error.getCode() == null ? "unknown" : error.getCode()));
+         }
+         String accessToken = tokenResponse.toSuccessResponse().getTokens().getAccessToken().getValue();
+         Instant expiresAt = JWT.decode(accessToken).getExpiresAtAsInstant();
+         if(expiresAt == null)
+         {
+            throw (new QAuthenticationException("The service token has no expiry."));
+         }
+         return (new ServiceToken(accessToken, expiresAt));
+      }
+      catch(QAuthenticationException e)
+      {
+         throw (e);
+      }
+      catch(Exception e)
+      {
+         //////////////////////////////////////////////////////////////////
+         // never include the request (it holds the secret) in the error //
+         //////////////////////////////////////////////////////////////////
+         LOG.warn("Service token request failed", logPair("errorType", e.getClass().getSimpleName()));
+         throw (new QAuthenticationException("Could not obtain a service token."));
+      }
+   }
+
+
+
+   /***************************************************************************
+    ** The token endpoint service tokens are requested from (the provider's).
+    ***************************************************************************/
+   protected URI getServiceTokenEndpoint(OAuth2AuthenticationMetaData oauth2MetaData) throws Exception
+   {
+      return (getOIDCProviderMetadata(oauth2MetaData).getTokenEndpointURI());
+   }
+
+
+
+   /***************************************************************************
+    ** Send a service token request (the seam tests override).
+    ***************************************************************************/
+   protected TokenResponse sendServiceTokenRequest(HTTPRequest httpRequest) throws Exception
+   {
+      return (TokenResponse.parse(httpRequest.send()));
+   }
+
+
+
+   /***************************************************************************
+    ** The provider refused to issue a service token; carries only the standard
+    ** OAuth2 error code (invalid_grant: revoked/wrong secret, etc.).
+    ***************************************************************************/
+   public static class ServiceTokenRefusedException extends QAuthenticationException
+   {
+      private final String errorCode;
+
+
+
+      /***************************************************************************
+       ** Constructor.
+       ***************************************************************************/
+      public ServiceTokenRefusedException(String errorCode)
+      {
+         super("The identity provider refused the service account (" + errorCode + ")");
+         this.errorCode = errorCode;
+      }
+
+
+
+      /***************************************************************************
+       ** Getter for errorCode
+       ***************************************************************************/
+      public String getErrorCode()
+      {
+         return (errorCode);
+      }
    }
 
 

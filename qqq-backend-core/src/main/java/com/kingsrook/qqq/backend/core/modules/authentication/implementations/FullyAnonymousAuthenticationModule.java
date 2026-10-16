@@ -29,6 +29,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.session.QUser;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
+import com.kingsrook.qqq.backend.core.serviceidentity.LocalServiceIdentityProvider;
+import com.kingsrook.qqq.backend.core.serviceidentity.QServiceIdentityProviderInterface;
 import com.kingsrook.qqq.backend.core.state.InMemoryStateProvider;
 import com.kingsrook.qqq.backend.core.state.SimpleStateKey;
 import com.kingsrook.qqq.backend.core.state.StateProviderInterface;
@@ -163,6 +165,18 @@ public class FullyAnonymousAuthenticationModule implements QAuthenticationModule
       qSession.setUser(qUser);
 
       return (qSession);
+   }
+
+
+
+   /*******************************************************************************
+    ** Local service principals: exactly their declared local permissions and
+    ** keys (docs/SERVICE-IDENTITY.md section 4.4).
+    *******************************************************************************/
+   @Override
+   public QServiceIdentityProviderInterface getServiceIdentityProvider()
+   {
+      return (new LocalServiceIdentityProvider());
    }
 
 

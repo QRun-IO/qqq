@@ -34,6 +34,7 @@ import com.kingsrook.qqq.backend.core.alerts.AlertSeverity;
 import com.kingsrook.qqq.backend.core.alerts.AlertsInstanceMetaData;
 import com.kingsrook.qqq.backend.core.alerts.QAlertTypeMetaData;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.dashboard.widgets.WidgetType;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
@@ -236,6 +237,15 @@ public class HealthMetaDataProvider
          registry.withCheck(new HealthCheckMetaData().withName("core.session_store").withLabel("Session store").withComponent("core")
             .withCategory(HealthCategory.CORE).withKind(HealthCheckKind.READINESS).withSeverity(AlertSeverity.ERROR).withIntervalSeconds(30)
             .withCheck(new QCodeReference(HealthSessionStoreCheck.class)));
+      }
+      if(JvmMemoryPressure.get().getSettings().enabled())
+      {
+         JvmMemoryPressureCheck.definitions().forEach(registry::withCheck);
+      }
+      HealthCheckMetaData podRestarts = KubernetesPodRestartsCheck.definitionFromEnvironment(new QMetaDataVariableInterpreter());
+      if(podRestarts != null)
+      {
+         registry.withCheck(podRestarts);
       }
       registry.withCheck(new HealthCheckMetaData().withName("core.health.retention").withLabel("Health retention").withComponent("core")
          .withCategory(HealthCategory.CORE).withKind(HealthCheckKind.DEPENDENCY).withIntervalSeconds(86400)

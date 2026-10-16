@@ -39,6 +39,8 @@ import static io.javalin.apibuilder.ApiBuilder.get;
  *******************************************************************************/
 public class JavalinHealthRouteProvider implements QJavalinRouteProviderInterface
 {
+   public static final String LIVE_PATH = "/live";
+
    private QInstance qInstance;
 
 
@@ -87,6 +89,15 @@ public class JavalinHealthRouteProvider implements QJavalinRouteProviderInterfac
                return;
             }
             var body = HealthProbes.run(qInstance, true);
+            ctx.status(body.get("status") == HealthStatus.DOWN ? 503 : 200).json(body);
+         });
+         ////////////////////////////////////////////////////////////////////////
+         // liveness: only checks a restart can fix (sustained memory pressure). //
+         // Draining and dependency outages never fail it.                       //
+         ////////////////////////////////////////////////////////////////////////
+         get(LIVE_PATH, ctx ->
+         {
+            var body = HealthProbes.run(qInstance, HealthProbes.Probe.LIVENESS);
             ctx.status(body.get("status") == HealthStatus.DOWN ? 503 : 200).json(body);
          });
          if(monitoring != null && monitoring.getPrometheusEnabled())

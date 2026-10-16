@@ -25,7 +25,7 @@ What you get:
 | Process and async state | In memory (`InMemoryStateProvider`). No `qqq_state` table and no `QQQ_STATE_ENCRYPTION_KEY`. Wizards, status polls, cancels and one-time secrets work within the one JVM. |
 | Cluster bus | In process (`InMemoryClusterBus`). Cache invalidations and session ends apply to this node. |
 | ESB | Optional. Without `EsbInstanceMetaData`, nothing is published and no relay runs. The outbox and dedupe are off. |
-| Probes | With `qqq-middleware-health`, `/health` and `/ready` answer 200 with one replica. `/ready` answers 503 while the node drains. |
+| Probes | With `qqq-middleware-health`, `/health`, `/ready` and `/live` answer 200 with one replica. `/ready` answers 503 while the node drains. Under sustained memory pressure `/ready` only reports DEGRADED (still 200, so one replica never leaves its load balancer); `/live` fails after 2 minutes so the JVM is restarted. |
 | Shutdown | On SIGTERM (Ctrl+C), the node flips `/ready` to 503, waits for running async steps (up to `QQQ_ASYNC_DRAIN_SECONDS`, 20) and in-flight requests (up to `QQQ_HTTP_DRAIN_SECONDS`, 20), then stops. `QQQ_DRAIN_DELAY_SECONDS` defaults to 0, so an idle node stops at once. |
 | Database | No connection pooler required. A plain RDBMS backend opens a connection per operation; a server should use the C3P0 pool (see below). |
 
@@ -185,8 +185,38 @@ spec:
       readinessProbe:
         httpGet: { path: /ready, port: 8000 }
       livenessProbe:
-        httpGet: { path: /health, port: 8000 }
+        httpGet: { path: /live, port: 8000 }
 ```
+
+### Memory pressure
+
+`/ready` and `/live` include two core checks on this JVM's own heap
+(`JvmMemoryPressure`): pressure is heap still at or above
+`QQQ_HEALTH_HEAP_AFTER_GC_PERCENT` (85) after every collection in the last
+`QQQ_HEALTH_MEMORY_WINDOW_SECONDS` (30), or GC pauses taking
+`QQQ_HEALTH_GC_TIME_PERCENT` (30) of wall time. It ends when heap after GC
+drops below `QQQ_HEALTH_HEAP_RECOVER_PERCENT` (75), so a JVM near the line
+does not flap.
+
+| Check | Probe | Effect |
+|---|---|---|
+| `core.jvm.memory_pressure` | `/ready` | DEGRADED while pressured. With `QQQ_HEALTH_MEMORY_READINESS_ACTION=down`, DOWN (503) after `QQQ_HEALTH_MEMORY_READINESS_AFTER_SECONDS` (15): the pod leaves the Service and the other replicas take its traffic. Set it only with two or more replicas. |
+| `core.jvm.memory_pressure_sustained` | `/live` and `/ready` (not `/health`, whose shape is kept) | DOWN after `QQQ_HEALTH_MEMORY_LIVENESS_AFTER_SECONDS` (120) of pressure, so the orchestrator restarts a JVM that would otherwise crawl until OutOfMemoryError. |
+
+`/live` runs only checks flagged `includeInLivenessProbe` (a restart can fix
+them); a database or provider outage never fails it. Set
+`QQQ_HEALTH_MEMORY_PRESSURE_ENABLED=false` to remove both checks.
+
+### Pod restarts on System Health
+
+Set `QQQ_HEALTH_POD_RESTARTS_SELECTOR` to the label selector of the app's pods
+(for example `app in (website-backend,website-backend-worker)`), mount the
+service account token, and grant it `get`/`list` on pods in its namespace.
+The `core.kubernetes.pod_restarts` check (DEPENDENCY, every 60 s) is DEGRADED
+when a container restarted in the last `QQQ_HEALTH_POD_RESTARTS_WINDOW_MINUTES`
+(60), naming the cause (JVM out of memory is exit 3, OOMKilled), and DOWN in
+CrashLoopBackOff; the health runner raises the standard `health.check.*`
+alerts.
 
 Add a PodDisruptionBudget (`minAvailable: 1`) per deployment, and spread pods
 across hosts with anti-affinity.

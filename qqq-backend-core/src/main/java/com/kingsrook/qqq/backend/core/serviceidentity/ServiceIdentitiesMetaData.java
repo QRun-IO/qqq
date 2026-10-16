@@ -29,6 +29,11 @@ import java.util.regex.Pattern;
 import com.kingsrook.qqq.backend.core.alerts.AlertSeverity;
 import com.kingsrook.qqq.backend.core.alerts.AlertsInstanceMetaData;
 import com.kingsrook.qqq.backend.core.alerts.QAlertTypeMetaData;
+import com.kingsrook.qqq.backend.core.health.HealthCategory;
+import com.kingsrook.qqq.backend.core.health.HealthCheckKind;
+import com.kingsrook.qqq.backend.core.health.HealthCheckMetaData;
+import com.kingsrook.qqq.backend.core.health.HealthCheckOutcome;
+import com.kingsrook.qqq.backend.core.health.HealthChecksMetaData;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaData;
@@ -44,6 +49,7 @@ public class ServiceIdentitiesMetaData implements QSupplementalInstanceMetaData
    public static final String NAME = "serviceIdentities";
 
    public static final String ALERT_TYPE_UNAVAILABLE = "service_identity.unavailable";
+   public static final String HEALTH_CHECK_PREFIX    = "service_identity.";
 
    public static final Pattern PRINCIPAL_NAME_PATTERN = Pattern.compile("^[a-z][a-z0-9-]{0,62}$");
 
@@ -132,6 +138,33 @@ public class ServiceIdentitiesMetaData implements QSupplementalInstanceMetaData
          alerts.withAlertType(new QAlertTypeMetaData().withName(ALERT_TYPE_UNAVAILABLE).withLabel("Service identity unavailable")
             .withDefaultSeverity(AlertSeverity.ERROR));
       }
+
+      //////////////////////////////////////////////////////////////////////////
+      // one health check per principal: can it authenticate right now? (a   //
+      // revoked, deactivated or unconfigured account is DOWN; uses the same //
+      // per-node token cache, so it adds at most one token request per 5   //
+      // minutes)                                                            //
+      //////////////////////////////////////////////////////////////////////////
+      String name = principal.getName();
+      HealthChecksMetaData.ofOrWithNew(qInstance).withCheck(new HealthCheckMetaData()
+         .withName(HEALTH_CHECK_PREFIX + name).withLabel("Service identity " + principal.getLabel())
+         .withComponent("service-identity").withCategory(HealthCategory.IDENTITY).withKind(HealthCheckKind.DEPENDENCY)
+         .withIntervalSeconds(300).withTimeoutMs(10000)
+         .withCheckInstance(input ->
+         {
+            try
+            {
+               ServiceIdentities.session(input.getQInstance(), name);
+               return (HealthCheckOutcome.up("Authenticated"));
+            }
+            catch(Exception e)
+            {
+               ////////////////////////////////////////////////////////////
+               // never copy exception text (it may name the endpoint)  //
+               ////////////////////////////////////////////////////////////
+               return (HealthCheckOutcome.down("Cannot authenticate"));
+            }
+         }));
       return (principal);
    }
 

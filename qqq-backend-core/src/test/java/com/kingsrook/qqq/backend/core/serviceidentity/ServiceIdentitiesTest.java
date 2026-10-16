@@ -376,6 +376,30 @@ class ServiceIdentitiesTest extends BaseTest
 
 
    /*******************************************************************************
+    ** Each declared principal gets a health check: UP while it can
+    ** authenticate, DOWN (without echoing errors) when it cannot.
+    *******************************************************************************/
+   @Test
+   void healthCheckPerPrincipal() throws Exception
+   {
+      useOAuth2(true);
+      declare(false);
+      com.kingsrook.qqq.backend.core.health.HealthCheckMetaData check = com.kingsrook.qqq.backend.core.health.HealthChecksMetaData.ofOrWithNew(QContext.getQInstance())
+         .getChecks().stream().filter(c -> c.getName().equals("service_identity.scheduler")).findFirst().orElseThrow();
+      com.kingsrook.qqq.backend.core.health.HealthCheckInput input = new com.kingsrook.qqq.backend.core.health.HealthCheckInput()
+         .withQInstance(QContext.getQInstance()).withDeadline(Instant.now().plusSeconds(10));
+      assertEquals(com.kingsrook.qqq.backend.core.health.HealthStatus.UP, check.getCheckInstance().run(input).getStatus());
+
+      OAuth2ServiceIdentityProvider.clearLocal();
+      StubTokenModule.refuseWith = "invalid_grant";
+      com.kingsrook.qqq.backend.core.health.HealthCheckOutcome down = check.getCheckInstance().run(input);
+      assertEquals(com.kingsrook.qqq.backend.core.health.HealthStatus.DOWN, down.getStatus());
+      assertEquals("Cannot authenticate", down.getMessage());
+   }
+
+
+
+   /*******************************************************************************
     ** Only principals declared for it may act on behalf of users.
     *******************************************************************************/
    @Test

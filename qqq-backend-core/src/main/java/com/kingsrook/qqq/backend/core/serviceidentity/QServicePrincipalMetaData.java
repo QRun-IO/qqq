@@ -50,6 +50,7 @@ public class QServicePrincipalMetaData implements Serializable
    private String                           label;
    private String                           description;
    private boolean                          mayActOnBehalfOfUsers  = false;
+   private DelegatedAccess                  delegatedAccess        = DelegatedAccess.USER;
    private Set<String>                      localPermissions       = new TreeSet<>();
    private Map<String, List<Serializable>> localSecurityKeyValues = new LinkedHashMap<>();
 
@@ -215,6 +216,57 @@ public class QServicePrincipalMetaData implements Serializable
    public QServicePrincipalMetaData withMayActOnBehalfOfUsers(boolean mayActOnBehalfOfUsers)
    {
       this.mayActOnBehalfOfUsers = mayActOnBehalfOfUsers;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** What work done on behalf of a user may do.
+    *******************************************************************************/
+   public enum DelegatedAccess
+   {
+      ////////////////////////////////////////////////////////////////////////////
+      // exactly the user's current access - every permission and record-lock  //
+      // key they hold (owner decision 2026-10-16: "make it the same as the    //
+      // user"). The principal's own grants apply only to its own work.        //
+      ////////////////////////////////////////////////////////////////////////////
+      USER,
+
+      ////////////////////////////////////////////////////////////////////////////
+      // the user's access intersected with the principal's (narrower)         //
+      ////////////////////////////////////////////////////////////////////////////
+      INTERSECT_WITH_PRINCIPAL
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for delegatedAccess
+    *******************************************************************************/
+   public DelegatedAccess getDelegatedAccess()
+   {
+      return (this.delegatedAccess);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for delegatedAccess
+    *******************************************************************************/
+   public void setDelegatedAccess(DelegatedAccess delegatedAccess)
+   {
+      this.delegatedAccess = delegatedAccess == null ? DelegatedAccess.USER : delegatedAccess;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for delegatedAccess (default USER: the user's full access).
+    *******************************************************************************/
+   public QServicePrincipalMetaData withDelegatedAccess(DelegatedAccess delegatedAccess)
+   {
+      setDelegatedAccess(delegatedAccess);
       return (this);
    }
 

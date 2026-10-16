@@ -359,8 +359,56 @@ nodes each mint their own token; nothing on ClusterBus); ArchUnit allow-list.
 ## 9. Owner decisions (signed off 2026-10-16: all recommendations)
 
 - **D1 (decided: per role)** One Authentik service account per role (recommended; six for kof22) vs one per app.
-- **D2 (decided: intersection)** On-behalf-of = user's current access **∩** the principal's policy (recommended, least privilege; the scheduler's policy must then cover what reports read) vs user's access alone.
+- **D2 (decided: intersection; AMENDED 2026-10-16, see section 11)** On-behalf-of = user's current access **∩** the principal's policy (recommended, least privilege; the scheduler's policy must then cover what reports read) vs user's access alone.
 - **D3 (decided: maintenance account holds full access for the run-once, then narrowed; owner: "do it")** Bootstrap of `kof22-admins` full access: give `svc-kof22-maintenance` the grants it must hand out (recommended: full access in its policy, narrowed after the run-once) vs move that policy into the Authentik blueprint and retire the run-once.
 - **D4 (decided: declarative only)** Secrets: issued and rotated only declaratively (blueprint + Praetor/Infisical, recommended for kof22) vs also from the Identity UI (one-time display).
 - **D5 (decided: no PHI unless granted)** Quick-search indexer: stop indexing secured-data/PHI fields unless the indexer principal is granted them (recommended; behavior change from today's system indexer).
 - **D6 (decided: phase 1 = 6.1, allow-list for 6.3)** Scope: phase 1 = section 6.1 only; `QSystemUserSession` remains for plumbing in 6.3 behind an allow-list (recommended) vs migrating everything now.
+
+## 11. Amendment (owner, 2026-10-16): delegated work has the user's full access
+
+The owner amended D2: "a users service account should always be able to do
+everything that that user can do ... make it the same as the user. they might
+have scheduled jobs etc that are running processes etc."
+
+- **Delegated work** is anything run on behalf of a user: scheduled reports and
+  deliveries, user-owned durable jobs without a grant, data-analysis schedules
+  and watches, and alert checks per recipient. By default
+  (`QServicePrincipalMetaData.DelegatedAccess.USER`), it now runs with exactly
+  that user's current access:
+  - every permission, including processes, writes and deletes, with no cap per
+    role;
+  - every record-lock key the user holds.
+
+  The principal only authenticates the work, holding a real token under
+  OAuth2, and is recorded with it: `{user} via service:{name}`. A host can opt
+  a principal back into the narrower mode with `INTERSECT_WITH_PRINCIPAL`.
+- **Guards unchanged:**
+  - owners are stamped and locked (H1);
+  - only minted principals may own or launch principal jobs (H2);
+  - service tokens are never accepted over HTTP (M1);
+  - principals never edit service role groups;
+  - the user's access is rebuilt for every unit of work, so a removed or
+    deactivated user fails closed.
+- **User-owned jobs without a grant** (e.g. scheduled jobs a user owns) run on
+  the user's behalf through the `scheduler` principal when it is declared.
+  Before this, they used a token-less automated session, which OAuth2 rejects.
+- **Non-delegated work** (no user) still gets explicit grants only, from the
+  code paths. kof22 seeds:
+
+  | Principal | Own (non-delegated) work | Grants |
+  |---|---|---|
+  | scheduler | none in kof22. kof22 does not set `scheduledJobsServicePrincipal`, so system-run schedules stay inline as before | none |
+  | alerts | none: alert recording and routing stay on the system session | none |
+  | data-analysis | schedule and watch inventory, `last_run_at`/`next_run_at`/`last_status` updates, failure alerts | `data_analysis.saved.read`, `.saved.edit`, `.watch.read`, `.watch.edit`, `data_analysis.admin` (cross-owner inventory key) |
+  | release-notes | detect, draft, publish and skip releases; publish notifications | `release_notes.manage.hasAccess`, `release_notes.publish.hasAccess` |
+  | maintenance | the `identityAdminsFullAccess` run-once | full access (D3); narrow it after the run-once |
+
+Tests (`ServiceIdentitiesTest.delegatedWorkHasExactlyTheUsersAccess`,
+`ScheduledJobsTest.userOwnedJobRunsWithTheUsersAccessViaTheScheduler`):
+
+- delegated sessions equal the user's own permissions and keys;
+- they see exactly the user's rows, with record locks applied;
+- they can write as the user;
+- a user-owned job runs through the scheduler and completes.
+

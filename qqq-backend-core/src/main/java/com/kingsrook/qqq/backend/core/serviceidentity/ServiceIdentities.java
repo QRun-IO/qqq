@@ -185,9 +185,10 @@ public final class ServiceIdentities
    /*******************************************************************************
     ** A session for work the principal does on behalf of a user: the user's
     ** CURRENT access (rebuilt by the authentication module now, so a removed or
-    ** deactivated user fails) intersected with the principal's permissions
-    ** (owner decision D2), attributed to the principal. Valid only while the
-    ** principal's own session is.
+    ** deactivated user fails) - by default exactly that access (owner decision
+    ** 2026-10-16, D2 amended), or intersected with the principal's when the
+    ** principal is declared INTERSECT_WITH_PRINCIPAL - attributed to the
+    ** principal and the user. Valid only while the principal's own session is.
     *******************************************************************************/
    public static QSession sessionOnBehalfOf(QInstance qInstance, String principalName, String userId) throws QException
    {
@@ -226,8 +227,20 @@ public final class ServiceIdentities
       QDelegatedSession delegated = new QDelegatedSession(parent, principal.getName());
       delegated.setIdReference(delegated.getUuid());
       delegated.setUser(new QUser().withIdReference(userId).withFullName(user[0].getUser().getFullName()).withEmail(user[0].getUser().getEmail()));
-      delegated.setPermissions(intersect(user[0].getPermissions(), parent));
-      delegated.setSecurityKeyValues(keysWithinPrincipal(qInstance, user[0].getSecurityKeyValues(), parent));
+      if(principal.getDelegatedAccess() == QServicePrincipalMetaData.DelegatedAccess.INTERSECT_WITH_PRINCIPAL)
+      {
+         delegated.setPermissions(intersect(user[0].getPermissions(), parent));
+         delegated.setSecurityKeyValues(keysWithinPrincipal(qInstance, user[0].getSecurityKeyValues(), parent));
+      }
+      else
+      {
+         ///////////////////////////////////////////////////////////////////////
+         // USER: exactly the user's current access (permissions and keys) -  //
+         // the principal only authenticates the work and is recorded with it //
+         ///////////////////////////////////////////////////////////////////////
+         delegated.setPermissions(user[0].getPermissions() == null ? new TreeSet<>() : new TreeSet<>(user[0].getPermissions()));
+         delegated.setSecurityKeyValues(keysWithinPrincipal(qInstance, user[0].getSecurityKeyValues(), null));
+      }
       if(user[0].getBackendVariants() != null)
       {
          delegated.setBackendVariants(new HashMap<>(user[0].getBackendVariants()));
@@ -408,7 +421,7 @@ public final class ServiceIdentities
       {
          for(Map.Entry<String, List<Serializable>> entry : userKeys.entrySet())
          {
-            if(allAccessKeys.contains(entry.getKey()) && !parent.hasSecurityKeyValue(entry.getKey(), true))
+            if(parent != null && allAccessKeys.contains(entry.getKey()) && !parent.hasSecurityKeyValue(entry.getKey(), true))
             {
                LOG.debug("Delegated session drops an all-access key the principal lacks", logPair("key", entry.getKey()));
                continue;

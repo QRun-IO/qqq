@@ -364,3 +364,44 @@ nodes each mint their own token; nothing on ClusterBus); ArchUnit allow-list.
 - **D4 (decided: declarative only)** Secrets: issued and rotated only declaratively (blueprint + Praetor/Infisical, recommended for kof22) vs also from the Identity UI (one-time display).
 - **D5 (decided: no PHI unless granted)** Quick-search indexer: stop indexing secured-data/PHI fields unless the indexer principal is granted them (recommended; behavior change from today's system indexer).
 - **D6 (decided: phase 1 = 6.1, allow-list for 6.3)** Scope: phase 1 = section 6.1 only; `QSystemUserSession` remains for plumbing in 6.3 behind an allow-list (recommended) vs migrating everything now.
+
+## 10. Security review (2026-10-16) and resolutions
+
+An independent review found the following issues; all are fixed in the
+implementation PRs except where marked as accepted.
+
+- **H1, fixed.** A scheduled report's `userId` was user-editable, so with the
+  scheduler principal anyone who could edit a schedule could render reports
+  with another user's access. The owner is now stamped from the session on
+  insert, and it cannot be changed afterwards.
+- **H2, fixed.** Any session whose id started with `service:` could own and
+  launch principal jobs. The `service:` namespace is now refused for every
+  session that is not a minted principal session (`ActionHelper`). Only a
+  minted principal may launch a principal-owned job, and a principal-owned job
+  that carries a user grant is refused.
+- **H3, fixed in deployment.** Principal policies are seeded with least
+  privilege, not full access; maintenance keeps full access for the D3
+  run-once only. A principal cannot change service principal role groups.
+- **M1, fixed.** Service tokens carry no access-token (`qqq_token`) claim, so
+  kof22 refuses them over HTTP; they are used only in-process.
+- **M2, accepted.** The provider's access-token lifetime is 1 hour. New work
+  stops within 5 minutes of deactivation (the cache cap), and a leaked token
+  is refused over HTTP (M1). A unit of work that is already running finishes.
+- **M3, fixed.** With `QQQ_SERVICE_IDENTITIES_REQUIRED=true`, kof22 declares
+  every principal: a missing credential makes the principal unavailable
+  instead of falling back to its previous authority.
+- **M4, fixed.** Service sessions bypass the session store, and every call
+  gets a fresh object.
+- **M5, accepted.** Delegation intersects permissions, and drops all-access
+  keys the principal lacks. Ordinary record-lock keys are the user's, because
+  the work is the user's view. Without the table permission, those keys give
+  no access.
+- **M6, fixed.** The key script only accepts 48-128 alphanumeric secrets.
+- **M7, fixed.** Token requests use 5 s connect and 10 s read timeouts, and
+  follow no redirects.
+- **L1, fixed.** The token's `preferred_username` must match the configured
+  account.
+- **L6, fixed.** The raw-token accessor is package-private.
+- **L4, L5, open (low).** The migration guard is per JVM, and local minted
+  sessions never expire.
+

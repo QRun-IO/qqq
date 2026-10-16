@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.ChildRecordListRenderer;
+import com.kingsrook.qqq.backend.core.actions.permissions.SystemTablePermissions;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.AuditLevel;
@@ -212,12 +213,18 @@ public class AuditsMetaDataProvider
 
 
    /*******************************************************************************
-    **
+    ** Add the audit tables.  Reading them directly requires the audit.read
+    ** permission (see SystemTablePermissions); a record's history stays
+    ** available to whoever may read the record, through GetAuditsForRecord.
     *******************************************************************************/
    public void defineStandardAuditTables(QInstance instance, String backendName, Consumer<QTableMetaData> backendDetailEnricher) throws QException
    {
       for(QTableMetaData tableMetaData : defineStandardAuditTables(backendName, backendDetailEnricher))
       {
+         if(tableMetaData.getPermissionRules() == null)
+         {
+            tableMetaData.setPermissionRules(SystemTablePermissions.readableSystemTableRules(instance, SystemTablePermissions.AUDIT_PERMISSION_BASE_NAME));
+         }
          instance.addTable(tableMetaData);
       }
    }

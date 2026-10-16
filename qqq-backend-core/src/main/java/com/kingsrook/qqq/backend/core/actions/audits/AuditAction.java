@@ -31,6 +31,7 @@ import java.util.Objects;
 import java.util.Optional;
 import com.kingsrook.qqq.backend.core.actions.AbstractQActionFunction;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
+import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -229,10 +230,26 @@ public class AuditAction extends AbstractQActionFunction<AuditInput, AuditOutput
 
 
    /*******************************************************************************
-    **
+    ** Store audits.  Writing them is the framework's own bookkeeping, done for
+    ** whoever made the change - so it runs trusted: the audit tables' permission
+    ** rules (audit.read - see SystemTablePermissions) never stop an audit from
+    ** being written, even when core permission enforcement is on.
     *******************************************************************************/
    @Override
    public AuditOutput execute(AuditInput input)
+   {
+      try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope())
+      {
+         return (executeTrusted(input));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** The audit writing itself, inside an authorized scope.
+    *******************************************************************************/
+   private AuditOutput executeTrusted(AuditInput input)
    {
       AuditOutput auditOutput = new AuditOutput();
 

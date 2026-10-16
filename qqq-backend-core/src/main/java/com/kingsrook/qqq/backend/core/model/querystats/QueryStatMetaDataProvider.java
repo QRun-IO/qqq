@@ -24,6 +24,7 @@ package com.kingsrook.qqq.backend.core.model.querystats;
 import java.util.List;
 import java.util.function.Consumer;
 import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.ChildRecordListRenderer;
+import com.kingsrook.qqq.backend.core.actions.permissions.SystemTablePermissions;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.data.QRecordEntity;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -71,6 +72,19 @@ public class QueryStatMetaDataProvider
       instance.addTable(defineStandardTable(QueryStatOrderByField.TABLE_NAME, QueryStatOrderByField.class, backendName, backendDetailEnricher));
 
       instance.addPossibleValueSource(defineQueryStatPossibleValueSource());
+
+      ///////////////////////////////////////////////////////////////////////
+      // query statistics record every user's queries (and session ids):  //
+      // reading them directly needs queryStat.read (SystemTablePermissions) //
+      ///////////////////////////////////////////////////////////////////////
+      for(String tableName : SystemTablePermissions.QUERY_STAT_TABLE_NAMES)
+      {
+         QTableMetaData table = instance.getTable(tableName);
+         if(table != null && table.getPermissionRules() == null)
+         {
+            table.setPermissionRules(SystemTablePermissions.readableSystemTableRules(instance, SystemTablePermissions.QUERY_STAT_PERMISSION_BASE_NAME));
+         }
+      }
    }
 
 

@@ -37,12 +37,17 @@ import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
 import com.kingsrook.qqq.backend.core.actions.permissions.FieldSecurityLockHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.SystemTablePermissions;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.CriteriaOption;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
@@ -105,6 +110,19 @@ public class SearchPossibleValueSourceAction
       {
          FieldAccessHelper.assertCriteriaAllowed(possibleValueSource.getTableName(), null, input.getDefaultQueryFilter(), null, false);
          FieldAccessHelper.assertCriteriaAllowed(possibleValueSource.getTableName(), null, input.getPickerFilter(), null, false);
+      }
+
+      //////////////////////////////////////////////////////////////////////////
+      // except for QQQ's system tables (audit, query statistics, sessions):   //
+      // a user's own search of a source over one of them (e.g., a standalone  //
+      // possible-value request) needs READ on that table, so their contents   //
+      // can't be listed through possible values by users who can't query them //
+      //////////////////////////////////////////////////////////////////////////
+      if(possibleValueSource != null && SystemTablePermissions.isSystemTable(possibleValueSource.getTableName())
+         && QInputSource.USER.equals(input.getInputSource()) && QContext.getAuthorizedActionScopeDepth() == 0
+         && !PermissionsHelper.hasTablePermission(input, possibleValueSource.getTableName(), TablePermissionSubType.READ))
+      {
+         throw (new QPermissionDeniedException("Permission denied."));
       }
 
       try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope())

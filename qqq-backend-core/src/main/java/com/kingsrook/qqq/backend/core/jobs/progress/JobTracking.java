@@ -61,7 +61,8 @@ public final class JobTracking
     *******************************************************************************/
    public static Integer start(TrackedJobRequest request) throws QException
    {
-      return (tracker().startTracked(request.getProcessName(), request.getLabel(), request.getUserId(), request.getClientChannel(), request.getTableName(), request.getRecordId()));
+      return (tracker().startTracked(request.getProcessName(), request.getLabel(), request.getUserId(), request.getClientChannel(), request.getTableName(), request.getRecordId(),
+         Boolean.TRUE.equals(request.getNotifyOnSuccess())));
    }
 
 

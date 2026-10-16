@@ -27,9 +27,15 @@ import java.util.List;
 import com.kingsrook.qqq.backend.core.alerts.AlertsInstanceMetaData;
 import com.kingsrook.qqq.backend.core.alerts.NotificationAudience;
 import com.kingsrook.qqq.backend.core.alerts.NotificationCategory;
+import com.kingsrook.qqq.backend.core.alerts.NotificationSeverity;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.jobs.model.JobStatus;
 import com.kingsrook.qqq.backend.core.jobs.model.LaunchRequest;
+import com.kingsrook.qqq.backend.core.jobs.progress.TrackedJobRequest;
 import com.kingsrook.qqq.backend.core.jobs.runtime.DurableJobsRuntime;
+import com.kingsrook.qqq.backend.core.jobs.runtime.InlineJobTracker;
+import com.kingsrook.qqq.backend.core.jobs.runtime.JobSignals;
+import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.realtime.RealtimeBus;
 import com.kingsrook.qqq.backend.core.realtime.RealtimeMetaData;
@@ -122,6 +128,7 @@ class JobSignalsTest extends DurableJobsTestBase
       DurableJobsRuntime.stop(instance, Duration.ofSeconds(5));
       DurableJobs.evaluate(jobId);
       DurableJobs.evaluate(jobId);
+      assertThat(store.getJob(jobId).getValueBoolean("notifyOnSuccess")).isTrue();
       assertThat(DurableJobsTestSupport.NOTIFICATIONS).singleElement().satisfies(signal ->
       {
          assertThat(signal.getCategory()).isEqualTo(NotificationCategory.JOB);
@@ -136,6 +143,77 @@ class JobSignalsTest extends DurableJobsTestBase
             assertThat(signal.getAttributes()).doesNotContainKey("emailRequested");
          }
       });
+   }
+
+
+
+   /*******************************************************************************
+    ** A background job launched with notifyOnSuccess=false completes quietly,
+    ** unless it also asked for an email.
+    *******************************************************************************/
+   @Test
+   void backgroundJobCanOptOutOfSuccessNotification() throws Exception
+   {
+      assertThat(new LaunchRequest(DurableJobsTestSupport.PROCESS_THREE_STEPS).getNotifyOnSuccess()).isTrue();
+      AlertsInstanceMetaData.ofOrWithNew(instance).withSink(new QCodeReference(DurableJobsTestSupport.CapturingSink.class));
+      Integer quiet = DurableJobs.launch(new LaunchRequest(DurableJobsTestSupport.PROCESS_THREE_STEPS).withValue("seed", "x").withNotifyOnSuccess(false));
+      Integer email = DurableJobs.launch(new LaunchRequest(DurableJobsTestSupport.PROCESS_THREE_STEPS).withValue("seed", "y").withNotifyOnSuccess(false).withNotifyEmail(true));
+      DurableJobsRuntime.start(instance);
+      await(quiet, JobStatus.COMPLETED);
+      await(email, JobStatus.COMPLETED);
+      DurableJobsRuntime.stop(instance, Duration.ofSeconds(5));
+      assertThat(store.getJob(quiet).getValueBoolean("notifyOnSuccess")).isFalse();
+      assertThat(DurableJobsTestSupport.NOTIFICATIONS).singleElement()
+         .satisfies(signal -> assertThat(signal.getSourceKey()).isEqualTo("job:" + email + ":COMPLETED"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Tracked jobs complete quietly by default, can opt in, and always notify
+    ** when they fail.
+    *******************************************************************************/
+   @Test
+   void trackedJobsNotifyOnlyOnFailureByDefault() throws Exception
+   {
+      assertThat(new TrackedJobRequest().getNotifyOnSuccess()).isFalse();
+      assertThat(new TrackedJobRequest().withNotifyOnSuccess(true).getNotifyOnSuccess()).isTrue();
+      AlertsInstanceMetaData.ofOrWithNew(instance).withSink(new QCodeReference(DurableJobsTestSupport.CapturingSink.class));
+      InlineJobTracker tracker = new InlineJobTracker(store, "pod-a");
+      String           owner   = DurableJobsSecurity.userId(QContext.getQSession());
+
+      Integer quiet = tracker.startTracked("assistant.turn", "Assistant answer", owner, null, null, null);
+      assertThat(store.getJob(quiet).getValueBoolean("notifyOnSuccess")).isFalse();
+      tracker.finishTracked(quiet, JobStatus.COMPLETED, "Answered.");
+      assertThat(DurableJobsTestSupport.NOTIFICATIONS).isEmpty();
+
+      Integer failed = tracker.startTracked("assistant.turn", "Assistant answer", owner, null, null, null);
+      tracker.finishTracked(failed, JobStatus.FAILED, "Broke.");
+      assertThat(DurableJobsTestSupport.NOTIFICATIONS).singleElement()
+         .satisfies(signal -> assertThat(signal.getSeverity()).isEqualTo(NotificationSeverity.ERROR));
+
+      Integer optedIn = tracker.startTracked("assistant.turn", "Assistant answer", owner, null, null, null, true);
+      tracker.finishTracked(optedIn, JobStatus.COMPLETED, "Answered.");
+      assertThat(DurableJobsTestSupport.NOTIFICATIONS).hasSize(2).last()
+         .satisfies(signal -> assertThat(signal.getSourceKey()).isEqualTo("job:" + optedIn + ":COMPLETED"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Rows with no notifyOnSuccess value use the defaults by source type; a
+    ** completion with errors always notifies.
+    *******************************************************************************/
+   @Test
+   void rowsWithoutTheFlagFallBackToDefaults()
+   {
+      AlertsInstanceMetaData.ofOrWithNew(instance).withSink(new QCodeReference(DurableJobsTestSupport.CapturingSink.class));
+      JobSignals.finished(new QRecord().withValue("id", 9001).withValue("userId", DEFAULT_USER_ID).withValue("sourceType", "INLINE"), JobStatus.COMPLETED);
+      assertThat(DurableJobsTestSupport.NOTIFICATIONS).isEmpty();
+      JobSignals.finished(new QRecord().withValue("id", 9002).withValue("userId", DEFAULT_USER_ID).withValue("sourceType", "INLINE"), JobStatus.COMPLETED_WITH_ERRORS);
+      JobSignals.finished(new QRecord().withValue("id", 9003).withValue("userId", DEFAULT_USER_ID).withValue("sourceType", "STEPS"), JobStatus.COMPLETED);
+      assertThat(DurableJobsTestSupport.NOTIFICATIONS).extracting(signal -> signal.getSourceKey())
+         .containsExactly("job:9002:COMPLETED_WITH_ERRORS", "job:9003:COMPLETED");
    }
 
 

@@ -132,6 +132,7 @@ public final class FailedRows
          .withSavedBulkLoadProfileId(savedProfileId)
          .withPriority(job.getValueInteger("priority"))
          .withNotifyEmail(job.getValueBoolean("notifyEmail"))
+         .withNotifyOnSuccess(job.getValueBoolean("notifyOnSuccess"))
          .withParentJobId(jobId)
          .withLabel("Retry of " + job.getValueString("label"));
       Integer childId = DurableJobs.launch(request);

@@ -335,6 +335,7 @@ public class DurableJobsMetaDataProvider
          .withField(readOnly("parentJobId", QFieldType.INTEGER).withLabel("Parent Job").withPossibleValueSourceName(TABLE_JOB))
          .withField(readOnly("savedBulkLoadProfileId", QFieldType.INTEGER).withLabel("Bulk Load Profile"))
          .withField(field("notifyEmail", QFieldType.BOOLEAN).withLabel("Email Me When Done").withDefaultValue(false))
+         .withField(field("notifyOnSuccess", QFieldType.BOOLEAN).withLabel("Notify Me When Done"))
          .withField(readOnly("queuedAt", QFieldType.DATE_TIME))
          .withField(readOnly("startedAt", QFieldType.DATE_TIME))
          .withField(readOnly("finishedAt", QFieldType.DATE_TIME))
@@ -345,7 +346,7 @@ public class DurableJobsMetaDataProvider
          .withField(readOnly("modifyDate", QFieldType.DATE_TIME))
          .withSection(new QFieldSection("identity", new QIcon("badge"), Tier.T1, List.of("id", "label", "status", "statusReason", "processName", "tableName", "mode", "userId")))
          .withSection(new QFieldSection("progress", "Progress", new QIcon("speed"), Tier.T2, List.of("currentPhase", "percentDone", "progressMessage", "bytesDone", "bytesTotal", "etaSeconds", "rowsTotal", "rowsDone", "rowsOk", "rowsFailed", "chunksTotal", "chunksDone", "chunksFailed", "lastProgressAt", "errorMessage")))
-         .withSection(new QFieldSection("settings", "Settings", new QIcon("tune"), Tier.T2, List.of("priority", "notifyEmail", "sourceType", "idempotency", "semantics", "chunkSize", "maxParallelChunks", "parentJobId", "savedBulkLoadProfileId", "clientChannel")))
+         .withSection(new QFieldSection("settings", "Settings", new QIcon("tune"), Tier.T2, List.of("priority", "notifyOnSuccess", "notifyEmail", "sourceType", "idempotency", "semantics", "chunkSize", "maxParallelChunks", "parentJobId", "savedBulkLoadProfileId", "clientChannel")))
          .withSection(new QFieldSection("data", "Data", new QIcon("data_object"), Tier.T3, List.of("progressJson", "logSeq", "logDropped", "leaseOwner", "summaryJson", "outputStorageJson", "sourceJson", "paramsJson", "credentialScopeJson", "leaseVersion")))
          .withSection(new QFieldSection("dates", new QIcon("calendar_month"), Tier.T3, List.of("queuedAt", "startedAt", "finishedAt", "createDate", "modifyDate"))));
    }

@@ -46,6 +46,7 @@ public class LaunchRequest
    private JobMode                   mode           = JobMode.EXECUTE;
    private Integer                   priority;
    private Boolean                   notifyEmail    = false;
+   private Boolean                   notifyOnSuccess = true;
    private String                    label;
    private String                    startAfterStep;
    private Integer                   parentJobId;
@@ -289,6 +290,29 @@ public class LaunchRequest
    public LaunchRequest withNotifyEmail(Boolean notifyEmail)
    {
       this.notifyEmail = notifyEmail;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for notifyOnSuccess: whether the owner gets a notification when the
+    ** job completes cleanly (default true for background jobs).  Failures and
+    ** completions with errors always notify; notifyEmail also forces one.
+    *******************************************************************************/
+   public Boolean getNotifyOnSuccess()
+   {
+      return (this.notifyOnSuccess);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for notifyOnSuccess
+    *******************************************************************************/
+   public LaunchRequest withNotifyOnSuccess(Boolean notifyOnSuccess)
+   {
+      this.notifyOnSuccess = notifyOnSuccess;
       return (this);
    }
 

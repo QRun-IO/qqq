@@ -173,6 +173,7 @@ class JobControl
          .withMode(JobMode.valueOf(job.getValueString("mode")))
          .withPriority(job.getValueInteger("priority"))
          .withNotifyEmail(job.getValueBoolean("notifyEmail"))
+         .withNotifyOnSuccess(job.getValueBoolean("notifyOnSuccess"))
          .withLabel(job.getValueString("label"))
          .withSavedBulkLoadProfileId(job.getValueInteger("savedBulkLoadProfileId"))
          .withParentJobId(job.getValueInteger("id"));

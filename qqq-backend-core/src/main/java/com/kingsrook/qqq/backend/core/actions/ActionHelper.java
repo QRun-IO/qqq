@@ -43,6 +43,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticat
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
+import com.kingsrook.qqq.backend.core.serviceidentity.ServiceIdentities;
 import com.kingsrook.qqq.backend.core.utils.PrefixedDefaultThreadFactory;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
@@ -109,7 +110,7 @@ public class ActionHelper
 
       QAuthenticationModuleDispatcher qAuthenticationModuleDispatcher = new QAuthenticationModuleDispatcher();
       QAuthenticationModuleInterface  authenticationModule            = qAuthenticationModuleDispatcher.getQModule(authMetaData);
-      if(!authenticationModule.isSessionValid(qInstance, qSession))
+      if(!ServiceIdentities.isSessionValid(qInstance, authenticationModule, qSession))
       {
          throw new QAuthenticationException("Invalid session in request");
       }

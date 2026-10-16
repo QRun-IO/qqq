@@ -395,7 +395,12 @@ public class Auth0AuthenticationModule implements QAuthenticationModuleInterface
             .withUserId(qSession.getUser().getIdReference())
             .withAccessToken(accessToken);
 
-         new InsertAction().execute(new InsertInput(UserSession.TABLE_NAME).withRecordEntity(userSession));
+         ///////////////////////////////////////////////////////////////////
+         // the userSession table is locked to every user (it holds tokens) //
+         ///////////////////////////////////////////////////////////////////
+         InsertInput insertInput = new InsertInput(UserSession.TABLE_NAME).withRecordEntity(userSession);
+         insertInput.withPermissionBypass("authentication internals: store the user session");
+         new InsertAction().execute(insertInput);
       }
       finally
       {
@@ -1044,10 +1049,12 @@ public class Auth0AuthenticationModule implements QAuthenticationModuleInterface
          ///////////////////////////////////////
          // query for the user session record //
          ///////////////////////////////////////
-         QRecord userSessionRecord = new GetAction().executeForRecord(new GetInput(UserSession.TABLE_NAME)
+         GetInput getInput = new GetInput(UserSession.TABLE_NAME)
             .withUniqueKey(Map.of("uuid", sessionUUID))
             .withShouldMaskPasswords(false)
-            .withShouldOmitHiddenFields(false));
+            .withShouldOmitHiddenFields(false);
+         getInput.withPermissionBypass("authentication internals: look up the user session");
+         QRecord userSessionRecord = new GetAction().executeForRecord(getInput);
 
          if(userSessionRecord != null)
          {

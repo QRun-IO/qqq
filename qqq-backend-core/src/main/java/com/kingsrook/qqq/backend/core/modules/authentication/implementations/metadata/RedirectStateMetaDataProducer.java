@@ -21,6 +21,7 @@
 package com.kingsrook.qqq.backend.core.modules.authentication.implementations.metadata;
 
 
+import com.kingsrook.qqq.backend.core.actions.permissions.SystemTablePermissions;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducer;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -34,7 +35,10 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.UniqueKey;
 
 
 /*******************************************************************************
- ** Meta Data Producer for RedirectState table
+ ** Meta Data Producer for RedirectState table.  The table holds in-flight
+ ** login state, so it is hidden and locked to every role, admins included (see
+ ** SystemTablePermissions); the authentication module reads and writes it as
+ ** the system user.
  *******************************************************************************/
 public class RedirectStateMetaDataProducer extends MetaDataProducer<QTableMetaData>
 {
@@ -75,7 +79,7 @@ public class RedirectStateMetaDataProducer extends MetaDataProducer<QTableMetaDa
          .withField(new QFieldMetaData("redirectUri", QFieldType.STRING).withIsEditable(false).withMaxLength(4096).withBehavior(ValueTooLongBehavior.ERROR))
          .withField(new QFieldMetaData("createDate", QFieldType.DATE_TIME).withIsEditable(false));
 
-      return tableMetaData;
+      return (SystemTablePermissions.lockInternalTable(tableMetaData));
    }
 
 }

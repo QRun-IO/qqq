@@ -26,19 +26,29 @@ import java.util.Map;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.actions.audits.AuditAction;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.ExamplePersonalizer;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionEnforcement;
+import com.kingsrook.qqq.backend.core.actions.permissions.SystemTablePermissions;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
+import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
+import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
+import com.kingsrook.qqq.backend.core.context.CapturedContext;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessOutput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.audits.AuditsMetaDataProvider;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
+import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 import com.kingsrook.qqq.backend.core.model.session.QUser;
+import com.kingsrook.qqq.backend.core.serviceidentity.LocalServiceIdentityProvider;
+import com.kingsrook.qqq.backend.core.serviceidentity.QServicePrincipalMetaData;
 import com.kingsrook.qqq.backend.core.utils.ExceptionUtils;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.junit.jupiter.api.BeforeEach;
@@ -242,6 +252,95 @@ class GetAuditsForRecordProcessTest extends BaseTest
    {
       assertThatThrownBy(() -> new RunProcessAction().execute(input))
          .satisfies(e -> assertNotNull(ExceptionUtils.findClassInRootChain(e, QPermissionDeniedException.class)));
+   }
+
+
+   /*******************************************************************************
+    ** An app that never declared audit permissions (an unprotected instance)
+    ** keeps record history for everyone who can read the record - even with core
+    ** permission enforcement on, and although the audit table itself now needs
+    ** audit.read to query directly.
+    *******************************************************************************/
+   @Test
+   void testHistoryNeedsNoAuditPermission() throws QException
+   {
+      AuditAction.execute(TestUtils.TABLE_NAME_PERSON_MEMORY, recordId, Map.of(), "Test Audit", List.of(new QRecord().withValue("message", "My Detail")));
+      QContext.getQInstance().setEnforcePermissionsInCoreActions(true);
+      QContext.init(QContext.getQInstance(), new QSession().withUser(new QUser().withFullName("No Permissions")));
+
+      RunProcessInput input = auditsInput(TestUtils.TABLE_NAME_PERSON_MEMORY);
+      input.withPermissionEnforcement(PermissionEnforcement.ENFORCE);
+      assertEquals(1, ((List<QRecord>) new RunProcessAction().execute(input).getValue("audits")).size());
+
+      assertThatThrownBy(() -> new QueryAction().execute(new QueryInput(AuditsMetaDataProvider.TABLE_NAME_AUDIT)))
+         .satisfies(e -> assertNotNull(ExceptionUtils.findClassInRootChain(e, QPermissionDeniedException.class)));
+   }
+
+
+
+   /*******************************************************************************
+    ** On a table with record security locks, history needs the record itself to
+    ** be readable by the caller.
+    *******************************************************************************/
+   @Test
+   void testRecordLockedTableNeedsTheRecordReadable() throws QException
+   {
+      QContext.withTemporaryContext(new CapturedContext(QContext.getQInstance(), new QSystemUserSession()), () ->
+         new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_ORDER).withRecords(List.of(
+            new QRecord().withValue("id", 1).withValue("storeId", 1),
+            new QRecord().withValue("id", 2).withValue("storeId", 2)))));
+      AuditAction.execute(TestUtils.TABLE_NAME_ORDER, 1, Map.of(TestUtils.SECURITY_KEY_TYPE_STORE, 1), "Order 1 audit", List.of());
+
+      RunProcessInput input = auditsInput(TestUtils.TABLE_NAME_ORDER);
+      input.addValue("recordId", 1);
+
+      QContext.init(QContext.getQInstance(), new QSession().withUser(new QUser().withFullName("Store 1")).withSecurityKeyValue(TestUtils.SECURITY_KEY_TYPE_STORE, 1));
+      assertEquals(1, ((List<QRecord>) new RunProcessAction().execute(input).getValue("audits")).size());
+
+      QContext.init(QContext.getQInstance(), new QSession().withUser(new QUser().withFullName("Store 2")).withSecurityKeyValue(TestUtils.SECURITY_KEY_TYPE_STORE, 2));
+      assertDenied(input);
+   }
+
+
+
+   /*******************************************************************************
+    ** Service principal sessions follow the same rule: read on the record's
+    ** table gives its history; no read, no history.
+    *******************************************************************************/
+   @Test
+   void testServicePrincipalSessions() throws QException
+   {
+      AuditAction.execute(TestUtils.TABLE_NAME_PERSON_MEMORY, recordId, Map.of(), "Test Audit", List.of());
+      QContext.getQInstance().getTable(TestUtils.TABLE_NAME_PERSON_MEMORY).setPermissionRules(new QPermissionRules().withLevel(PermissionLevel.READ_WRITE_PERMISSIONS));
+
+      QContext.init(QContext.getQInstance(), new LocalServiceIdentityProvider().sessionFor(QContext.getQInstance(),
+         new QServicePrincipalMetaData().withName("reader").withLocalPermissions(TestUtils.TABLE_NAME_PERSON_MEMORY + ".read")));
+      assertEquals(1, ((List<QRecord>) new RunProcessAction().execute(auditsInput(TestUtils.TABLE_NAME_PERSON_MEMORY)).getValue("audits")).size());
+
+      QContext.init(QContext.getQInstance(), new LocalServiceIdentityProvider().sessionFor(QContext.getQInstance(),
+         new QServicePrincipalMetaData().withName("other").withLocalPermissions("someOtherTable.read")));
+      assertDenied(auditsInput(TestUtils.TABLE_NAME_PERSON_MEMORY));
+   }
+
+
+
+   /*******************************************************************************
+    ** The opt-in stricter rule: history only for audit.read holders.
+    *******************************************************************************/
+   @Test
+   void testOptInToAuditTablePermission() throws QException
+   {
+      AuditAction.execute(TestUtils.TABLE_NAME_PERSON_MEMORY, recordId, Map.of(), "Test Audit", List.of());
+      assertEquals(PermissionLevel.NOT_PROTECTED, QContext.getQInstance().getProcess(GetAuditsForRecordProcess.NAME).getPermissionRules().getLevel());
+      GetAuditsForRecordProcess.setProcessPermissionToBeBasedOnAuditTableReadPermission(QContext.getQInstance().getProcess(GetAuditsForRecordProcess.NAME));
+
+      QContext.init(QContext.getQInstance(), new QSession().withUser(new QUser().withFullName("No Audit Read")));
+      RunProcessInput input = auditsInput(TestUtils.TABLE_NAME_PERSON_MEMORY);
+      input.withPermissionEnforcement(PermissionEnforcement.ENFORCE);
+      assertDenied(input);
+
+      QContext.init(QContext.getQInstance(), new QSession().withUser(new QUser().withFullName("Auditor")).withPermission(SystemTablePermissions.AUDIT_READ_PERMISSION));
+      assertEquals(1, ((List<QRecord>) new RunProcessAction().execute(input).getValue("audits")).size());
    }
 
 }

@@ -30,6 +30,7 @@ import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
+import com.kingsrook.qqq.backend.core.serviceidentity.ServiceIdentities;
 
 
 /*******************************************************************************
@@ -56,7 +57,7 @@ public final class DeliverySessions
       {
          throw new QPermissionDeniedException("Delivery requires an owner session.");
       }
-      if(!(current instanceof QSystemUserSession))
+      if(!(current instanceof QSystemUserSession) && !ServiceIdentities.isMintedServiceSession(current))
       {
          if(current.getUser() == null || !Objects.equals(ownerUserId, current.getUser().getIdReference()))
          {
@@ -66,9 +67,17 @@ public final class DeliverySessions
       }
       QInstance instance = QContext.getQInstance();
       QAuthenticationModuleInterface authentication = new QAuthenticationModuleDispatcher().getQModule(instance.getAuthentication());
-      QSession owner = authentication.createAutomatedSessionForUser(instance, ownerUserId);
+      //////////////////////////////////////////////////////////////////////
+      // through the calling principal when a principal is delivering,     //
+      // else the scheduler principal when declared, else (as before) an   //
+      // automated session for the owner                                   //
+      //////////////////////////////////////////////////////////////////////
+      String via = ServiceIdentities.isMintedServiceSession(current) ? ServiceIdentities.principalOf(current) : ServiceIdentities.SCHEDULER;
+      QSession owner = ServiceIdentities.isDeclared(instance, via)
+         ? ServiceIdentities.sessionOnBehalfOf(instance, via, ownerUserId)
+         : authentication.createAutomatedSessionForUser(instance, ownerUserId);
       if(owner == null || owner instanceof QSystemUserSession || owner.getUser() == null
-         || !Objects.equals(ownerUserId, owner.getUser().getIdReference()) || !authentication.isSessionValid(instance, owner))
+         || !Objects.equals(ownerUserId, owner.getUser().getIdReference()) || !ServiceIdentities.isSessionValid(instance, authentication, owner))
       {
          throw new QPermissionDeniedException("Could not establish the delivery owner's session.");
       }

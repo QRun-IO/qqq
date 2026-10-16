@@ -537,6 +537,7 @@ public class QueryStatManager
                InsertInput insertInput = new InsertInput();
                insertInput.setTableName(QueryStat.TABLE_NAME);
                insertInput.setRecords(queryStatQRecordsToInsert);
+               insertInput.withPermissionBypass("query statistics bookkeeping (queryStat.read guards reading them, not writing)");
                new InsertAction().execute(insertInput);
             }
             catch(Exception e)

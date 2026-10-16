@@ -31,16 +31,20 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import com.kingsrook.qqq.backend.core.BaseTest;
+import com.kingsrook.qqq.backend.core.actions.audits.AuditAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.SystemTablePermissions;
 import com.kingsrook.qqq.backend.core.actions.processes.QProcessCallbackFactory;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.actions.reporting.GenerateReportActionTest;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessOutput;
 import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportFormatPossibleValueEnum;
@@ -51,11 +55,16 @@ import com.kingsrook.qqq.backend.core.model.actions.reporting.pivottable.PivotTa
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.storage.StorageInput;
+import com.kingsrook.qqq.backend.core.model.audits.AuditsMetaDataProvider;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.savedreports.ReportColumn;
 import com.kingsrook.qqq.backend.core.model.savedreports.ReportColumns;
 import com.kingsrook.qqq.backend.core.model.savedreports.SavedReport;
 import com.kingsrook.qqq.backend.core.model.savedreports.SavedReportsMetaDataProvider;
+import com.kingsrook.qqq.backend.core.model.session.QSession;
+import com.kingsrook.qqq.backend.core.model.session.QUser;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryStorageAction;
+import com.kingsrook.qqq.backend.core.utils.ExceptionUtils;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.LocalMacDevUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
@@ -71,7 +80,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 
 /*******************************************************************************
@@ -466,6 +477,30 @@ class RenderSavedReportProcessTest extends BaseTest
    }
 
 
+   /*******************************************************************************
+    ** A saved report reads only tables its runner may read: one over the audit
+    ** table is refused to a user without audit.read, and runs for one with it.
+    *******************************************************************************/
+   @Test
+   void testSavedReportOnAProtectedSystemTable() throws Exception
+   {
+      new AuditsMetaDataProvider().defineAll(QContext.getQInstance(), TestUtils.MEMORY_BACKEND_NAME, null);
+      QContext.init(QContext.getQInstance(), new QSession().withUser(new QUser().withFullName("Report Runner")));
+      AuditAction.execute(TestUtils.TABLE_NAME_PERSON_MEMORY, 1, Map.of(), "Audited");
 
+      QRecord savedReport = new InsertAction().execute(new InsertInput(SavedReport.TABLE_NAME).withRecordEntity(new SavedReport()
+         .withLabel("Audits")
+         .withTableName(AuditsMetaDataProvider.TABLE_NAME_AUDIT)
+         .withColumnsJson(JsonUtils.toJson(new ReportColumns().withColumn(new ReportColumn().withName("id")).withColumn(new ReportColumn().withName("message"))))
+         .withQueryFilterJson(JsonUtils.toJson(new QQueryFilter()))
+      )).getRecords().get(0);
+
+      assertThatThrownBy(() -> runRenderReportProcess(savedReport, ReportFormatPossibleValueEnum.CSV))
+         .satisfies(e -> assertNotNull(ExceptionUtils.findClassInRootChain(e, QPermissionDeniedException.class)));
+
+      QContext.init(QContext.getQInstance(), new QSession().withUser(new QUser().withFullName("Auditor")).withPermission(SystemTablePermissions.AUDIT_READ_PERMISSION));
+      List<String> lines = IOUtils.readLines(getInputStream(runRenderReportProcess(savedReport, ReportFormatPossibleValueEnum.CSV)), StandardCharsets.UTF_8);
+      assertThat(lines).anyMatch(line -> line.contains("Audited"));
+   }
 
 }

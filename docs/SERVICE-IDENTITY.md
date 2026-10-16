@@ -165,6 +165,17 @@ public interface QServiceIdentityProviderInterface
   whatever its `exp` says, and a key-only invalidate (`principal name`, no token
   material) on `qqq.cluster.control` drops it everywhere at once (sent by the
   Identity Deactivate action and on any node's `invalid_grant`).
+- Verifier constraints (RC.15, unchanged): the deployment needs
+  `bearerTokensEnabled=true`; `iss` must be the configured issuer (baseUrl or
+  externalBaseUrl); `aud` must be the clientId (or additionalBearerAudiences);
+  the token must be an access token (no `nonce`/`at_hash`; has `scope`, `azp`,
+  `client_id` or typ `at+jwt`); exp - iat within `bearerTokenMaxLifetimeSeconds`
+  (default 1 day; the service grant uses 5 minutes). Startup validation fails if
+  principals are declared but bearer tokens are disabled.
+- Service tokens are handed to `createSession` in-process and never sent over
+  HTTP. So route gates such as kof22's `PublisherTokenRouteProvider` (WB#276:
+  a non-credential bearer on /qqq/v1 gets 401) never see them, and they get **no**
+  allow entry there. A service token presented over HTTP stays refused.
 - Failures: `invalid_grant`/`invalid_client` (revoked, deactivated, rotated) ->
   cached negative result with backoff (30 s doubling to 5 min), alert
   `service_identity.unavailable` (dedup per principal), health check DOWN.

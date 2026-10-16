@@ -207,11 +207,16 @@ Used where the product promise is "you receive what you could see":
 scheduled reports, output deliveries, alert audience checks and deliveries,
 data-analysis per-recipient runs, Slack owner actions, file-gateway workers.
 
-- Requires the service session to hold `qqq.service.actOnBehalf` (granted in the
-  principal's Authentik policy) and the principal to be declared
-  `mayActOnBehalfOfUsers`.
-- The user's current access is resolved by a `QUserAccessResolverInterface`
-  supplied by the deployment:
+- Requires the principal to be declared `mayActOnBehalfOfUsers` (reviewed
+  code). Implementation note: a separate `qqq.service.actOnBehalf` permission
+  was dropped, because core has no registry for named permissions and Authentik
+  policies only grant catalogued names. Because of the intersection (D2), the
+  principal must hold every permission the work uses anyway, so delegation can
+  only narrow access, and revoking the principal's grants in Authentik revokes
+  the delegated work too.
+- The user's current access comes from the auth module's existing
+  `createAutomatedSessionForUser` plus the customizer, called under the
+  principal's session:
   - qbit-authentik: reads the user and its groups with the service session
     (Authentik API, as the service account), refuses inactive/missing users, and
     computes permissions with the same `EffectivePermissionResolver` the
@@ -354,7 +359,7 @@ nodes each mint their own token; nothing on ClusterBus); ArchUnit allow-list.
 ## 9. Owner decisions (signed off 2026-10-16: all recommendations)
 
 - **D1 (decided: per role)** One Authentik service account per role (recommended; six for kof22) vs one per app.
-- **D2 (decided: intersection)** On-behalf-of = user's current access **∩** the principal's policy (recommended, least privilege; the scheduler's policy must then cover what reports read) vs user's access alone (principal only needs `qqq.service.actOnBehalf`).
+- **D2 (decided: intersection)** On-behalf-of = user's current access **∩** the principal's policy (recommended, least privilege; the scheduler's policy must then cover what reports read) vs user's access alone.
 - **D3 (decided: maintenance account holds full access for the run-once, then narrowed; owner: "do it")** Bootstrap of `kof22-admins` full access: give `svc-kof22-maintenance` the grants it must hand out (recommended: full access in its policy, narrowed after the run-once) vs move that policy into the Authentik blueprint and retire the run-once.
 - **D4 (decided: declarative only)** Secrets: issued and rotated only declaratively (blueprint + Praetor/Infisical, recommended for kof22) vs also from the Identity UI (one-time display).
 - **D5 (decided: no PHI unless granted)** Quick-search indexer: stop indexing secured-data/PHI fields unless the indexer principal is granted them (recommended; behavior change from today's system indexer).

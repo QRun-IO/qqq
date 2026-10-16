@@ -355,7 +355,8 @@ non-web clients (CLI, TUI, iOS) and for the "status card" links on other app hom
 
 ### 7.2 Kubernetes probes (not UI API)
 
-- `GET /health` (existing URL and JSON shape, kept): **liveness**. Runs only `LIVENESS` checks,
+- `GET /health` (existing URL and JSON shape, kept): **liveness**. Runs only `LIVENESS` checks
+  (not those flagged `includeInLivenessProbe`, which belong to `/live`),
   in-process, with a 1s total budget. 200 unless one is DOWN.
 - `GET /ready` (new): **readiness**. Runs `LIVENESS` checks plus `READINESS` checks flagged
   `includeInReadiness` (default: core database backends only), each answered from the runner's

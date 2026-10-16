@@ -108,7 +108,7 @@ public final class HealthProbes
    {
       return (switch(probe)
       {
-         case HEALTH -> check.getKind() == HealthCheckKind.LIVENESS;
+         case HEALTH -> check.getKind() == HealthCheckKind.LIVENESS && !check.getIncludeInLivenessProbe();
          case READINESS -> check.getKind() == HealthCheckKind.LIVENESS || (check.getKind() == HealthCheckKind.READINESS && check.getIncludeInReadiness());
          case LIVENESS -> check.getIncludeInLivenessProbe();
       });
@@ -128,7 +128,8 @@ public final class HealthProbes
 
    /*******************************************************************************
     ** Which endpoint is asking.
-    ** HEALTH (/health): LIVENESS checks, with legacy indicator details.
+    ** HEALTH (/health): LIVENESS checks, with legacy indicator details. Its JSON
+    ** shape is kept for deploy checks, so /live-only checks are not added to it.
     ** READINESS (/ready): LIVENESS checks plus READINESS checks marked includeInReadiness.
     ** LIVENESS (/live): only checks marked includeInLivenessProbe, the ones a
     ** restart can fix; a broken dependency must never restart the pod.

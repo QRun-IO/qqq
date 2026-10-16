@@ -201,7 +201,7 @@ does not flap.
 | Check | Probe | Effect |
 |---|---|---|
 | `core.jvm.memory_pressure` | `/ready` | DEGRADED while pressured. With `QQQ_HEALTH_MEMORY_READINESS_ACTION=down`, DOWN (503) after `QQQ_HEALTH_MEMORY_READINESS_AFTER_SECONDS` (15): the pod leaves the Service and the other replicas take its traffic. Set it only with two or more replicas. |
-| `core.jvm.memory_pressure_sustained` | `/live` (and `/health`, `/ready`) | DOWN after `QQQ_HEALTH_MEMORY_LIVENESS_AFTER_SECONDS` (120) of pressure, so the orchestrator restarts a JVM that would otherwise crawl until OutOfMemoryError. |
+| `core.jvm.memory_pressure_sustained` | `/live` and `/ready` (not `/health`, whose shape is kept) | DOWN after `QQQ_HEALTH_MEMORY_LIVENESS_AFTER_SECONDS` (120) of pressure, so the orchestrator restarts a JVM that would otherwise crawl until OutOfMemoryError. |
 
 `/live` runs only checks flagged `includeInLivenessProbe` (a restart can fix
 them); a database or provider outage never fails it. Set

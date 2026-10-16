@@ -140,6 +140,7 @@ class CentralHealthRoutesTest
          assertThat(live.statusCode()).isEqualTo(200);
          assertThat(live.body()).contains("test.restartable", JvmMemoryPressureCheck.LIVENESS_NAME).doesNotContain("test.database", "test.alive");
          assertThat(get(client, server, "/ready").body()).contains(JvmMemoryPressureCheck.READINESS_NAME, JvmMemoryPressureCheck.LIVENESS_NAME);
+         assertThat(get(client, server, "/health").body()).as("/health keeps its shape").doesNotContain("core.jvm", "test.restartable");
 
          restartable.set(HealthStatus.DOWN);
          assertThat(get(client, server, JavalinHealthRouteProvider.LIVE_PATH).statusCode()).isEqualTo(503);
@@ -235,13 +236,8 @@ class CentralHealthRoutesTest
       assertThat(outcome.getDetails().toJson()).contains("[redacted]", "H2").doesNotContain("sentinel", "nested");
       QInstance instance = instance().withSupplementalMetaData(new HealthCheckMetaData().withIndicators(List.of(indicator)));
       var response = HealthProbes.run(instance, false);
-      //////////////////////////////////////////////////////////////////////////
-      // the legacy body is unchanged; the core sustained-memory-pressure      //
-      // liveness check is the only addition (status only, like registry ones) //
-      //////////////////////////////////////////////////////////////////////////
       assertThat(response.get("checks")).isEqualTo(Map.of("diskSpace", Map.of("status", HealthStatus.UP, "durationMs", 7L,
-            "details", Map.of("password", "[redacted]", "vendor", "H2")),
-         JvmMemoryPressureCheck.LIVENESS_NAME, Map.of("status", HealthStatus.UP)));
+         "details", Map.of("password", "[redacted]", "vendor", "H2"))));
    }
 
 

@@ -45,6 +45,13 @@ public class InsertInput extends AbstractTableActionInput
 
    private boolean skipUniqueKeyCheck = false;
 
+   /*******************************************************************************
+    ** For inserts whose row-level errors are an expected outcome (for example a
+    ** losing writer in a race on a unique key), so InsertAction need not log them.
+    ** The errors are still returned on the records.
+    *******************************************************************************/
+   private boolean quietRecordErrors = false;
+
    private boolean dryRun = false;
 
    /*******************************************************************************
@@ -209,6 +216,37 @@ public class InsertInput extends AbstractTableActionInput
    public void setSkipUniqueKeyCheck(boolean skipUniqueKeyCheck)
    {
       this.skipUniqueKeyCheck = skipUniqueKeyCheck;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for quietRecordErrors
+    *******************************************************************************/
+   public boolean getQuietRecordErrors()
+   {
+      return (quietRecordErrors);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for quietRecordErrors
+    *******************************************************************************/
+   public void setQuietRecordErrors(boolean quietRecordErrors)
+   {
+      this.quietRecordErrors = quietRecordErrors;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for quietRecordErrors
+    *******************************************************************************/
+   public InsertInput withQuietRecordErrors(boolean quietRecordErrors)
+   {
+      this.quietRecordErrors = quietRecordErrors;
+      return (this);
    }
 
 

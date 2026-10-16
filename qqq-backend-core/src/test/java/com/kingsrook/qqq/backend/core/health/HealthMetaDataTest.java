@@ -22,12 +22,15 @@ package com.kingsrook.qqq.backend.core.health;
 
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
+import com.kingsrook.qqq.backend.core.alerts.AlertResolution;
+import com.kingsrook.qqq.backend.core.alerts.QAlertTypeMetaData;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.instances.QInstanceEnricher;
@@ -137,10 +140,11 @@ class HealthMetaDataTest extends BaseTest
       assertThat(validator.getErrors()).hasSize(5);
       assertThatThrownBy(() -> checks.resolveAll(instance)).isInstanceOf(QException.class);
       HealthMonitoringMetaData settings = HealthMonitoringMetaData.ofOrWithNew(instance);
-      settings.withBackendName("missing").withTickSeconds(0).withMaxConcurrentChecks(0).withResultRetentionDays(0).withRunnerUserName("");
+      settings.withBackendName("missing").withTickSeconds(0).withMaxConcurrentChecks(0).withResultRetentionDays(0).withRunnerUserName("")
+         .withDatabaseFailureThreshold(0).withDatabaseRecoveryThreshold(0);
       QInstanceValidator settingsValidator = new QInstanceValidator();
       settings.validate(instance, settingsValidator);
-      assertThat(settingsValidator.getErrors()).hasSize(5);
+      assertThat(settingsValidator.getErrors()).hasSize(7);
    }
 
 
@@ -370,8 +374,88 @@ class HealthMetaDataTest extends BaseTest
       assertThat(probe.getIncludeInReadiness()).isTrue();
       assertThat(probe.getIntervalSeconds()).isEqualTo(30);
       assertThat(probe.getTimeoutMs()).isEqualTo(3000);
-      assertThat(probe.getFailureThreshold()).isEqualTo(1);
+      assertThat(probe.getFailureThreshold()).isEqualTo(3);
+      assertThat(probe.getRecoveryThreshold()).isEqualTo(2);
       assertThat(probe.getCheckInstance().run(new HealthCheckInput()).getStatus()).isEqualTo(HealthStatus.UP);
+   }
+
+
+
+   /*******************************************************************************
+    ** Hosts can tune the generated database checks' thresholds.
+    *******************************************************************************/
+   @Test
+   void databaseProbeThresholdsAreConfigurable() throws Exception
+   {
+      QBackendModuleDispatcher.registerBackendModule(new ProbeBackend());
+      QContext.getQInstance().addBackend(new QBackendMetaData().withName("probe").withBackendType(ProbeBackend.class));
+      HealthMonitoringMetaData.ofOrWithNew(QContext.getQInstance()).withDatabaseFailureThreshold(5).withDatabaseRecoveryThreshold(4);
+      QInstance instance = install();
+      HealthCheckMetaData probe = HealthChecksMetaData.ofOrWithNew(instance).resolveAll(instance).stream()
+         .filter(check -> "core.database.probe".equals(check.getName())).findFirst().orElseThrow();
+      assertThat(probe.getFailureThreshold()).isEqualTo(5);
+      assertThat(probe.getRecoveryThreshold()).isEqualTo(4);
+   }
+
+
+
+   /*******************************************************************************
+    ** DEGRADED is alert-only; DOWN and flapping still notify.
+    *******************************************************************************/
+   @Test
+   void degradedAlertTypeDoesNotNotify() throws Exception
+   {
+      QInstance instance = install();
+      assertThat(QAlertTypeMetaData.of(instance, "health.check.degraded").getNotify()).isFalse();
+      assertThat(QAlertTypeMetaData.of(instance, "health.check.down").getNotify()).isTrue();
+      assertThat(QAlertTypeMetaData.of(instance, "health.check.flapping").getNotify()).isTrue();
+   }
+
+
+
+   /*******************************************************************************
+    ** With the database defaults, one slow ping neither alerts nor flips the
+    ** state; the third consecutive one does, and recovery needs two UPs.
+    *******************************************************************************/
+   @Test
+   void singleSlowPingDoesNotAlertWithDatabaseDefaults()
+   {
+      HealthMonitoringMetaData defaults = new HealthMonitoringMetaData();
+      int failureThreshold = defaults.getDatabaseFailureThreshold();
+      int recoveryThreshold = defaults.getDatabaseRecoveryThreshold();
+      HealthTransitionEvaluator evaluator = new HealthTransitionEvaluator();
+      Instant now = Instant.parse("2026-01-01T00:00:00Z");
+      QRecord state = new QRecord().withValue("id", 1).withValue("name", "core.database.probe").withValue("label", "Database probe")
+         .withValue("severity", "CRITICAL").withValue("currentStatus", "UP").withValue("currentSince", now);
+
+      for(int i = 1; i <= 3; i++)
+      {
+         HealthTransitionEvaluator.Decision decision = evaluator.evaluate(state, HealthCheckOutcome.degraded("slow"), failureThreshold, recoveryThreshold, now.plusSeconds(30L * i));
+         assertThat(decision.transition()).isEqualTo(i == 3);
+         assertThat(decision.raises()).hasSize(i == 3 ? 1 : 0);
+         state = merge(state, decision.state());
+      }
+      assertThat(state.getValueString("currentStatus")).isEqualTo("DEGRADED");
+
+      HealthTransitionEvaluator.Decision firstUp = evaluator.evaluate(state, HealthCheckOutcome.up("ok"), failureThreshold, recoveryThreshold, now.plusSeconds(120));
+      assertThat(firstUp.transition()).isFalse();
+      assertThat(firstUp.resolutions()).isEmpty();
+      state = merge(state, firstUp.state());
+      HealthTransitionEvaluator.Decision secondUp = evaluator.evaluate(state, HealthCheckOutcome.up("ok"), failureThreshold, recoveryThreshold, now.plusSeconds(150));
+      assertThat(secondUp.transition()).isTrue();
+      assertThat(secondUp.resolutions()).extracting(AlertResolution::getAlertTypeName).contains("health.check.degraded");
+   }
+
+
+
+   /*******************************************************************************
+    ** Apply an evaluator's state delta to the previous row.
+    *******************************************************************************/
+   private static QRecord merge(QRecord previous, QRecord delta)
+   {
+      QRecord merged = new QRecord(previous);
+      delta.getValues().forEach(merged::setValue);
+      return (merged);
    }
 
 

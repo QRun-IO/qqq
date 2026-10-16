@@ -212,8 +212,13 @@ public class HealthMetaDataProvider
       AlertsInstanceMetaData alerts = AlertsInstanceMetaData.ofOrWithNew(qInstance);
       for(String suffix : List.of("down", "degraded", "flapping"))
       {
+         //////////////////////////////////////////////////////////////////////////////
+         // DEGRADED is alert-only: visible on the alert and health screens, but it //
+         // does not reach the notification bell.  DOWN and flapping still notify.  //
+         //////////////////////////////////////////////////////////////////////////////
          alerts.withAlertType(new QAlertTypeMetaData().withName("health.check." + suffix).withLabel("Health check " + suffix)
-            .withDefaultSeverity(AlertSeverity.WARNING).withSubjectTableName(CHECK_TABLE).withVisibilityPermission("health.read"));
+            .withDefaultSeverity(AlertSeverity.WARNING).withSubjectTableName(CHECK_TABLE).withVisibilityPermission("health.read")
+            .withNotify(!"degraded".equals(suffix)));
       }
       alerts.withAlertType(new QAlertTypeMetaData().withName("health.runner").withLabel("Health runner not running")
          .withDefaultSeverity(AlertSeverity.ERROR).withVisibilityPermission("health.read")
@@ -241,6 +246,7 @@ public class HealthMetaDataProvider
          .withCategory(HealthCategory.CORE).withKind(HealthCheckKind.DEPENDENCY).withIntervalSeconds(86400)
          .withCheckInstance(input -> HealthCheckOutcome.up("Health history retained")
             .withMetrics(List.of(new HealthMetric().withName("deleted").withValue(HealthRetention.sweep(input.getQInstance(), Instant.now())).withUnit("rows")))));
+      HealthMonitoringMetaData settings = HealthMonitoringMetaData.ofOrWithNew(qInstance);
       for(QBackendMetaData backend : qInstance.getBackends().values())
       {
          HealthCheck check = new QBackendModuleDispatcher().getQBackendModule(backend).getHealthCheck(backend);
@@ -249,7 +255,8 @@ public class HealthMetaDataProvider
             registry.withCheck(new HealthCheckMetaData().withName("core.database." + HealthChecksMetaData.toNamePart(backend.getName())).withLabel("Database " + backend.getName())
                .withComponent("database").withCategory(HealthCategory.DATABASE).withKind(HealthCheckKind.READINESS)
                .withSeverity(AlertSeverity.CRITICAL).withIncludeInReadiness(true).withIntervalSeconds(30).withTimeoutMs(3000)
-               .withFailureThreshold(1).withCheckInstance(check));
+               .withFailureThreshold(settings.getDatabaseFailureThreshold()).withRecoveryThreshold(settings.getDatabaseRecoveryThreshold())
+               .withCheckInstance(check));
          }
       }
    }

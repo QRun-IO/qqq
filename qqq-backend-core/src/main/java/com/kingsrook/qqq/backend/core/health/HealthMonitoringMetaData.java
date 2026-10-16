@@ -39,6 +39,8 @@ public class HealthMonitoringMetaData implements QSupplementalInstanceMetaData
    private boolean prometheusEnabled = false;
    private String runnerUserName = "health_runner";
    private String homePath = "/systemHealth";
+   private int databaseFailureThreshold = 3;
+   private int databaseRecoveryThreshold = 2;
 
    public static final String NAME = "healthMonitoring";
 
@@ -76,6 +78,8 @@ public class HealthMonitoringMetaData implements QSupplementalInstanceMetaData
       validator.assertCondition(maxConcurrentChecks > 0, "Health maxConcurrentChecks must be positive.");
       validator.assertCondition(resultRetentionDays > 0, "Health resultRetentionDays must be positive.");
       validator.assertCondition(runnerUserName != null && !runnerUserName.isBlank(), "Health runnerUserName is required.");
+      validator.assertCondition(databaseFailureThreshold > 0, "Health databaseFailureThreshold must be positive.");
+      validator.assertCondition(databaseRecoveryThreshold > 0, "Health databaseRecoveryThreshold must be positive.");
    }
 
 
@@ -324,6 +328,73 @@ public class HealthMonitoringMetaData implements QSupplementalInstanceMetaData
    public HealthMonitoringMetaData withHomePath(String homePath)
    {
       setHomePath(homePath);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for databaseFailureThreshold: consecutive non-UP results before the
+    ** generated core.database.* checks leave UP (default 3, so a single slow
+    ** ping does not raise an alert).  Operators can still override it per check
+    ** on the health_check row.
+    *******************************************************************************/
+   public int getDatabaseFailureThreshold()
+   {
+      return (this.databaseFailureThreshold);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for databaseFailureThreshold
+    *******************************************************************************/
+   public void setDatabaseFailureThreshold(int databaseFailureThreshold)
+   {
+      this.databaseFailureThreshold = databaseFailureThreshold;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for databaseFailureThreshold
+    *******************************************************************************/
+   public HealthMonitoringMetaData withDatabaseFailureThreshold(int databaseFailureThreshold)
+   {
+      setDatabaseFailureThreshold(databaseFailureThreshold);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for databaseRecoveryThreshold: consecutive UP results before the
+    ** generated core.database.* checks return to UP (default 2).  Operators can
+    ** still override it per check on the health_check row.
+    *******************************************************************************/
+   public int getDatabaseRecoveryThreshold()
+   {
+      return (this.databaseRecoveryThreshold);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for databaseRecoveryThreshold
+    *******************************************************************************/
+   public void setDatabaseRecoveryThreshold(int databaseRecoveryThreshold)
+   {
+      this.databaseRecoveryThreshold = databaseRecoveryThreshold;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for databaseRecoveryThreshold
+    *******************************************************************************/
+   public HealthMonitoringMetaData withDatabaseRecoveryThreshold(int databaseRecoveryThreshold)
+   {
+      setDatabaseRecoveryThreshold(databaseRecoveryThreshold);
       return (this);
    }
 }

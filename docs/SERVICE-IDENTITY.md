@@ -1,7 +1,6 @@
 # Service identity for background work
 
-Status: DRAFT for owner sign-off (2026-10-16). Nothing that changes how sessions
-are authorized is implemented until the decisions in section 9 are signed off.
+Status: APPROVED by the owner 2026-10-16 (all recommendations in section 9).
 
 ## 1. Problem
 
@@ -352,11 +351,11 @@ nodes each mint their own token; nothing on ClusterBus); ArchUnit allow-list.
    within 5 minutes (immediately with the cluster invalidate), and raises an
    alert. Its work never falls back to the system user.
 
-## 9. Owner decisions
+## 9. Owner decisions (signed off 2026-10-16: all recommendations)
 
-- **D1** One Authentik service account per role (recommended; six for kof22) vs one per app.
-- **D2** On-behalf-of = user's current access **∩** the principal's policy (recommended, least privilege; the scheduler's policy must then cover what reports read) vs user's access alone (principal only needs `qqq.service.actOnBehalf`).
-- **D3** Bootstrap of `kof22-admins` full access: give `svc-kof22-maintenance` the grants it must hand out (recommended: full access in its policy, narrowed after the run-once) vs move that policy into the Authentik blueprint and retire the run-once.
-- **D4** Secrets: issued and rotated only declaratively (blueprint + Praetor/Infisical, recommended for kof22) vs also from the Identity UI (one-time display).
-- **D5** Quick-search indexer: stop indexing secured-data/PHI fields unless the indexer principal is granted them (recommended; behavior change from today's system indexer).
-- **D6** Scope: phase 1 = section 6.1 only; `QSystemUserSession` remains for plumbing in 6.3 behind an allow-list (recommended) vs migrating everything now.
+- **D1 (decided: per role)** One Authentik service account per role (recommended; six for kof22) vs one per app.
+- **D2 (decided: intersection)** On-behalf-of = user's current access **∩** the principal's policy (recommended, least privilege; the scheduler's policy must then cover what reports read) vs user's access alone (principal only needs `qqq.service.actOnBehalf`).
+- **D3 (decided: maintenance account holds full access for the run-once, then narrowed; owner: "do it")** Bootstrap of `kof22-admins` full access: give `svc-kof22-maintenance` the grants it must hand out (recommended: full access in its policy, narrowed after the run-once) vs move that policy into the Authentik blueprint and retire the run-once.
+- **D4 (decided: declarative only)** Secrets: issued and rotated only declaratively (blueprint + Praetor/Infisical, recommended for kof22) vs also from the Identity UI (one-time display).
+- **D5 (decided: no PHI unless granted)** Quick-search indexer: stop indexing secured-data/PHI fields unless the indexer principal is granted them (recommended; behavior change from today's system indexer).
+- **D6 (decided: phase 1 = 6.1, allow-list for 6.3)** Scope: phase 1 = section 6.1 only; `QSystemUserSession` remains for plumbing in 6.3 behind an allow-list (recommended) vs migrating everything now.

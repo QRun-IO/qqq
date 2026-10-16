@@ -23,7 +23,6 @@ package com.kingsrook.qqq.backend.core.serviceidentity;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -37,7 +36,6 @@ import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
-import com.kingsrook.qqq.backend.core.modules.authentication.implementations.Auth0AuthenticationModule;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.OAuth2AuthenticationModule;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.OAuth2AuthenticationModule.ServiceToken;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.OAuth2AuthenticationModule.ServiceTokenRefusedException;
@@ -50,9 +48,10 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  **
  ** The principal's service account credentials (environment only) buy a real
  ** access token with client_credentials; the session is then built by the
- ** module's ordinary bearer path (createSession with Authorization: Bearer), so
- ** OAuth2 gains no new way to accept a session: issuer, signature, audience,
- ** lifetime and the customizer's policy mapping all apply.
+ ** module's bearer verification and customizer (createServiceSession: same
+ ** verifier, plus the token must name the configured account; never via the
+ ** session store), so OAuth2 gains no new way to accept a session: issuer,
+ ** signature, audience, lifetime and the customizer's policy mapping all apply.
  **
  ** Tokens are cached per node, in memory only, for at most MAX_CACHE (and never
  ** handed out with less than MIN_REMAINING left). The cache is registered with
@@ -143,10 +142,8 @@ public class OAuth2ServiceIdentityProvider implements QServiceIdentityProviderIn
       {
          throw (new QAuthenticationException("No such service principal."));
       }
-      String token = currentToken(qInstance, principal);
-      Map<String, String> context = new HashMap<>();
-      context.put(Auth0AuthenticationModule.ACCESS_TOKEN_KEY, token);
-      QSession session = module.createSession(qInstance, context);
+      String   token   = currentToken(qInstance, principal);
+      QSession session = module.createServiceSession(qInstance, token, credential(principal.getUsernameEnvironmentVariable()));
       SESSION_TOKENS.put(session, token);
       return (session);
    }
@@ -283,7 +280,7 @@ public class OAuth2ServiceIdentityProvider implements QServiceIdentityProviderIn
     ** is unexpired - for in-process code that must present the principal's own
     ** token to the identity provider (never to clients, never logged).
     *******************************************************************************/
-   public static java.util.Optional<String> accessTokenFor(QSession session)
+   static java.util.Optional<String> accessTokenFor(QSession session)
    {
       if(session == null || !OAuth2AuthenticationModule.isBearerSessionUnexpired(session))
       {

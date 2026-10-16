@@ -337,6 +337,7 @@ public final class DurableJobs
          .withValue("parentJobId", request.getParentJobId())
          .withValue("savedBulkLoadProfileId", request.getSavedBulkLoadProfileId())
          .withValue("notifyEmail", Boolean.TRUE.equals(request.getNotifyEmail()))
+         .withValue("notifyOnSuccess", !Boolean.FALSE.equals(request.getNotifyOnSuccess()))
          .withValue("queuedAt", now)
          .withValue("leaseVersion", 0)
          .withValue("createDate", now)

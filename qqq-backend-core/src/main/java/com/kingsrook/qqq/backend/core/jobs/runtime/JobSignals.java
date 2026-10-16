@@ -41,6 +41,7 @@ import com.kingsrook.qqq.backend.core.alerts.NotificationSignal;
 import com.kingsrook.qqq.backend.core.alerts.QAlerts;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.jobs.DurableJobsTables;
+import com.kingsrook.qqq.backend.core.jobs.model.JobSourceType;
 import com.kingsrook.qqq.backend.core.jobs.model.JobStatus;
 import com.kingsrook.qqq.backend.core.jobs.progress.JobProgressLifecycle;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -157,7 +158,7 @@ public final class JobSignals
 
       try
       {
-         if(status == JobStatus.COMPLETED || status == JobStatus.COMPLETED_WITH_ERRORS || status == JobStatus.FAILED)
+         if((status == JobStatus.COMPLETED && notifiesOnSuccess(job)) || status == JobStatus.COMPLETED_WITH_ERRORS || status == JobStatus.FAILED)
          {
             NotificationSignal signal = new NotificationSignal()
                .withTitle(label + switch(status)
@@ -212,6 +213,28 @@ public final class JobSignals
       {
          LOG.warn("Could not signal a finished job", e);
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether a clean completion notifies the owner: when the job asked for it
+    ** (notifyOnSuccess) or for an email (notifyEmail).  Rows with no
+    ** notifyOnSuccess value fall back to the defaults: background jobs notify,
+    ** inline and tracked jobs (watched in the Jobs tray) do not.
+    *******************************************************************************/
+   static boolean notifiesOnSuccess(QRecord job)
+   {
+      if(Boolean.TRUE.equals(job.getValueBoolean("notifyEmail")))
+      {
+         return (true);
+      }
+      Boolean notifyOnSuccess = job.getValueBoolean("notifyOnSuccess");
+      if(notifyOnSuccess != null)
+      {
+         return (notifyOnSuccess);
+      }
+      return (!JobSourceType.INLINE.name().equals(job.getValueString("sourceType")));
    }
 
 

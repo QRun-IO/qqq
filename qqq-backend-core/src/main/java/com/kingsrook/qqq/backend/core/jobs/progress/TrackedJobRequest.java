@@ -37,6 +37,7 @@ public class TrackedJobRequest
    private String       clientChannel;
    private String       tableName;
    private Serializable recordId;
+   private Boolean      notifyOnSuccess = false;
 
 
 
@@ -164,4 +165,27 @@ public class TrackedJobRequest
       return (this);
    }
 
+
+
+
+   /*******************************************************************************
+    ** Getter for notifyOnSuccess: whether the owner gets a notification when the
+    ** tracked job completes cleanly.  Default false: the owner usually watched
+    ** it in the Jobs tray.  Failures always notify.
+    *******************************************************************************/
+   public Boolean getNotifyOnSuccess()
+   {
+      return (this.notifyOnSuccess);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for notifyOnSuccess
+    *******************************************************************************/
+   public TrackedJobRequest withNotifyOnSuccess(Boolean notifyOnSuccess)
+   {
+      this.notifyOnSuccess = notifyOnSuccess;
+      return (this);
+   }
 }

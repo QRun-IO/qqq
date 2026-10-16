@@ -226,6 +226,11 @@ exhausting memory.
   pre-RC.2 snapshot must set an encryption key. Existing plaintext rows end at their next refresh, and users log in again.
 * *Quartz on a persistent job store.* Startup now creates missing jobs. Apps that called `setupAllSchedules()` again
   after `start()` as a workaround can remove that call.
+* *Durable jobs `notifyOnSuccess` column.* With durable jobs enabled, add a nullable boolean `notifyOnSuccess` column
+  to `jobs_job` before deploying (PostgreSQL with snake_case naming:
+  `ALTER TABLE jobs_job ADD COLUMN notify_on_success BOOLEAN NULL`). Existing rows need no backfill. Clean completions
+  now notify only when `notifyOnSuccess` (default true for `LaunchRequest`, false for `TrackedJobRequest`) or
+  `notifyEmail` is set; failures and completions with errors notify as before.
 * *Opt-in features.* Without a search provider, the refresh-token table, `FILE_PREVIEW` adornments or
   `homeAppName`, behavior is unchanged.
 

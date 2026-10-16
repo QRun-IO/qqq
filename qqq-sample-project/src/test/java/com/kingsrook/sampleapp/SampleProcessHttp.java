@@ -175,6 +175,37 @@ class SampleProcessHttp
 
 
    /*******************************************************************************
+    ** A JSON post.
+    *******************************************************************************/
+   HttpResponse<String> postJson(String path, String json) throws Exception
+   {
+      return (client.send(builder(path).header("Content-Type", "application/json")
+         .POST(HttpRequest.BodyPublishers.ofString(json)).build(), HttpResponse.BodyHandlers.ofString()));
+   }
+
+
+
+   /*******************************************************************************
+    ** This node's base url.
+    *******************************************************************************/
+   URI base()
+   {
+      return (base);
+   }
+
+
+
+   /*******************************************************************************
+    ** The signed-in user's session cookie value.
+    *******************************************************************************/
+   String sessionId()
+   {
+      return (sessionId);
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    private HttpRequest.Builder builder(String path)

@@ -221,7 +221,7 @@ public class TableStateProvider implements StateProviderInterface
       {
          throw (new QException("The instance of this state provider is gone"));
       }
-      QContext.withTemporaryContext(new CapturedContext(qInstance, new QSystemUserSession(), null, null), () -> result[0] = body.run());
+      QContext.withTemporaryContext(new CapturedContext(qInstance, new QSystemUserSession(qInstance), null, null), () -> result[0] = body.run());
       @SuppressWarnings("unchecked")
       T typed = (T) result[0];
       return (typed);

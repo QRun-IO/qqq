@@ -33,6 +33,7 @@ import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.esb.connection.EsbConnectionManager;
+import com.kingsrook.qqq.esb.connection.EsbListenerDispatcher;
 import com.kingsrook.qqq.esb.model.EsbDestinationType;
 import com.kingsrook.qqq.esb.model.QEsbDestinationMetaData;
 import jakarta.jms.DeliveryMode;
@@ -88,6 +89,7 @@ public class EsbControlChannel
 
    private final QEsbRuntime runtime;
    private final QInstance   qInstance;
+   private final EsbListenerDispatcher dispatcher;
 
    ////////////////////////////////////////////////////////////////////
    // guarded by this: the listening session for each provider, and  //
@@ -108,6 +110,7 @@ public class EsbControlChannel
    {
       this.runtime = runtime;
       this.qInstance = qInstance;
+      this.dispatcher = new EsbListenerDispatcher("qqq-esb-control-dispatch", qInstance);
    }
 
 
@@ -156,6 +159,7 @@ public class EsbControlChannel
       }
       workersToStop.forEach(Thread::interrupt);
       sessionsToClose.values().forEach(EsbControlChannel::closeQuietly);
+      dispatcher.close();
       long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
       boolean interrupted = false;
       for(Thread worker : workersToStop)
@@ -364,7 +368,12 @@ public class EsbControlChannel
             case RESUME -> runner::resumeLocal;
             case RESTART -> runner::restartLocal;
          };
-         apply.run();
+
+         ///////////////////////////////////////////////////////////////////
+         // off the JMS listener thread: pausing or restarting a runner   //
+         // closes its sessions, which Artemis refuses on that thread     //
+         ///////////////////////////////////////////////////////////////////
+         dispatcher.dispatch(apply);
       }
       catch(Exception e)
       {

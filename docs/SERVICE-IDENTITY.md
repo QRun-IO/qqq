@@ -75,9 +75,11 @@ Non-goals (phase 1):
    configured for token exchange (RFC 8693), which is what
    `AuthentikTokenBroker.exchange` uses for Identity writes; the health check
    `token_broker` probes `client_credentials`, which that provider does not
-   allow. Fix: probe by client-authenticated introspection of a dummy token
-   (`200 {"active":false}` proves the client credentials) instead of a grant the
-   broker never uses. The broker is not the service-identity mechanism: it
+   allow. Authentik 2026.8 checks the grant type before the client secret
+   (`token/base.py`), so the probe should send the grant the broker actually
+   uses (token exchange) with a dummy subject: `invalid_client` means bad
+   credentials (DOWN), and any later refusal means the credentials passed (UP).
+   Introspection cannot be used, because it answers `{"active":false}` either way. The broker is not the service-identity mechanism: it
    exchanges a *user's* token to call the Authentik API as that user.
 4. **Service sessions can call the Authentik API as themselves.** Identity writes
    exchange the current session's access token (`OAuth2SubjectTokenSource`). For
@@ -120,7 +122,15 @@ QSession s = ServiceIdentities.session("alerts");               // for code that
 scheduled process inside `ServiceIdentities.run(...)`; scheduled durable jobs
 are owned by the principal (job user id `service:<name>`), and a worker
 re-mints the principal's session at every claim (no job grant needed, current
-authority applies, a revoked principal fails the job cleanly).
+authority applies, a revoked principal fails the job cleanly). The per-claim
+QContext, including the `JobLogWriter` context capture, gets the minted
+session and never `QSystemUserSession` (the same bug qbit-assistant #59 fixed).
+Job grants (RC.14) are unchanged: they still gate the durable jobs a user
+launches, and launches from token sessions stay refused (#1235). Only the
+`ScheduledJobs.ownerSession` / `scheduledJobsUserId` path is replaced. A
+migration re-owns existing scheduled-job rows (pending, claimed, or running)
+from `scheduledJobsUserId` to the process's principal, so their in-flight
+claims do not fail after the upgrade.
 
 Resolution goes through an SPI chosen by the instance's authentication module:
 
@@ -149,7 +159,12 @@ public interface QServiceIdentityProviderInterface
   of `exp`; a session is never handed out with less than 60 s left. Long work
   calls `ServiceIdentities.run` per unit (per report, per delivery, per chunk),
   so it always holds a fresh session. Nothing about tokens crosses ClusterBus;
-  each node authenticates for itself.
+  each node authenticates for itself. The cache is registered with
+  `ClusterCaches` (the ClusterCacheAudit test stays green). Revocation and
+  rotation reach every node: a cached token is kept for at most 5 minutes
+  whatever its `exp` says, and a key-only invalidate (`principal name`, no token
+  material) on `qqq.cluster.control` drops it everywhere at once (sent by the
+  Identity Deactivate action and on any node's `invalid_grant`).
 - Failures: `invalid_grant`/`invalid_client` (revoked, deactivated, rotated) ->
   cached negative result with backoff (30 s doubling to 5 min), alert
   `service_identity.unavailable` (dedup per principal), health check DOWN.
@@ -308,6 +323,23 @@ user fails, parent expiry invalidates child); audit attribution (`service:x`,
 `user via service:x`); OAuth2 never accepts `QServiceSession` or a hand-made
 session; local provider on TABLE_BASED and with no auth module; cluster (two
 nodes each mint their own token; nothing on ClusterBus); ArchUnit allow-list.
+
+## 8a. Acceptance (verified in kof22 prod, with no user signed in)
+
+1. The `identityAdminsFullAccess` run-once applies (or reports no change) to
+   `kof22-admins`. Its audit row says `service:maintenance`, and Authentik's
+   event log names `svc-kof22-maintenance`.
+2. A scheduled report runs and is delivered with the owner's current access.
+   The audit says `<owner> via service:scheduler`.
+3. Alert routing and delivery run as `service:alerts`, and recipients only get
+   what they can see.
+4. `data_analysis_run_schedules` and watches run without `Invalid session in
+   request`.
+5. The `token_broker` health check is UP, Authentik logs no more 400s from it,
+   and a per-principal `service_identity` check is UP.
+6. Deactivating a service account in Authentik stops its work on every node
+   within 5 minutes (immediately with the cluster invalidate), and raises an
+   alert. Its work never falls back to the system user.
 
 ## 9. Owner decisions
 

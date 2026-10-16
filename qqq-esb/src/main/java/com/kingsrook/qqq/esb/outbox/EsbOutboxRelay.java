@@ -251,7 +251,7 @@ public final class EsbOutboxRelay
    {
       try
       {
-         QContext.init(qInstance, new QSystemUserSession());
+         QContext.init(qInstance, new QSystemUserSession(qInstance));
          while(running)
          {
             int sent = 0;

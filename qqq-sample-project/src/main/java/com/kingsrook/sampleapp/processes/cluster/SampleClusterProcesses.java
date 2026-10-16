@@ -21,15 +21,21 @@
 package com.kingsrook.sampleapp.processes.cluster;
 
 
+import java.io.Serializable;
 import java.time.Duration;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 import com.kingsrook.qqq.backend.core.actions.async.AsyncJobCallback;
 import com.kingsrook.qqq.backend.core.actions.async.AsyncJobManager;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
+import com.kingsrook.qqq.backend.core.cluster.ClusterBus;
 import com.kingsrook.qqq.backend.core.cluster.ClusterCaches;
+import com.kingsrook.qqq.backend.core.cluster.ClusterEvent;
 import com.kingsrook.qqq.backend.core.cluster.QNodeLifecycle;
 import com.kingsrook.qqq.backend.core.cluster.QNodeRoles;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
@@ -46,6 +52,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.processes.QFrontendStepMeta
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QFunctionInputMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.secrets.OneTimeSecret;
+import com.kingsrook.qqq.backend.core.realtime.RealtimeBus;
+import com.kingsrook.qqq.backend.core.realtime.RealtimeMessage;
 import com.kingsrook.qqq.backend.core.utils.memoization.Memoization;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
 
@@ -68,12 +76,35 @@ public final class SampleClusterProcesses
    public static final String PROCESS_CACHE_READ      = "clusterCacheRead";
    public static final String PROCESS_CACHE_INVALIDATE = "clusterCacheInvalidate";
    public static final String PROCESS_DRAIN           = "clusterDrain";
+   public static final String PROCESS_REALTIME_HINT   = "clusterRealtimeHint";
+
+   /** the realtime event the hint process sends, on the instance channel */
+   public static final String REALTIME_HINT_EVENT = "sample.cluster.hint";
+
+   /** a cluster event whose handler, on every other node, sends the realtime hint */
+   public static final String CLUSTER_EVENT_RELAY_HINT = "sample-relay-realtime-hint";
 
    /** the ClusterCaches name of the person first-name memo */
    public static final String CACHE_NAME = "sample.personFirstName";
 
    private static final Memoization<Integer, String> FIRST_NAMES = ClusterCaches.shared(CACHE_NAME,
       new Memoization<Integer, String>(Duration.ofHours(1)), Integer::valueOf);
+
+   static
+   {
+      //////////////////////////////////////////////////////////////////////
+      // runs on the receiving node, from its cluster bus listener - the  //
+      // path that metadata overlay changes take to the realtime topic    //
+      // (publish also runs handlers on the sending node: skip it there)  //
+      //////////////////////////////////////////////////////////////////////
+      ClusterBus.on(CLUSTER_EVENT_RELAY_HINT, (instance, event) ->
+      {
+         if(instance != null && !QNodeRoles.nodeId().equals(event.getOriginNodeId()))
+         {
+            sendHint(instance, event.getKey(), "cluster-event");
+         }
+      });
+   }
 
 
 
@@ -123,6 +154,12 @@ public final class SampleClusterProcesses
 
       instance.addProcess(new QProcessMetaData().withName(PROCESS_DRAIN).withLabel("Cluster Drain This Node")
          .withStep(backend("drain", DrainStep.class)));
+
+      instance.addProcess(new QProcessMetaData().withName(PROCESS_REALTIME_HINT).withLabel("Cluster Realtime Hint")
+         .withStep(backend("hint", RealtimeHintStep.class)
+            .withInputData(new QFunctionInputMetaData()
+               .withField(new QFieldMetaData("marker", QFieldType.STRING))
+               .withField(new QFieldMetaData("relay", QFieldType.BOOLEAN)))));
    }
 
 
@@ -304,6 +341,48 @@ public final class SampleClusterProcesses
          ClusterCaches.invalidate(CACHE_NAME);
          output.addValue("invalidatedOn", QNodeRoles.nodeId());
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Send a realtime hint on the instance channel carrying a marker: from this
+    ** node, or (relay) from each other node, by a cluster event whose handler
+    ** sends it.
+    *******************************************************************************/
+   public static class RealtimeHintStep implements BackendStep
+   {
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public void run(RunBackendStepInput input, RunBackendStepOutput output) throws QException
+      {
+         String marker = input.getValueString("marker");
+         if(Boolean.TRUE.equals(input.getValueBoolean("relay")))
+         {
+            ClusterBus.publish(QContext.getQInstance(), new ClusterEvent(CLUSTER_EVENT_RELAY_HINT, "sample", marker));
+         }
+         else
+         {
+            sendHint(QContext.getQInstance(), marker, "direct");
+         }
+         output.addValue("sentFrom", QNodeRoles.nodeId());
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** The hint, published through the instance's realtime bus.
+    *******************************************************************************/
+   private static void sendHint(QInstance instance, String marker, String via)
+   {
+      Map<String, Serializable> data = new LinkedHashMap<>();
+      data.put("marker", marker);
+      data.put("via", via);
+      data.put("node", QNodeRoles.nodeId());
+      RealtimeBus.get(instance).publish(new RealtimeMessage().withChannel("instance").withEvent(REALTIME_HINT_EVENT).withData(data));
    }
 
 

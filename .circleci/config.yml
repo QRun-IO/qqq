@@ -292,7 +292,7 @@ jobs:
 
             target = Path("qqq-sample-project/target")
             for report, minimum in (("surefire-reports/TEST-com.kingsrook.sampleapp.SampleSingleNodeDefaultsTest.xml", 6),
-                                    ("failsafe-reports/TEST-com.kingsrook.sampleapp.SampleMultiNodeIT.xml", 10)):
+                                    ("failsafe-reports/TEST-com.kingsrook.sampleapp.SampleMultiNodeIT.xml", 11)):
                 suite = ElementTree.parse(target / report).getroot()
                 ran = int(suite.get("tests")) - int(suite.get("skipped"))
                 assert ran >= minimum, f"{report}: {ran} tests ran, expected {minimum}"

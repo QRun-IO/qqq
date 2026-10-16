@@ -31,6 +31,7 @@ import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.esb.connection.EsbConnectionManager;
+import com.kingsrook.qqq.esb.connection.EsbListenerDispatcher;
 import com.kingsrook.qqq.esb.model.EsbDestinationType;
 import com.kingsrook.qqq.esb.model.EsbInstanceMetaData;
 import com.kingsrook.qqq.esb.model.QEsbDestinationMetaData;
@@ -60,6 +61,7 @@ public class EsbClusterBus implements ClusterBusInterface, AutoCloseable
    private final QEsbDestinationMetaData destination;
    private final InMemoryClusterBus local = new InMemoryClusterBus();
    private final Thread worker;
+   private final EsbListenerDispatcher dispatcher;
    private volatile boolean closed;
    private Session session;
 
@@ -98,6 +100,7 @@ public class EsbClusterBus implements ClusterBusInterface, AutoCloseable
       }
       destination = configured;
       EsbConnectionManager.getInstance().addConnectionListener(destination.getProviderName(), this::invalidate);
+      dispatcher = new EsbListenerDispatcher("qqq-cluster-esb-dispatch", instance);
       worker = Thread.ofVirtual().name("qqq-cluster-esb").unstarted(this::listen);
       worker.start();
    }
@@ -225,7 +228,9 @@ public class EsbClusterBus implements ClusterBusInterface, AutoCloseable
 
 
    /*******************************************************************************
-    ** Malformed messages and listener failures are acknowledged and isolated.
+    ** Malformed messages are acknowledged and dropped; subscribers run on the
+    ** dispatcher, off the JMS thread (they may publish, which opens and closes a
+    ** session - refused on a listener thread), in order, isolated from each other.
     *******************************************************************************/
    private void onMessage(Message message)
    {
@@ -233,7 +238,8 @@ public class EsbClusterBus implements ClusterBusInterface, AutoCloseable
       {
          if(message instanceof TextMessage text)
          {
-            local.publish(JsonUtils.toObject(text.getText(), ClusterEvent.class));
+            ClusterEvent event = JsonUtils.toObject(text.getText(), ClusterEvent.class);
+            dispatcher.dispatch(() -> local.publish(event));
          }
       }
       catch(Exception e)
@@ -289,6 +295,7 @@ public class EsbClusterBus implements ClusterBusInterface, AutoCloseable
       closed = true;
       worker.interrupt();
       invalidate();
+      dispatcher.close();
    }
 }
 

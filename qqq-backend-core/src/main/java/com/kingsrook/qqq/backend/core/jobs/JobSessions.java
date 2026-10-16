@@ -123,6 +123,14 @@ public final class JobSessions
       QSession session;
       boolean  granted   = grant != null && !grant.isEmpty();
       String   principal = ServiceIdentities.principalNameFromId(userId);
+      if(principal != null && granted)
+      {
+         //////////////////////////////////////////////////////////////////
+         // a principal-owned job never carries a user's grant: refuse   //
+         // rather than guess which identity it should run as            //
+         //////////////////////////////////////////////////////////////////
+         throw (new QPermissionDeniedException("Could not establish the session of the job's owner."));
+      }
       if(principal != null)
       {
          ////////////////////////////////////////////////////////////////////

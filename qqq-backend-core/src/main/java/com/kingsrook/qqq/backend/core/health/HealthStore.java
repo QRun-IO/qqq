@@ -123,4 +123,20 @@ final class HealthStore
          throw new QException("Health update failed");
       }
    }
+
+
+
+   /*******************************************************************************
+    ** Expire only the lease version observed by the sweeper, never a renewed one.
+    *******************************************************************************/
+   static boolean expireNode(QRecord row, java.time.Instant expires, boolean retired, java.time.Instant now) throws QException
+   {
+      return (new com.kingsrook.qqq.backend.core.actions.tables.ConditionalUpdateAction().execute(
+         new com.kingsrook.qqq.backend.core.model.actions.tables.update.ConditionalUpdateInput(HealthMetaDataProvider.CHECK_TABLE)
+            .withFilter(new QQueryFilter().withCriteria(new QFilterCriteria("id", QCriteriaOperator.EQUALS, row.getValue("id")))
+               .withCriteria(new QFilterCriteria("runnerLeaseExpiresAt", QCriteriaOperator.EQUALS, expires)))
+            .withValue("currentStatus", HealthStatus.UNKNOWN.name()).withValue("currentMessage", "Node lease expired; awaiting its own sample")
+            .withValue("consecutiveFailures", 0).withValue("consecutiveSuccesses", 0).withValue("registered", !retired)
+            .withValue("currentSince", now)) > 0);
+   }
 }

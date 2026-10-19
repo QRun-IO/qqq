@@ -132,7 +132,12 @@ public class RDBMSBackendModule implements QBackendModuleInterface
                return (HealthCheckOutcome.down(HealthRedactor.redactThrowable(e)));
             }
 
-            return (withPoolMetrics(HealthCheckOutcome.up("Database reachable"), rdbms));
+            HealthCheckOutcome outcome = HealthCheckOutcome.up("Database reachable").withDetails(new HealthDetails().withValue("vendor", rdbms.getVendor()));
+            if(!com.kingsrook.qqq.backend.core.health.HealthChecksMetaData.ofOrWithNew(input.getQInstance()).getNodeLocalChecksEnabled() && !ConnectionManager.getPoolMetrics(rdbms).isEmpty())
+            {
+               return (withPoolMetrics(outcome, rdbms));
+            }
+            return (outcome);
          }
       });
    }
@@ -140,9 +145,24 @@ public class RDBMSBackendModule implements QBackendModuleInterface
 
 
    /*******************************************************************************
+    ** Pool pressure is JVM-local; shared connectivity checks do not own this state.
+    *******************************************************************************/
+   @Override
+   public HealthCheck getNodeLocalHealthCheck(QBackendMetaData backend)
+   {
+      if(((RDBMSBackendMetaData) backend).getConnectionProvider() == null)
+      {
+         return (null);
+      }
+      return (input -> withPoolMetrics(HealthCheckOutcome.up("Connection pool healthy"), (RDBMSBackendMetaData) backend));
+   }
+
+
+
+   /*******************************************************************************
     ** Add the backend's connection pool gauges (when it has a pool) as metrics
-    ** and details. Threads waiting for a checkout, or suspected leaked
-    ** connections, make a reachable database DEGRADED.
+    ** and details. Only sustained waits, new checkout timeouts or active leaks
+    ** degrade pool health; already failed connectivity is never weakened.
     *******************************************************************************/
    public static HealthCheckOutcome withPoolMetrics(HealthCheckOutcome outcome, RDBMSBackendMetaData rdbms)
    {
@@ -152,7 +172,7 @@ public class RDBMSBackendModule implements QBackendModuleInterface
       Map<String, Number> pool = ConnectionManager.getPoolMetrics(rdbms);
       if(pool.isEmpty())
       {
-         return (outcome);
+         return (outcome.getStatus() == HealthStatus.UP ? outcome.withStatus(HealthStatus.UNKNOWN).withMessage("Connection pool not initialized or not pooled") : outcome);
       }
 
       List<HealthMetric> metrics = new ArrayList<>();
@@ -163,11 +183,13 @@ public class RDBMSBackendModule implements QBackendModuleInterface
       });
       outcome.withMetrics(metrics);
 
-      long waiting = pool.getOrDefault("threadsAwaitingCheckout", 0).longValue();
-      long leaks   = pool.getOrDefault("suspectedLeaks", 0).longValue();
-      if(waiting > 0 || leaks > 0)
+      HealthStatus pressure = ConnectionManager.getPoolPressureStatus(rdbms, pool);
+      if(outcome.getStatus() == HealthStatus.UP && pressure != HealthStatus.UP)
       {
-         outcome.withStatus(HealthStatus.DEGRADED).withMessage("Database reachable; connection pool under pressure (" + waiting + " waiting, " + leaks + " suspected leaks)");
+         outcome.withStatus(pressure).withMessage(pressure == HealthStatus.DEGRADED
+            ? "Connection pool pressure (" + pool.get("threadsAwaitingCheckout") + " waiting, " + pool.get("suspectedLeaks")
+               + " suspected leaks, " + pool.get("checkoutTimeouts") + " total checkout timeouts): sustained waiters, new timeout or active leak"
+            : "Connection pool metrics unavailable");
       }
       return (outcome);
    }

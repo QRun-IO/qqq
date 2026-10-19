@@ -31,11 +31,13 @@ import com.kingsrook.qqq.backend.core.model.actions.metadata.MetaDataInput;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.MetaDataOutput;
 import com.kingsrook.qqq.backend.core.model.actions.widgets.RenderWidgetInput;
 import com.kingsrook.qqq.backend.core.model.actions.widgets.RenderWidgetOutput;
+import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducerHelper;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.esb.metadata.EsbAppMetaDataProducer;
 import com.kingsrook.qqq.esb.metadata.EsbOverviewWidgetMetaDataProducer;
+import com.kingsrook.qqq.esb.model.EsbInstanceMetaData;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
@@ -271,6 +273,80 @@ class EsbPermissionsTest extends EsbApiTestBase
       JSONObject overview = getJson("/qqq/v1/esb/overview");
       assertEquals(2, overview.getJSONArray("destinations").length());
       assertEquals(2, overview.getJSONArray("destinations").getJSONObject(0).getJSONArray("publishers").length());
+   }
+
+
+   /*******************************************************************************
+    ** Embedded registration keeps the widget and its independent service gate.
+    *******************************************************************************/
+   @Test
+   void testEmbeddedOverviewPermission() throws Exception
+   {
+      EsbInstanceMetaData.of(qInstance).withStandaloneAppEnabled(false);
+      qInstance.getApps().remove(EsbAppMetaDataProducer.NAME);
+      MetaDataProducerHelper.processAllMetaDataProducersInPackage(qInstance, EsbAppMetaDataProducer.class.getPackageName());
+      assertThat(qInstance.getApps()).doesNotContainKey(EsbAppMetaDataProducer.NAME);
+      assertThat(qInstance.getWidgets()).containsKey(EsbOverviewWidgetMetaDataProducer.NAME);
+      new QInstanceValidator().validate(qInstance);
+
+      setPermissions("cluster.read", ESB_OPERATE, ESB_DELETE);
+      assertEquals(403, get("/qqq/v1/esb/overview").statusCode());
+      assertEquals(403, get("/qqq/v1/esb/messages/" + DESTINATION_FULFILLMENT).statusCode());
+
+      setPermissions(ESB_VIEW);
+      EsbRouteProviderTest.assertPermissions(getJson("/qqq/v1/esb/overview").getJSONObject("permissions"), false, false);
+      assertEquals(200, get("/qqq/v1/esb/messages/" + DESTINATION_FULFILLMENT).statusCode());
+      assertEquals(200, get("/qqq/v1/esb/messages/" + DESTINATION_ORDER_EVENTS + "?trigger=" + TRIGGER_SYNC_ORDER).statusCode());
+
+      QContext.init(qInstance, new QSession().withPermission("cluster.read"));
+      assertThat(new MetaDataAction().execute(new MetaDataInput()).getWidgets()).doesNotContainKey(EsbOverviewWidgetMetaDataProducer.NAME);
+      QContext.init(qInstance, new QSession().withPermission(ESB_VIEW));
+      assertThat(new MetaDataAction().execute(new MetaDataInput()).getWidgets()).containsKey(EsbOverviewWidgetMetaDataProducer.NAME);
+   }
+
+
+
+   /*******************************************************************************
+    ** An accidentally missing standalone app must not enable widget fallback.
+    *******************************************************************************/
+   @Test
+   void testMissingStandaloneAppDenied() throws Exception
+   {
+      qInstance.getApps().remove(EsbAppMetaDataProducer.NAME);
+      setPermissions(ESB_VIEW);
+      assertEquals(403, get("/qqq/v1/esb/overview").statusCode());
+   }
+
+
+
+   /*******************************************************************************
+    ** Embedded mode needs the registered permission-bearing widget.
+    *******************************************************************************/
+   @Test
+   void testMissingEmbeddedWidgetDenied() throws Exception
+   {
+      EsbInstanceMetaData.of(qInstance).withStandaloneAppEnabled(false);
+      qInstance.getApps().remove(EsbAppMetaDataProducer.NAME);
+      qInstance.getWidgets().remove(EsbOverviewWidgetMetaDataProducer.NAME);
+      setPermissions(ESB_VIEW);
+      assertEquals(403, get("/qqq/v1/esb/overview").statusCode());
+   }
+
+
+
+   /*******************************************************************************
+    ** Custom app permissions remain authoritative, including in embedded mode.
+    *******************************************************************************/
+   @Test
+   void testStandaloneAppOverridePreserved() throws Exception
+   {
+      EsbInstanceMetaData.of(qInstance).withStandaloneAppEnabled(false);
+      qInstance.getApp(EsbAppMetaDataProducer.NAME).setPermissionRules(new QPermissionRules()
+         .withLevel(PermissionLevel.HAS_ACCESS_PERMISSION).withPermissionBaseName("customEsb"));
+      setPermissions(ESB_VIEW);
+      assertEquals(403, get("/qqq/v1/esb/overview").statusCode());
+      setPermissions("customEsb.hasAccess");
+      assertEquals(200, get("/qqq/v1/esb/overview").statusCode());
    }
 
 }

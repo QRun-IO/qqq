@@ -123,6 +123,36 @@ class EsbOperateProcessesTest extends EsbTestBase
 
 
    /*******************************************************************************
+    ** Embedding under Cluster does not grant operations to cluster or ESB viewers.
+    *******************************************************************************/
+   @Test
+   void deniesEmbeddedViewerOperations() throws Exception
+   {
+      QInstance instance = QContext.getQInstance();
+      EsbInstanceMetaData.of(instance).withStandaloneAppEnabled(false);
+      MetaDataProducerHelper.processAllMetaDataProducersInPackage(instance, "com.kingsrook.qqq.esb.metadata");
+      MetaDataProducerHelper.processAllMetaDataProducersInPackage(instance, "com.kingsrook.qqq.esb.processes");
+      assertThat(instance.getApps()).doesNotContainKey("esb");
+
+      for(String permission : List.of("cluster.read", "esbView.hasAccess"))
+      {
+         QContext.init(instance, new QSession().withPermission(permission));
+         for(String name : OPERATE)
+         {
+            assertThatThrownBy(() -> new RunProcessAction().execute(new RunProcessInput().withProcessName(name))).as(name)
+               .hasMessageContaining("Permission denied");
+         }
+         for(String name : DELETE)
+         {
+            assertThatThrownBy(() -> new RunProcessAction().execute(new RunProcessInput().withProcessName(name))).as(name)
+               .hasMessageContaining("Permission denied");
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Management actions use the broker adapter, with the contract output.
     *******************************************************************************/
    @Test

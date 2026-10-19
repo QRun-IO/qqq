@@ -67,6 +67,8 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
    //////////////////////////////////////////////////////////////////////
    private static final String INSTANCE_NAME_PATTERN = "[A-Za-z0-9._~-]+";
 
+   private boolean standaloneAppEnabled = true;
+
    private String realtimeDestinationName = "qqq.realtime";
 
    private EsbOutboxConfig outbox = new EsbOutboxConfig();
@@ -74,6 +76,28 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
    private String                               instanceName;
    private Map<String, QEsbProviderMetaData>    providers    = new LinkedHashMap<>();
    private Map<String, QEsbDestinationMetaData> destinations = new LinkedHashMap<>();
+
+
+
+   /*******************************************************************************
+    ** Whether the standard ESB app is produced. Disable before producing metadata
+    ** to embed the overview widget in another app; its ESB view rules still apply.
+    *******************************************************************************/
+   public boolean isStandaloneAppEnabled()
+   {
+      return (standaloneAppEnabled);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for standalone app registration (enabled by default).
+    *******************************************************************************/
+   public EsbInstanceMetaData withStandaloneAppEnabled(boolean standaloneAppEnabled)
+   {
+      this.standaloneAppEnabled = standaloneAppEnabled;
+      return (this);
+   }
 
 
 

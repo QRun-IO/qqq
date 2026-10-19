@@ -28,6 +28,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
+import com.kingsrook.qqq.esb.model.EsbInstanceMetaData;
 
 
 /*******************************************************************************
@@ -65,6 +66,11 @@ public class EsbAppMetaDataProducer extends MetaDataProducer<QAppMetaData>
    @Override
    public QAppMetaData produce(QInstance qInstance) throws QException
    {
+      if(!EsbInstanceMetaData.of(qInstance).isStandaloneAppEnabled())
+      {
+         return (null);
+      }
+
       return (new QAppMetaData()
          .withName(NAME)
          .withLabel("ESB")

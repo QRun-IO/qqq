@@ -544,6 +544,24 @@ public class QJavalinImplementation
     *******************************************************************************/
    public static QSession setupSession(Context context, AbstractActionInput input, QAuthenticationMetaData authMetaData) throws QModuleDispatchException, QAuthenticationException
    {
+      return setupSession(context, input, authMetaData, qInstance);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setup a session using an explicit instance, independent of legacy routes.
+    **
+    ** @param context The Javalin context
+    ** @param input The action input (may be null)
+    ** @param authMetaData The resolved authentication metadata
+    ** @param sessionInstance The instance owning the request
+    ** @return The created session
+    ** @throws QModuleDispatchException If module dispatch fails
+    ** @throws QAuthenticationException If authentication fails
+    *******************************************************************************/
+   public static QSession setupSession(Context context, AbstractActionInput input, QAuthenticationMetaData authMetaData, QInstance sessionInstance) throws QModuleDispatchException, QAuthenticationException
+   {
       QAuthenticationModuleDispatcher qAuthenticationModuleDispatcher = new QAuthenticationModuleDispatcher();
       QAuthenticationModuleInterface  authenticationModule            = qAuthenticationModuleDispatcher.getQModule(authMetaData);
 
@@ -624,13 +642,13 @@ public class QJavalinImplementation
             }
 
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-            // put the qInstance into context - but no session yet (since, the whole point of this call is to setup the session!) //
+            // put the sessionInstance into context - but no session yet (since, the whole point of this call is to setup the session!) //
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-            QContext.init(qInstance, null);
-            session = authenticationModule.createSession(qInstance, authMetaData, authenticationContext);
+            QContext.init(sessionInstance, null);
+            session = authenticationModule.createSession(sessionInstance, authMetaData, authenticationContext);
          }
-         com.kingsrook.qqq.backend.core.actions.profile.UserProfiles.applyIfInstalled(qInstance, session);
-         QContext.init(qInstance, session, null, input);
+         com.kingsrook.qqq.backend.core.actions.profile.UserProfiles.applyIfInstalled(sessionInstance, session);
+         QContext.init(sessionInstance, session, null, input);
 
          String tableVariant = QJavalinUtils.getFormParamOrQueryParam(context, "tableVariant");
          if(StringUtils.hasContent(tableVariant))

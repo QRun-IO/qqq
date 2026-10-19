@@ -86,6 +86,7 @@ public class ManageSessionExecutor extends AbstractMiddlewareExecutor<ManageSess
       // a stateless bearer-token session never becomes a cookie session        //
       ////////////////////////////////////////////////////////////////////////////
       refuseBearerSession(session);
+      ExecutorSessionUtils.rejectOperationScopeWithoutSpec(session);
 
       //////////////////
       // build output //

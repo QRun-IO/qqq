@@ -92,8 +92,11 @@ public class LogoutSpecV1 extends AbstractEndpointSpec<LogoutInput, LogoutRespon
       // also issued (by modules that use it) on every request; a stale one    //
       // would otherwise shadow the next sign-in's sessionUUID.                //
       ///////////////////////////////////////////////////////////////////////////
-      context.removeCookie(QJavalinImplementation.SESSION_UUID_COOKIE_NAME);
-      context.removeCookie(QJavalinImplementation.SESSION_ID_COOKIE_NAME);
+      if(result != null && !ExecutorSessionUtils.isBearerAuthorization(context.header("Authorization")))
+      {
+         context.removeCookie(QJavalinImplementation.SESSION_UUID_COOKIE_NAME);
+         context.removeCookie(QJavalinImplementation.SESSION_ID_COOKIE_NAME);
+      }
 
       return (result);
    }
@@ -108,11 +111,12 @@ public class LogoutSpecV1 extends AbstractEndpointSpec<LogoutInput, LogoutRespon
    {
       LogoutInput logoutInput = new LogoutInput();
       logoutInput.setSessionUUID(context.cookie(QJavalinImplementation.SESSION_UUID_COOKIE_NAME));
-      if(logoutInput.getSessionUUID() == null && (context.cookie(QJavalinImplementation.SESSION_ID_COOKIE_NAME) != null || context.header("Authorization") != null))
+      if(logoutInput.getSessionUUID() != null || context.cookie(QJavalinImplementation.SESSION_ID_COOKIE_NAME) != null || context.header("Authorization") != null)
       {
          try
          {
             logoutInput.setSessionUUID(ExecutorSessionUtils.setupSession(context, qInstance).getUuid());
+            checkCredentialScopeOperation(context);
          }
          catch(QAuthenticationException ignored)
          {

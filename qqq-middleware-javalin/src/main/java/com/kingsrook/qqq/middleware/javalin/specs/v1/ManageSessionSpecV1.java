@@ -25,11 +25,13 @@ import java.io.Serializable;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleDispatcher;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.collections.MapBuilder;
 import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
+import com.kingsrook.qqq.middleware.javalin.executors.ExecutorSessionUtils;
 import com.kingsrook.qqq.middleware.javalin.executors.ManageSessionExecutor;
 import com.kingsrook.qqq.middleware.javalin.executors.io.ManageSessionInput;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
@@ -216,6 +218,10 @@ public class ManageSessionSpecV1 extends AbstractEndpointSpec<ManageSessionInput
    @Override
    public ManageSessionInput buildInput(Context context) throws Exception
    {
+      if(ExecutorSessionUtils.isBearerAuthorization(context.header("Authorization")))
+      {
+         throw new QAuthenticationException("Bearer credentials cannot create a stored session.");
+      }
       ManageSessionInput manageSessionInput = new ManageSessionInput();
       manageSessionInput.setAccessToken(getRequestParam(context, "accessToken"));
       manageSessionInput.setCode(getRequestParam(context, "code"));

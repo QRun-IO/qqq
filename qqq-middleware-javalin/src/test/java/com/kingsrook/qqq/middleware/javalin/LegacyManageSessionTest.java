@@ -306,10 +306,14 @@ class LegacyManageSessionTest
    void authorizationPreventsCookieFallback()
    {
       String uuid = signIn("first");
-      for(String authorization : List.of("Basic invalid", "Bearer invalid", ""))
+      for(String authorization : List.of("Basic invalid", ""))
       {
          assertRefused(legacy("{}", uuid, authorization));
       }
+      HttpResponse<String> mixedBearer = legacy("{}", uuid, "Bearer invalid");
+      assertEquals(403, mixedBearer.getStatus());
+      assertFalse(JsonUtils.toJSONObject(mixedBearer.getBody()).has("uuid"));
+      assertTrue(mixedBearer.getHeaders().get("Set-Cookie").isEmpty());
    }
 
 

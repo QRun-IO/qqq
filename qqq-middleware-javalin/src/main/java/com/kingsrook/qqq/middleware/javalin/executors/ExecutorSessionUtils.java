@@ -29,6 +29,7 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QModuleDispatchException;
+import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.ClientChannelsMetaData;
@@ -63,8 +64,9 @@ public class ExecutorSessionUtils
    /*******************************************************************************
     **
     *******************************************************************************/
-   public static QSession setupSession(Context context, QInstance qInstance) throws QModuleDispatchException, QAuthenticationException, QBadRequestException
+   public static QSession setupSession(Context context, QInstance qInstance) throws QModuleDispatchException, QAuthenticationException, QBadRequestException, QPermissionDeniedException
    {
+      rejectMixedBearerCookies(context);
       QAuthenticationModuleDispatcher qAuthenticationModuleDispatcher = new QAuthenticationModuleDispatcher();
       QAuthenticationModuleInterface  authenticationModule            = qAuthenticationModuleDispatcher.getQModule(qInstance.getAuthentication());
 
@@ -172,7 +174,8 @@ public class ExecutorSessionUtils
          // a bearer-token session (OAuth2 JWT) is stateless - the client sends the //
          // token on each request, so it gets no cookie                             //
          /////////////////////////////////////////////////////////////////////////////
-         if(inProcessToken == null && authenticationModule.usesSessionIdCookie() && !"true".equals(session.getValue(OAuth2AuthenticationModule.BEARER_SESSION_VALUE_KEY)))
+         if(inProcessToken == null && authenticationModule.usesSessionIdCookie() && !isBearerAuthorization(context.header("Authorization"))
+            && !"true".equals(session.getValue(OAuth2AuthenticationModule.BEARER_SESSION_VALUE_KEY)))
          {
             QJavalinImplementation.setSessionCookie(context, SESSION_ID_COOKIE_NAME, session.getIdReference());
          }
@@ -188,12 +191,57 @@ public class ExecutorSessionUtils
          ////////////////////////////////////////////////////////////////////////////////
          // if exception caught, clear out the cookie so the frontend will reauthorize //
          ////////////////////////////////////////////////////////////////////////////////
-         if(inProcessToken == null && authenticationModule.usesSessionIdCookie())
+         if(inProcessToken == null && authenticationModule.usesSessionIdCookie() && !isBearerAuthorization(context.header("Authorization")))
          {
             context.removeCookie(SESSION_ID_COOKIE_NAME);
          }
 
          throw (qae);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Browser cookies must not silently replace a presented bearer credential.
+    ** Call before selecting any authentication path, including legacy adapters.
+    *******************************************************************************/
+   public static void rejectMixedBearerCookies(Context context) throws QPermissionDeniedException
+   {
+      if(isBearerAuthorization(context.header("Authorization"))
+         && (context.cookie(SESSION_ID_COOKIE_NAME) != null || context.cookie(Auth0AuthenticationModule.SESSION_UUID_KEY) != null))
+      {
+         throw new QPermissionDeniedException("Bearer credentials cannot be combined with session cookies.");
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Recognize the scheme independently of JWT format or token validity.
+    *******************************************************************************/
+   public static boolean isBearerAuthorization(String authorization)
+   {
+      if(authorization == null)
+      {
+         return (false);
+      }
+      String value = authorization.strip();
+      return (value.equalsIgnoreCase("Bearer") || value.regionMatches(true, 0, "Bearer ", 0, 7));
+   }
+
+
+
+   /*******************************************************************************
+    ** An operation-scoped credential cannot authorize a route without a spec.
+    ** Object-only scopes keep their ordinary permissions-based behavior.
+    *******************************************************************************/
+   public static void rejectOperationScopeWithoutSpec(QSession session) throws QPermissionDeniedException
+   {
+      if(session != null && session.getCredentialScope() != null
+         && (session.getCredentialScope().getOperationIds() != null || session.getCredentialScope().getOperationPathParameters() != null))
+      {
+         throw new QPermissionDeniedException("This credential requires a documented operation boundary.");
       }
    }
 

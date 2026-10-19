@@ -74,6 +74,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QInstanceValidationException;
 import com.kingsrook.qqq.backend.core.exceptions.QModuleDispatchException;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
+import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -132,6 +133,7 @@ import com.kingsrook.qqq.backend.core.model.statusmessages.QStatusMessage;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.Auth0AuthenticationModule;
+import com.kingsrook.qqq.backend.core.modules.authentication.implementations.OAuth2AuthenticationModule;
 import com.kingsrook.qqq.backend.core.utils.ClassPathUtils;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.ExceptionUtils;
@@ -428,6 +430,11 @@ public class QJavalinImplementation
    {
       try
       {
+         ExecutorSessionUtils.rejectMixedBearerCookies(context);
+         if(ExecutorSessionUtils.isBearerAuthorization(context.header("Authorization")))
+         {
+            throw new QAuthenticationException("Bearer credentials cannot create a stored session.");
+         }
          Map<?, ?> map = context.bodyAsClass(Map.class);
 
          QAuthenticationModuleDispatcher qAuthenticationModuleDispatcher = new QAuthenticationModuleDispatcher();
@@ -467,7 +474,11 @@ public class QJavalinImplementation
          /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
          QContext.init(qInstance, null);
          QSession session = authenticationModule.createSession(qInstance, authContext);
-
+         ExecutorSessionUtils.rejectOperationScopeWithoutSpec(session);
+         if("true".equals(session.getValue(OAuth2AuthenticationModule.BEARER_SESSION_VALUE_KEY)))
+         {
+            throw new QAuthenticationException("Bearer credentials cannot create a stored session.");
+         }
          setSessionCookie(context, SESSION_UUID_COOKIE_NAME, session.getUuid());
 
          Map<String, Serializable> resultMap = new HashMap<>();
@@ -525,7 +536,7 @@ public class QJavalinImplementation
    /*******************************************************************************
     **
     *******************************************************************************/
-   public static QSession setupSession(Context context, AbstractActionInput input) throws QModuleDispatchException, QAuthenticationException
+   public static QSession setupSession(Context context, AbstractActionInput input) throws QModuleDispatchException, QAuthenticationException, QPermissionDeniedException
    {
       return setupSession(context, input, qInstance.getAuthentication());
    }
@@ -542,7 +553,7 @@ public class QJavalinImplementation
     ** @throws QModuleDispatchException If module dispatch fails
     ** @throws QAuthenticationException If authentication fails
     *******************************************************************************/
-   public static QSession setupSession(Context context, AbstractActionInput input, QAuthenticationMetaData authMetaData) throws QModuleDispatchException, QAuthenticationException
+   public static QSession setupSession(Context context, AbstractActionInput input, QAuthenticationMetaData authMetaData) throws QModuleDispatchException, QAuthenticationException, QPermissionDeniedException
    {
       return setupSession(context, input, authMetaData, qInstance);
    }
@@ -560,8 +571,9 @@ public class QJavalinImplementation
     ** @throws QModuleDispatchException If module dispatch fails
     ** @throws QAuthenticationException If authentication fails
     *******************************************************************************/
-   public static QSession setupSession(Context context, AbstractActionInput input, QAuthenticationMetaData authMetaData, QInstance sessionInstance) throws QModuleDispatchException, QAuthenticationException
+   public static QSession setupSession(Context context, AbstractActionInput input, QAuthenticationMetaData authMetaData, QInstance sessionInstance) throws QModuleDispatchException, QAuthenticationException, QPermissionDeniedException
    {
+      ExecutorSessionUtils.rejectMixedBearerCookies(context);
       QAuthenticationModuleDispatcher qAuthenticationModuleDispatcher = new QAuthenticationModuleDispatcher();
       QAuthenticationModuleInterface  authenticationModule            = qAuthenticationModuleDispatcher.getQModule(authMetaData);
 
@@ -647,6 +659,7 @@ public class QJavalinImplementation
             QContext.init(sessionInstance, null);
             session = authenticationModule.createSession(sessionInstance, authMetaData, authenticationContext);
          }
+         ExecutorSessionUtils.rejectOperationScopeWithoutSpec(session);
          com.kingsrook.qqq.backend.core.actions.profile.UserProfiles.applyIfInstalled(sessionInstance, session);
          QContext.init(sessionInstance, session, null, input);
 
@@ -660,7 +673,8 @@ public class QJavalinImplementation
          /////////////////////////////////////////////////////////////////////////////////
          // refresh cookies only for sessions created by the authentication module    //
          /////////////////////////////////////////////////////////////////////////////////
-         if(inProcessToken == null && authenticationModule.usesSessionIdCookie())
+         if(inProcessToken == null && authenticationModule.usesSessionIdCookie() && !ExecutorSessionUtils.isBearerAuthorization(context.header("Authorization"))
+            && !"true".equals(session.getValue(OAuth2AuthenticationModule.BEARER_SESSION_VALUE_KEY)))
          {
             setSessionCookie(context, SESSION_ID_COOKIE_NAME, session.getUuid());
          }
@@ -675,7 +689,7 @@ public class QJavalinImplementation
          ////////////////////////////////////////////////////////////////////////////////
          // if exception caught, clear out the cookie so the frontend will reauthorize //
          ////////////////////////////////////////////////////////////////////////////////
-         if(inProcessToken == null && authenticationModule.usesSessionIdCookie())
+         if(inProcessToken == null && authenticationModule.usesSessionIdCookie() && !ExecutorSessionUtils.isBearerAuthorization(context.header("Authorization")))
          {
             context.removeCookie(SESSION_ID_COOKIE_NAME);
          }

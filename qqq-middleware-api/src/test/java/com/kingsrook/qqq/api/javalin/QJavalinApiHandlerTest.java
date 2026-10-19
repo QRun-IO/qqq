@@ -21,15 +21,21 @@
 package com.kingsrook.qqq.api.javalin;
 
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
 import java.time.LocalDate;
 import java.time.Month;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import com.kingsrook.qqq.api.BaseTest;
 import com.kingsrook.qqq.api.TestUtils;
 import com.kingsrook.qqq.api.actions.ApiImplementation;
+import com.kingsrook.qqq.api.model.metadata.ApiInstanceMetaDataContainer;
 import com.kingsrook.qqq.api.model.metadata.tables.ApiTableMetaData;
 import com.kingsrook.qqq.api.model.metadata.tables.ApiTableMetaDataContainer;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
@@ -47,12 +53,19 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.savedreports.ReportColumns;
 import com.kingsrook.qqq.backend.core.model.savedreports.SavedReport;
+import com.kingsrook.qqq.backend.core.model.session.QCredentialScope;
+import com.kingsrook.qqq.backend.core.model.session.QSession;
+import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleCustomizerInterface;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.SleepUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
@@ -88,6 +101,77 @@ import static org.junit.jupiter.api.Assertions.fail;
  *******************************************************************************/
 class QJavalinApiHandlerTest extends BaseTest
 {
+   /*******************************************************************************
+    ** Test credentials use the ordinary authentication metadata customizer.
+    *******************************************************************************/
+   public static class OperationScopeCustomizer implements QAuthenticationModuleCustomizerInterface
+   {
+      /***************************************************************************
+       ** A token intended for the UI API must not spill into an application API.
+       ***************************************************************************/
+      @Override
+      public void customizeSession(QInstance instance, QSession session, Map<String, Object> context)
+      {
+         if("operation-scoped".equals(session.getUuid()))
+         {
+            session.withCredentialScope(new QCredentialScope().withOperationIds(Set.of("POST /table/{tableName}/query")));
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Separate API authentication stays independent while scoped UI tokens fail.
+    *******************************************************************************/
+   @Test
+   void applicationApiRejectsOperationScopedCredentials() throws Exception
+   {
+      QInstance previous = QJavalinImplementation.getQInstance();
+      QInstance instance = TestUtils.defineInstance();
+      QAuthenticationMetaData independent = instance.getAuthentication();
+      instance.registerAuthenticationProvider(AuthScope.instanceDefault(), new QAuthenticationMetaData().withName("scoped-mock")
+         .withType(QAuthenticationType.MOCK).withCustomizer(new QCodeReference(OperationScopeCustomizer.class)));
+      var alternateApi = ApiInstanceMetaDataContainer.of(instance).getApiInstanceMetaData(TestUtils.ALTERNATIVE_API_NAME);
+      instance.registerAuthenticationProvider(AuthScope.api(alternateApi), independent);
+      QApplicationJavalinServer server = new QApplicationJavalinServer(new AbstractQQQApplication()
+      {
+         /***********************************************************************
+          ** Keep independently authenticated application endpoints installed.
+          ***********************************************************************/
+         @Override
+         public QInstance defineQInstance()
+         {
+            return instance;
+         }
+      }).withPort(6282).withServeFrontendNext(false).withServeFrontendMaterialDashboard(false).withServeLegacyUnversionedMiddlewareAPI(false);
+      try
+      {
+         server.start();
+         String url = "http://localhost:6282/api/2023.Q1/person/query";
+         try(HttpClient client = HttpClient.newHttpClient())
+         {
+            var plain = client.send(HttpRequest.newBuilder(URI.create(url)).header("Cookie", "sessionUUID=plain").GET().build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, plain.statusCode(), plain.body());
+            var scoped = client.send(HttpRequest.newBuilder(URI.create(url)).header("Cookie", "sessionUUID=operation-scoped").GET().build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+            assertEquals(403, scoped.statusCode(), scoped.body());
+            var mixed = client.send(HttpRequest.newBuilder(URI.create(url)).header("Cookie", "sessionUUID=plain").header("Authorization", "Bearer opaque").GET().build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+            assertEquals(403, mixed.statusCode(), mixed.body());
+            var independentResponse = client.send(HttpRequest.newBuilder(URI.create("http://localhost:6282/person-api/2023.Q1/person/query"))
+               .header("Cookie", "sessionUUID=operation-scoped").GET().build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, independentResponse.statusCode(), independentResponse.body());
+         }
+      }
+      finally
+      {
+         server.stop();
+         QJavalinImplementation.setQInstance(previous);
+         new QJavalinApiHandler(javalinServerQInstance);
+      }
+   }
+
+
+
    /*******************************************************************************
     ** A process continuation must use the same explicit test session.
     *******************************************************************************/

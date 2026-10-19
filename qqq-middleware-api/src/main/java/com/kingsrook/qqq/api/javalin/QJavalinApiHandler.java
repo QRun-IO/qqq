@@ -586,7 +586,7 @@ public class QJavalinApiHandler
     ** @throws QModuleDispatchException If module dispatch fails
     ** @throws QAuthenticationException If authentication fails
     *******************************************************************************/
-   public static void setupSession(Context context, AbstractActionInput input, String version, ApiInstanceMetaData apiInstanceMetaData) throws QModuleDispatchException, QAuthenticationException
+   public static void setupSession(Context context, AbstractActionInput input, String version, ApiInstanceMetaData apiInstanceMetaData) throws QModuleDispatchException, QAuthenticationException, QPermissionDeniedException
    {
       ///////////////////////////////////////////////////////////////////////////
       // Resolve the appropriate authentication provider for this API        //

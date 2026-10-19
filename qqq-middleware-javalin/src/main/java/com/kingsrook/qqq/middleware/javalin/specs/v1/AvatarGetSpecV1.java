@@ -167,7 +167,7 @@ public class AvatarGetSpecV1 extends AbstractEndpointSpec<AbstractMiddlewareInpu
       try
       {
          ExecutorSessionUtils.setupSession(context, qInstance);
-         checkCredentialScopeOperation();
+         checkCredentialScopeOperation(context);
          abstractMiddlewareVersion.preExecute(context);
          serve(context);
       }

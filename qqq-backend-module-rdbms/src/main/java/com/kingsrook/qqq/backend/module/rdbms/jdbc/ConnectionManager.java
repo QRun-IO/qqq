@@ -48,6 +48,7 @@ public class ConnectionManager
    private static final QLogger LOG = QLogger.getLogger(ConnectionManager.class);
 
    private static final Map<String, ConnectionProviderInterface> connectionProviderMap = new ConcurrentHashMap<>();
+   private static final Map<ConnectionProviderInterface, PoolPressureEvaluator> poolEvaluators = java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
 
 
 
@@ -240,5 +241,20 @@ public class ConnectionManager
    public static void resetConnectionProviders()
    {
       connectionProviderMap.clear();
+   }
+
+
+
+   /*******************************************************************************
+    ** History follows the provider lifetime, not just its reusable backend name.
+    *******************************************************************************/
+   public static com.kingsrook.qqq.backend.core.health.HealthStatus getPoolPressureStatus(RDBMSBackendMetaData backend, Map<String, Number> metrics)
+   {
+      ConnectionProviderInterface provider = connectionProviderMap.get(backend.getName());
+      if(provider == null)
+      {
+         return (com.kingsrook.qqq.backend.core.health.HealthStatus.UNKNOWN);
+      }
+      return (poolEvaluators.computeIfAbsent(provider, ignored -> new PoolPressureEvaluator()).evaluate(metrics, System.nanoTime()));
    }
 }

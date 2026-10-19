@@ -43,6 +43,28 @@ public class HealthChecksMetaData implements QSupplementalInstanceMetaData
    private static final Pattern NAME_PATTERN = Pattern.compile("[a-z0-9]++(?:[._-][a-z0-9]++)*+");
    private final List<HealthCheckMetaData> checks = new ArrayList<>();
    private final List<HealthCheckSupplierMetaData> suppliers = new ArrayList<>();
+   private boolean nodeLocalChecksEnabled;
+
+
+
+   /*******************************************************************************
+    ** Enable only after every runner sharing storage supports node ownership.
+    *******************************************************************************/
+   public HealthChecksMetaData withNodeLocalChecksEnabled(boolean enabled)
+   {
+      nodeLocalChecksEnabled = enabled;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Defaults off so old and new binaries can coexist during a rolling upgrade.
+    *******************************************************************************/
+   public boolean getNodeLocalChecksEnabled()
+   {
+      return (nodeLocalChecksEnabled);
+   }
 
 
 
@@ -143,7 +165,7 @@ public class HealthChecksMetaData implements QSupplementalInstanceMetaData
             throw new QException(error == null ? "Duplicate health check name" : error);
          }
       }
-      return (List.copyOf(resolved));
+      return (resolved.stream().filter(check -> nodeLocalChecksEnabled || check.getExecutionScope() == HealthCheckMetaData.ExecutionScope.SHARED).toList());
    }
 
 

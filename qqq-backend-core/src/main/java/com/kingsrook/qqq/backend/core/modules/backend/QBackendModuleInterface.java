@@ -66,6 +66,16 @@ public interface QBackendModuleInterface
 
 
    /*******************************************************************************
+    ** Optional JVM-local resource check, sampled independently on every runner.
+    *******************************************************************************/
+   default HealthCheck getNodeLocalHealthCheck(QBackendMetaData backend)
+   {
+      return (null);
+   }
+
+
+
+   /*******************************************************************************
     ** Whether query, count and aggregate can translate same-backend sub-queries.
     *******************************************************************************/
    default boolean supportsSubQueries(QBackendMetaData backend)

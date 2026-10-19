@@ -610,7 +610,7 @@ public class QJavalinApiHandler
       ///////////////////////////////////////////////////////////////////////////
       // Setup session using the resolved authentication provider           //
       ///////////////////////////////////////////////////////////////////////////
-      QSession session = QJavalinImplementation.setupSession(context, input, authMetaData);
+      QSession session = QJavalinImplementation.setupSession(context, input, authMetaData, qInstance);
       session.setValue("apiVersion", version);
       if(apiInstanceMetaData != null)
       {

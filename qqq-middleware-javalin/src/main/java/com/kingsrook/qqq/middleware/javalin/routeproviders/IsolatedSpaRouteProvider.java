@@ -25,8 +25,10 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
@@ -195,7 +197,14 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
             throw new RuntimeException(message);
          }
 
-         staticFileConfig.directory = resource.getFile();
+         try
+         {
+            staticFileConfig.directory = Path.of(resource.toURI()).toString();
+         }
+         catch(URISyntaxException e)
+         {
+            throw new IllegalArgumentException("Invalid static files resource: " + staticFilesPath, e);
+         }
          staticFileConfig.hostedPath = spaPath;
          staticFileConfig.location = Location.EXTERNAL;
          LOG.info("Configuring SPA static files from filesystem",
@@ -604,7 +613,7 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
                   fileName = spaIndexFile.substring(spaIndexFile.lastIndexOf('/') + 1);
                }
 
-               File indexFile = new File(resource.getFile(), fileName);
+               File indexFile = new File(new File(resource.toURI()), fileName);
                LOG.debug("Loading SPA index from filesystem",
                   logPair("indexFile", indexFile.getAbsolutePath()),
                   logPair("exists", indexFile.exists()));
@@ -620,7 +629,7 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
             }
          }
       }
-      catch(IOException e)
+      catch(IOException | URISyntaxException e)
       {
          LOG.error("Error loading SPA index", e, logPair("spaIndexFile", spaIndexFile));
       }

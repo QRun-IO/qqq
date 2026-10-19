@@ -59,6 +59,7 @@ import com.kingsrook.qqq.esb.management.EsbBrowsedMessage;
 import com.kingsrook.qqq.esb.management.EsbMessageBrowser;
 import com.kingsrook.qqq.esb.management.EsbQueueInfo;
 import com.kingsrook.qqq.esb.metadata.EsbAppMetaDataProducer;
+import com.kingsrook.qqq.esb.metadata.EsbOverviewWidgetMetaDataProducer;
 import com.kingsrook.qqq.esb.model.EsbDestinationType;
 import com.kingsrook.qqq.esb.model.EsbInstanceMetaData;
 import com.kingsrook.qqq.esb.model.EsbProcessMetaData;
@@ -239,7 +240,7 @@ public class EsbStatusBuilder
     *******************************************************************************/
    public Map<String, Object> buildOverview() throws QException
    {
-      PermissionsHelper.checkAppPermissionThrowing(actionInput, EsbAppMetaDataProducer.NAME);
+      checkViewPermission();
       if(esbInstanceMetaData == null)
       {
          throw (new QNotFoundException("The instance has no ESB meta-data."));
@@ -336,7 +337,7 @@ public class EsbStatusBuilder
             throw (new QNotFoundException("Trigger " + triggerName + " was not found on " + destinationName + "."));
          }
 
-         if(!PermissionsHelper.hasAppPermission(actionInput, EsbAppMetaDataProducer.NAME))
+         if(!hasViewPermission())
          {
             PermissionsHelper.checkProcessPermissionThrowing(actionInput, triggerReference.process().getName());
          }
@@ -361,12 +362,49 @@ public class EsbStatusBuilder
 
 
    /*******************************************************************************
+    ** Preserve standalone app overrides. Explicitly embedded instances use the
+    ** registered overview widget's rules, never the containing app's permission.
+    ** Missing metadata remains denied by the standard permission helpers.
+    *******************************************************************************/
+   private void checkViewPermission() throws QPermissionDeniedException
+   {
+      if(qInstance.getApp(EsbAppMetaDataProducer.NAME) != null || esbInstanceMetaData == null || esbInstanceMetaData.isStandaloneAppEnabled())
+      {
+         PermissionsHelper.checkAppPermissionThrowing(actionInput, EsbAppMetaDataProducer.NAME);
+      }
+      else
+      {
+         PermissionsHelper.checkWidgetPermissionThrowing(actionInput, EsbOverviewWidgetMetaDataProducer.NAME);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether the session has service-level ESB view access.
+    *******************************************************************************/
+   private boolean hasViewPermission()
+   {
+      try
+      {
+         checkViewPermission();
+         return (true);
+      }
+      catch(QPermissionDeniedException e)
+      {
+         return (false);
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** esbView, or READ on a table publishing to the destination, or access to a
     ** process it triggers.
     *******************************************************************************/
    private void checkMessagesPermission(QEsbDestinationMetaData destination) throws QPermissionDeniedException
    {
-      if(PermissionsHelper.hasAppPermission(actionInput, EsbAppMetaDataProducer.NAME))
+      if(hasViewPermission())
       {
          return;
       }

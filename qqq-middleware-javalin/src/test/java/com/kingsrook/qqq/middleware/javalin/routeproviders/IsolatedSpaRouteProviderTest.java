@@ -239,6 +239,34 @@ class IsolatedSpaRouteProviderTest
 
 
    /*******************************************************************************
+    ** Filesystem resource URLs must decode spaces and platform drive prefixes
+    ** for both static files and the index used by deep-link fallback.
+    *******************************************************************************/
+   @Test
+   void testFilesystemResourcePathWithSpaces() throws Exception
+   {
+      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/space", "test spa spaces/")
+         .withSpaIndexFile("test spa spaces/index.html").withLoadFromJar(false);
+      provider.setQInstance(qInstance);
+      Javalin service = Javalin.create(provider::acceptJavalinConfig).start(0);
+      try(HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build())
+      {
+         for(String path : List.of("/space/index.html", "/space/deep/link"))
+         {
+            HttpResponse<String> response = request(client, service, path);
+            assertEquals(200, response.statusCode(), path);
+            assertTrue(response.body().contains("SPA with spaces"), path);
+         }
+      }
+      finally
+      {
+         service.stop();
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Same-path SPAs belong to their server, including after another is recreated.
     *******************************************************************************/
    @Test

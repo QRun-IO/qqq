@@ -174,7 +174,8 @@ public class TableRecordFeaturesSpecV1Test extends SpecTestBase
          Files.writeString(committed, generated);
       }
       Files.writeString(Path.of("target/openapi-generated.yaml"), generated);
-      assertTrue(Files.readString(committed).replace("\r\n", "\n").equals(generated.replace("\r\n", "\n")),
+      // YAML object-key order is not part of the API contract; list order and all values are.
+      assertEquals(YamlUtils.toMap(Files.readString(committed)), YamlUtils.toMap(generated),
          "Committed OpenAPI differs from target/openapi-generated.yaml; review the diff and regenerate with -Dqqq.updateOpenApi=true");
       assertTrue(generated.contains("/qqq/v1/table/{tableName}/{primaryKey}/features:"));
       assertTrue(generated.contains("#/components/schemas/RecordFeaturesV1"));

@@ -1,0 +1,14 @@
+profile: core
+orb_version: dev:central-c29af54177dc8783
+default_branch: develop
+java_version: '21'
+browsers: true
+api_checks: false
+docs_only: false
+publish:
+  snapshot: true
+  release_candidate: true
+  release: true
+  feature: true
+  hotfix: true
+  asciidoc: false

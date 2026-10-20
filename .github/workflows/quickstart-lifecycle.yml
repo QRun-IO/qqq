@@ -1,9 +1,8 @@
 name: Public quickstart lifecycle
-
-on:
+'on':
   push:
     tags:
-      - quickstart-4.1.0-RC.1
+    - quickstart-4.1.0-RC.1
   workflow_dispatch:
     inputs:
       version:
@@ -11,7 +10,7 @@ on:
         required: true
         type: choice
         options:
-          - 4.1.0-RC.1
+        - 4.1.0-RC.1
       source_sha:
         description: Full reviewed commit of the immutable quickstart tag
         required: true
@@ -21,96 +20,12 @@ on:
         required: false
         type: boolean
         default: false
-
 permissions:
   contents: read
-
 jobs:
   lifecycle:
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(inputs.boundary_capture && '{"os":["macos-15"],"browser":["webkit"]}' || '{"os":["ubuntu-24.04","macos-14"],"browser":["chromium","firefox","webkit"],"exclude":[{"os":"macos-14","browser":"webkit"}],"include":[{"os":"macos-15","browser":"webkit"}]}') }}
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/checkout@v4
-        with:
-          repository: QRun-IO/qqq-frontend-next
-          ref: 2853b9b148282ae0e6d454adab6d0f534ba48280
-          path: acceptance-tools
-          persist-credentials: false
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Install acceptance tools only
-        working-directory: acceptance-tools
-        run: |
-          corepack enable
-          corepack prepare pnpm@9.15.9 --activate
-          pnpm install --frozen-lockfile
-          pnpm exec playwright install --with-deps "$BROWSER"
-        env:
-          BROWSER: ${{ matrix.browser }}
-      - name: Diagnostic boundary preflight
-        if: ${{ inputs.boundary_capture }}
-        env:
-          EXPECTED_SHA: ${{ inputs.source_sha }}
-          QQQ_QUICKSTART_PREFLIGHT_OUTPUT: ${{ runner.temp }}/qqq-quickstart-diagnostic
-        run: |
-          umask 077
-          mkdir -p "$QQQ_QUICKSTART_PREFLIGHT_OUTPUT"
-          node --test qqq-sample-project/acceptance/quickstart/*.test.mjs > "$QQQ_QUICKSTART_PREFLIGHT_OUTPUT/pure-tests.log" 2>&1
-          node qqq-sample-project/acceptance/quickstart/boundary-preflight.mjs
-      - name: Run the public launcher lifecycle
-        env:
-          QQQ_QUICKSTART_BOUNDARY_CAPTURE: ${{ inputs.boundary_capture && '1' || '0' }}
-          CANDIDATE_VERSION: ${{ inputs.version }}
-          EXPECTED_SHA: ${{ inputs.source_sha }}
-          BROWSER: ${{ matrix.browser }}
-        run: |
-          umask 077
-          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
-            CANDIDATE_VERSION="${GITHUB_REF_NAME#quickstart-}"
-            EXPECTED_SHA="$(git rev-parse HEAD)"
-          fi
-          run_lifecycle() {
-            node qqq-sample-project/acceptance/quickstart/run-public.mjs \
-              --playwright-project acceptance-tools \
-              --output "$RUNNER_TEMP/qqq-public-lifecycle" \
-              --version "$CANDIDATE_VERSION" --expected-sha "$EXPECTED_SHA" \
-              --browser "$BROWSER"
-          }
-          if [[ "$QQQ_QUICKSTART_BOUNDARY_CAPTURE" == "1" ]]; then
-            set -o pipefail
-            mkdir -m 700 -p "$RUNNER_TEMP/qqq-quickstart-private-protocol"
-            DEBUG=pw:browser,pw:protocol DEBUG_FILE="$RUNNER_TEMP/qqq-quickstart-private-protocol/protocol.raw" run_lifecycle 2>&1 | tee "$RUNNER_TEMP/qqq-quickstart-diagnostic/native.log"
-          else
-            run_lifecycle
-          fi
-      - name: Summarize private first-page protocol
-        if: ${{ always() && inputs.boundary_capture }}
-        run: |
-          umask 077
-          node qqq-sample-project/acceptance/quickstart/protocol-files.mjs \
-            "$RUNNER_TEMP/qqq-quickstart-private-protocol/protocol.raw" \
-            "$RUNNER_TEMP/qqq-public-lifecycle/phase-journal.json" \
-            "$RUNNER_TEMP/qqq-quickstart-diagnostic/first-page-protocol.json"
-      - name: Retain lifecycle results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: quickstart-${{ matrix.os }}-${{ matrix.browser }}
-          if-no-files-found: error
-          path: |
-            ${{ runner.temp }}/qqq-public-lifecycle/*.json
-            ${{ runner.temp }}/qqq-public-lifecycle/*.log
-            ${{ runner.temp }}/qqq-public-lifecycle/*.png
-            ${{ runner.temp }}/qqq-quickstart-diagnostic/*.json
-            ${{ runner.temp }}/qqq-quickstart-diagnostic/*.log
+    uses: QRun-IO/qqq-orb/.github/workflows/core-quickstart-lifecycle.yml@bcab95daa80eb4741b7916cd07f4854b5d99eadf
+    with:
+      version: ${{ inputs.version || '' }}
+      source_sha: ${{ inputs.source_sha || '' }}
+      boundary_capture: ${{ inputs.boundary_capture || false }}

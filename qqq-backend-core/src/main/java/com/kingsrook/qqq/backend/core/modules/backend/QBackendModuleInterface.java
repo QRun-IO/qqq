@@ -41,6 +41,7 @@ import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistentReadInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryLockMode;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableBackendDetails;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
@@ -252,6 +253,19 @@ public interface QBackendModuleInterface
    default List<SequenceResyncResult> resyncKeySequences(QBackendMetaData backend, Collection<QTableMetaData> tables) throws QException
    {
       return (List.of());
+   }
+
+
+
+   /*******************************************************************************
+    ** Release resources owned by this application after all request/scheduler/runtime
+    ** stops and service finalizers have been attempted. Failed stops may leave work
+    ** running; this hook does not extend their deadlines. Called once per
+    ** configured backend type, including rollback after partial startup.
+    ** Implementations must be idempotent and leave other applications untouched.
+    *******************************************************************************/
+   default void afterApplicationStop(QInstance instance) throws QException
+   {
    }
 
 

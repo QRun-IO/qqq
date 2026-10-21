@@ -59,9 +59,13 @@ class EsbRealtimeBusTest extends EsbTestBase
                Thread.sleep(20);
             }
          });
-         first.publish(new RealtimeMessage().withChannel("instance").withEvent("test.changed"));
-         assertEquals("test.changed", firstEvents.poll(5, TimeUnit.SECONDS).getEvent());
-         assertEquals("test.changed", secondEvents.poll(5, TimeUnit.SECONDS).getEvent());
+         first.publish(new RealtimeMessage().withChannel("instance").withEvent("test.changed").withAudience("tenant-a"));
+         var firstMessage = firstEvents.poll(5, TimeUnit.SECONDS);
+         var secondMessage = secondEvents.poll(5, TimeUnit.SECONDS);
+         assertEquals("test.changed", firstMessage.getEvent());
+         assertEquals("test.changed", secondMessage.getEvent());
+         assertEquals("tenant-a", firstMessage.getAudience());
+         assertEquals("tenant-a", secondMessage.getAudience());
       }
       try(EsbRealtimeBus later = new EsbRealtimeBus(QContext.getQInstance()))
       {

@@ -23,13 +23,18 @@ package com.kingsrook.qqq.backend.module.rdbms.jdbc;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
+import com.kingsrook.qqq.backend.core.context.CapturedContext;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSBackendMetaData;
@@ -47,7 +52,8 @@ public class ConnectionManager
 {
    private static final QLogger LOG = QLogger.getLogger(ConnectionManager.class);
 
-   private static final Map<String, ConnectionProviderInterface> connectionProviderMap = new ConcurrentHashMap<>();
+   private static final Map<String, ConnectionProviderInterface> standaloneProviders = new ConcurrentHashMap<>();
+   private static final Map<QInstance, Map<String, ConnectionProviderInterface>> instanceProviders = new WeakHashMap<>();
    private static final Map<ConnectionProviderInterface, PoolPressureEvaluator> poolEvaluators = java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
 
 
@@ -75,6 +81,7 @@ public class ConnectionManager
     *******************************************************************************/
    private static ConnectionProviderInterface getConnectionProvider(RDBMSBackendMetaData backend) throws QException
    {
+      Map<String, ConnectionProviderInterface> connectionProviderMap = providers(QContext.getQInstance());
       String name = Objects.requireNonNullElse(backend.getName(), "");
       if(!StringUtils.hasContent(name))
       {
@@ -97,7 +104,22 @@ public class ConnectionManager
 
                LOG.info("Initializing connection provider for RDBMS backend", logPair("backendName", name), logPair("connectionProvider", connectionProviderReference.getName()), logPair("usingDefaultSimpleProvider", usingDefaultSimpleProvider));
                ConnectionProviderInterface connectionProvider = QCodeLoader.getAdHoc(ConnectionProviderInterface.class, connectionProviderReference);
-               connectionProvider.init(backend);
+               try
+               {
+                  connectionProvider.init(backend);
+               }
+               catch(QException | RuntimeException e)
+               {
+                  try
+                  {
+                     connectionProvider.close();
+                  }
+                  catch(RuntimeException closeError)
+                  {
+                     e.addSuppressed(closeError);
+                  }
+                  throw e;
+               }
 
                connectionProviderMap.put(name, connectionProvider);
             }
@@ -110,14 +132,53 @@ public class ConnectionManager
 
 
    /*******************************************************************************
+    ** An application's registry never falls back to the standalone registry.
+    *******************************************************************************/
+   private static Map<String, ConnectionProviderInterface> providers(QInstance instance)
+   {
+      if(instance == null)
+      {
+         return standaloneProviders;
+      }
+      synchronized(instanceProviders)
+      {
+         return instanceProviders.computeIfAbsent(instance, ignored -> new ConcurrentHashMap<>());
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Explicit ownership for health probes and hosts outside the request context.
+    *******************************************************************************/
+   public static Connection getConnection(QInstance instance, RDBMSBackendMetaData backend) throws SQLException
+   {
+      Connection[] connection = new Connection[1];
+      QContext.withTemporaryContext(new CapturedContext(instance, null), () -> connection[0] = getConnection(backend));
+      return connection[0];
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    public static JSONArray dumpConnectionProviderDebug()
    {
+      return dumpConnectionProviderDebug(QContext.getQInstance());
+   }
+
+
+
+   /*******************************************************************************
+    ** Inspect only the explicitly selected application's providers.
+    *******************************************************************************/
+   public static JSONArray dumpConnectionProviderDebug(QInstance instance)
+   {
       try
       {
          JSONArray rs = new JSONArray();
-         for(Map.Entry<String, ConnectionProviderInterface> entry : connectionProviderMap.entrySet())
+         for(Map.Entry<String, ConnectionProviderInterface> entry : providers(instance).entrySet())
          {
             JSONObject jsonObject = new JSONObject(new LinkedHashMap<>());
             jsonObject.put("backendName", entry.getKey());
@@ -201,19 +262,49 @@ public class ConnectionManager
     *******************************************************************************/
    public static Map<String, Number> getPoolMetrics(RDBMSBackendMetaData backend)
    {
-      ConnectionProviderInterface connectionProvider = backend == null || backend.getName() == null ? null : connectionProviderMap.get(backend.getName());
+      return getPoolMetrics(QContext.getQInstance(), backend);
+   }
+
+
+
+   /*******************************************************************************
+    ** Read owner-specific metrics without initializing a provider.
+    *******************************************************************************/
+   public static Map<String, Number> getPoolMetrics(QInstance instance, RDBMSBackendMetaData backend)
+   {
+      ConnectionProviderInterface connectionProvider = backend == null || backend.getName() == null ? null : providers(instance).get(backend.getName());
       return (connectionProvider == null ? Map.of() : connectionProvider.getPoolMetrics());
    }
 
 
 
    /*******************************************************************************
-    ** Close every connection provider (pools release their connections) and
+    ** Close the current application's providers (or standalone providers without a context) and
     ** forget them. Call at the end of an application's shutdown, after the work
     ** that uses the database (requests, jobs, the scheduler) has stopped; a later
     ** getConnection initializes a new provider.
     *******************************************************************************/
    public static void closeConnectionProviders()
+   {
+      closeConnectionProviders(QContext.getQInstance());
+   }
+
+
+
+   /*******************************************************************************
+    ** Close an owner's pools after its work stops, even from a foreign context.
+    *******************************************************************************/
+   public static void closeConnectionProviders(QInstance instance)
+   {
+      closeProviders(providers(instance));
+   }
+
+
+
+   /*******************************************************************************
+    ** Close before forgetting providers; other applications remain untouched.
+    *******************************************************************************/
+   private static void closeProviders(Map<String, ConnectionProviderInterface> connectionProviderMap)
    {
       synchronized(connectionProviderMap)
       {
@@ -240,7 +331,14 @@ public class ConnectionManager
     *******************************************************************************/
    public static void resetConnectionProviders()
    {
-      connectionProviderMap.clear();
+      ArrayList<Map<String, ConnectionProviderInterface>> registries;
+      synchronized(instanceProviders)
+      {
+         registries = new ArrayList<>(instanceProviders.values());
+         instanceProviders.clear();
+      }
+      registries.add(standaloneProviders);
+      registries.forEach(ConnectionManager::closeProviders);
    }
 
 
@@ -250,7 +348,17 @@ public class ConnectionManager
     *******************************************************************************/
    public static com.kingsrook.qqq.backend.core.health.HealthStatus getPoolPressureStatus(RDBMSBackendMetaData backend, Map<String, Number> metrics)
    {
-      ConnectionProviderInterface provider = connectionProviderMap.get(backend.getName());
+      return getPoolPressureStatus(QContext.getQInstance(), backend, metrics);
+   }
+
+
+
+   /*******************************************************************************
+    ** Pressure history follows the selected application's provider lifetime.
+    *******************************************************************************/
+   public static com.kingsrook.qqq.backend.core.health.HealthStatus getPoolPressureStatus(QInstance instance, RDBMSBackendMetaData backend, Map<String, Number> metrics)
+   {
+      ConnectionProviderInterface provider = providers(instance).get(backend.getName());
       if(provider == null)
       {
          return (com.kingsrook.qqq.backend.core.health.HealthStatus.UNKNOWN);

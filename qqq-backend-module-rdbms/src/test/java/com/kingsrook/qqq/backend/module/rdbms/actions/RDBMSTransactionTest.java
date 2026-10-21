@@ -251,6 +251,30 @@ class RDBMSTransactionTest extends BaseTest
 
 
    /*******************************************************************************
+    ** Resource compensation follows confirmed rollback and is discarded on commit.
+    *******************************************************************************/
+   @Test
+   void resourceCompensationFollowsRollback() throws Exception
+   {
+      AtomicInteger compensated = new AtomicInteger();
+      try(RDBMSTransaction transaction = new RDBMSTransaction(new ConnectionManager().getConnection(TestUtils.defineBackend())))
+      {
+         transaction.addAfterRollbackCallback(compensated::incrementAndGet);
+         transaction.rollback();
+         transaction.rollback();
+         assertEquals(1, compensated.get());
+         transaction.addAfterRollbackCallback(compensated::incrementAndGet);
+         transaction.commit();
+         transaction.rollback();
+         assertEquals(1, compensated.get());
+         transaction.addAfterRollbackCallback(compensated::incrementAndGet);
+      }
+      assertEquals(2, compensated.get());
+   }
+
+
+
+   /*******************************************************************************
     ** count rows in the person table - unchecked, for use inside a Runnable.
     *******************************************************************************/
    private static Integer countPeople(Connection connection)

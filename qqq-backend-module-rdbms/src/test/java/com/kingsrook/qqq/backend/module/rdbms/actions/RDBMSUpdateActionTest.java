@@ -51,6 +51,25 @@ import static org.junit.jupiter.api.Assertions.fail;
  *******************************************************************************/
 public class RDBMSUpdateActionTest extends RDBMSActionTest
 {
+   /*******************************************************************************
+    ** A competing write after preflight is rejected by the actual SQL predicate.
+    *******************************************************************************/
+   @Test
+   public void versionPredicateRejectsStaleBackendWrite() throws Exception
+   {
+      var table = com.kingsrook.qqq.backend.core.context.QContext.getQInstance().getTable(TestUtils.TABLE_NAME_PERSON);
+      table.setRecordVersionField("firstName");
+      var before = new GetAction().execute(new GetInput(TestUtils.TABLE_NAME_PERSON).withPrimaryKey(2)).getRecord();
+      var versions = java.util.Map.<java.io.Serializable, java.io.Serializable>of("02", before.getValue("firstName"));
+      var first = new UpdateInput(TestUtils.TABLE_NAME_PERSON).withRecord(new QRecord().withValue("id", 2).withValue("firstName", "new-version")).withExpectedVersions(versions);
+      assertTrue(new RDBMSUpdateAction().execute(first).getRecords().getFirst().getErrors().isEmpty());
+      var second = new UpdateInput(TestUtils.TABLE_NAME_PERSON).withRecord(new QRecord().withValue("id", 2).withValue("email", "stale@example.test")).withExpectedVersions(versions);
+      var rejected = new RDBMSUpdateAction().execute(second).getRecords().getFirst();
+      assertTrue(rejected.getErrors().getFirst() instanceof com.kingsrook.qqq.backend.core.model.statusmessages.RecordVersionConflictError);
+      var after = new GetAction().execute(new GetInput(TestUtils.TABLE_NAME_PERSON).withPrimaryKey(2)).getRecord();
+      assertEquals(before.getValue("email"), after.getValue("email"));
+   }
+
 
    /*******************************************************************************
     **

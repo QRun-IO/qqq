@@ -216,7 +216,7 @@ public class UpdateAction
       // for "not-found detection", and for the pre-action to use (if there is one) //
       ////////////////////////////////////////////////////////////////////////////////
       Optional<List<QRecord>> oldRecordList      = fetchOldRecords(updateInput, updateInterface);
-      if(updateInput.getExpectedVersions() != null && !updateInput.getExpectedVersions().isEmpty() && oldRecordList.isEmpty())
+      if(StringUtils.hasContent(table.getRecordVersionField()) && oldRecordList.isEmpty())
       {
          oldRecordList = Optional.of(queryOldRecords(updateInput));
       }
@@ -236,19 +236,30 @@ public class UpdateAction
       }
 
       performValidations(updateInput, oldRecordList, updateInput.getDryRun());
+      if(restoreWriteFlag == null)
+      {
+         RecordVersionCheck.advance(updateInput, oldRecordList.orElse(List.of()));
+      }
       if(updateInput.getDryRun())
       {
          return (buildDryRunOutput(updateInput, table, oldRecordList));
       }
 
       Map<QRecord, AssociatedRecordUpdate.Values> associationValues = AssociatedRecordUpdate.prepare(table, updateInput.getRecords(), updateInput.getTransaction());
-      deleteOmittedAssociations(updateInput, associationValues);
+      if(CollectionUtils.nullSafeIsEmpty(updateInput.getExpectedVersions()))
+      {
+         deleteOmittedAssociations(updateInput, associationValues);
+      }
 
       ////////////////////////////////////
       // have the backend do the update //
       ////////////////////////////////////
       QueryStat    queryStat    = QueryStatManager.newQueryStat(updateInput.getBackend(), table, null, UpdateAction.class.getSimpleName());
       UpdateOutput updateOutput = runUpdateInBackend(updateInput, updateInterface);
+      if(CollectionUtils.nullSafeHasContents(updateInput.getExpectedVersions()))
+      {
+         deleteOmittedAssociations(updateInput, associationValues);
+      }
 
       if(queryStat != null)
       {
@@ -445,6 +456,11 @@ public class UpdateAction
          return (rs);
       }
 
+      if(CollectionUtils.nullSafeHasContents(updateInput.getExpectedVersions())
+         && StringUtils.hasContent(updateInput.getTable().getRecordVersionField()) && !updateInterface.supportsAtomicRecordVersions())
+      {
+         throw (new com.kingsrook.qqq.backend.core.exceptions.QBadRequestException("This backend does not support atomic record versions."));
+      }
       UpdateOutput updateOutput = updateInterface.execute(updateInput);
       return updateOutput;
    }

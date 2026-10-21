@@ -42,6 +42,8 @@ public class Memoization<K, V>
 
    private final Map<K, MemoizedResult<V>> map = Collections.synchronizedMap(new LinkedHashMap<>());
 
+   private long invalidationVersion = 0;
+
    private Duration timeout            = Duration.ofSeconds(600);
    private Integer  maxSize            = 1000;
    private boolean  mayStoreNullValues = true;
@@ -102,7 +104,13 @@ public class Memoization<K, V>
     *******************************************************************************/
    public <E extends Exception> Optional<V> getResultThrowing(K key, UnsafeFunction<K, V, E> lookupFunction) throws E
    {
-      MemoizedResult<V> result = map.get(key);
+      long lookupVersion;
+      MemoizedResult<V> result;
+      synchronized(map)
+      {
+         lookupVersion = invalidationVersion;
+         result = map.get(key);
+      }
       if(result != null)
       {
          if(result.getTime().isAfter(Instant.now().minus(timeout)))
@@ -121,7 +129,18 @@ public class Memoization<K, V>
       // and if the lookup function throws - then we let it throw.                               //
       /////////////////////////////////////////////////////////////////////////////////////////////
       V value = lookupFunction.apply(key);
-      storeResult(key, value);
+      synchronized(map)
+      {
+         //////////////////////////////////////////////////////////////////////
+         // Invalidation wins over any lookup already in flight. A version   //
+         // for the whole cache avoids retaining per-key invalidation state. //
+         // Unrelated invalidations may skip a fill, but never a fresh read.  //
+         //////////////////////////////////////////////////////////////////////
+         if(lookupVersion == invalidationVersion)
+         {
+            storeResult(key, value);
+         }
+      }
       return (Optional.ofNullable(value));
    }
 
@@ -142,16 +161,18 @@ public class Memoization<K, V>
     *******************************************************************************/
    public Optional<V> getResult(K key, UnsafeFunction<K, V, ?> lookupFunction)
    {
-      try
+      return getResultThrowing(key, lookupKey ->
       {
-         return getResultThrowing(key, lookupFunction);
-      }
-      catch(Exception e)
-      {
-         LOG.warn("Uncaught Exception while executing a Memoization lookupFunction (to avoid this log, add a catch in the lookupFunction)", e);
-         storeResult(key, null);
-         return (Optional.empty());
-      }
+         try
+         {
+            return lookupFunction.apply(lookupKey);
+         }
+         catch(Exception e)
+         {
+            LOG.warn("Uncaught Exception while executing a Memoization lookupFunction (to avoid this log, add a catch in the lookupFunction)", e);
+            return null;
+         }
+      });
    }
 
 
@@ -241,7 +262,11 @@ public class Memoization<K, V>
     *******************************************************************************/
    public void clear()
    {
-      this.map.clear();
+      synchronized(map)
+      {
+         invalidationVersion++;
+         this.map.clear();
+      }
    }
 
 
@@ -251,7 +276,11 @@ public class Memoization<K, V>
     *******************************************************************************/
    public void clearKey(K key)
    {
-      this.map.remove(key);
+      synchronized(map)
+      {
+         invalidationVersion++;
+         this.map.remove(key);
+      }
    }
 
 

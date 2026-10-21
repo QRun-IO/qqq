@@ -41,6 +41,53 @@ import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 public class RecordVersionCheck
 {
    /*******************************************************************************
+    ** A configured version must change on every ordinary write, even without a guard.
+    *******************************************************************************/
+   public static void advance(UpdateInput input, List<QRecord> oldRecords) throws com.kingsrook.qqq.backend.core.exceptions.QException
+   {
+      var table = input.getTable();
+      String name = table.getRecordVersionField();
+      if(name == null || name.isEmpty() || input.getRecords() == null || input.getRecords().isEmpty())
+      {
+         return;
+      }
+      var field = table.getField(name);
+      if(input.getOmitModifyDateUpdate() && DynamicDefaultValueBehavior.MODIFY_DATE.equals(field.getBehaviorOnlyIfSet(DynamicDefaultValueBehavior.class)))
+      {
+         return;
+      }
+      Map<String, QRecord> previous = new LinkedHashMap<>();
+      oldRecords.forEach(row -> previous.put(ValueUtils.getValueAsString(row.getValue(table.getPrimaryKeyField())), row));
+      for(QRecord record : input.getRecords())
+      {
+         if(record.getErrors() != null && !record.getErrors().isEmpty())
+         {
+            continue;
+         }
+         var old = previous.get(ValueUtils.getValueAsString(record.getValue(table.getPrimaryKeyField())));
+         if(old == null)
+         {
+            continue;
+         }
+         Serializable value = old.getValue(name);
+         Serializable next = switch(field.getType())
+         {
+            case INTEGER -> value == null ? 1 : Math.addExact(((Number) value).intValue(), 1);
+            case LONG -> value == null ? 1L : Math.addExact(((Number) value).longValue(), 1L);
+            case STRING -> java.util.UUID.randomUUID().toString();
+            case DATE_TIME ->
+            {
+               var now = java.time.Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MILLIS);
+               var prior = value == null ? java.time.Instant.MIN : (java.time.Instant) ValueUtils.getValueAsFieldType(table, field, value);
+               yield now.isAfter(prior) ? now : prior.truncatedTo(java.time.temporal.ChronoUnit.MILLIS).plusMillis(1);
+            }
+            default -> throw new com.kingsrook.qqq.backend.core.exceptions.QBadRequestException("Record version fields must be INTEGER, LONG, STRING or DATE_TIME.");
+         };
+         record.setValue(name, next);
+      }
+   }
+
+   /*******************************************************************************
     ** Compare typed versions before defaults change the caller supplied values.
     *******************************************************************************/
    public static void check(UpdateInput input, List<QRecord> oldRecords)
@@ -51,20 +98,19 @@ public class RecordVersionCheck
       {
          return;
       }
-      Map<String, Serializable> expected = new LinkedHashMap<>();
-      input.getExpectedVersions().forEach((key, value) -> expected.put(ValueUtils.getValueAsString(key), value));
-      Map<String, QRecord> oldByKey = new LinkedHashMap<>();
-      oldRecords.forEach(record -> oldByKey.put(ValueUtils.getValueAsString(record.getValue(table.getPrimaryKeyField())), record));
+      Map<Object, Serializable> expected = normalizedExpectedVersions(input);
+      Map<Object, QRecord> oldByKey = new LinkedHashMap<>();
+      oldRecords.forEach(record -> oldByKey.put(primaryKeyIdentity(table, record.getValue(table.getPrimaryKeyField())), record));
       for(QRecord record : input.getRecords())
       {
-         String key = ValueUtils.getValueAsString(record.getValue(table.getPrimaryKeyField()));
+         Object key = primaryKeyIdentity(table, record.getValue(table.getPrimaryKeyField()));
          QRecord old = oldByKey.get(key);
          if(old == null || !expected.containsKey(key))
          {
             continue;
          }
-         Serializable current = old.getValue(versionField);
          QFieldMetaData field = table.getField(versionField);
+         Serializable current = com.kingsrook.qqq.backend.core.utils.JsonFieldUtils.read(old, field, "");
          Serializable requested = field == null ? expected.get(key) : ValueUtils.getValueAsFieldType(table, field, expected.get(key));
          if(!Objects.equals(current, requested))
          {
@@ -78,6 +124,59 @@ public class RecordVersionCheck
             record.addError(new RecordVersionConflictError(current, modifiedBy, modifyDate == null ? null : old.getValue(modifyDate), changed));
          }
       }
+   }
+
+   /*******************************************************************************
+    ** Check one stored row while its backend write lock is held.
+    *******************************************************************************/
+   public static void checkAtWrite(UpdateInput input, QRecord record, QRecord stored)
+   {
+      if(input.getExpectedVersions() == null || input.getTable().getRecordVersionField() == null || input.getTable().getRecordVersionField().isEmpty())
+      {
+         return;
+      }
+      Object key = primaryKeyIdentity(input.getTable(), record.getValue(input.getTable().getPrimaryKeyField()));
+      if(!normalizedExpectedVersions(input).containsKey(key))
+      {
+         return;
+      }
+      if(stored == null)
+      {
+         record.addError(new RecordVersionConflictError(null, null, null, List.of()));
+         return;
+      }
+      UpdateInput single = new UpdateInput(input.getTableName()).withRecord(record).withExpectedVersions(input.getExpectedVersions());
+      single.setTableMetaData(input.getTable());
+      check(single, List.of(stored));
+   }
+
+   /*******************************************************************************
+    ** Use backend field types for both request keys and persisted primary keys.
+    *******************************************************************************/
+   public static Object primaryKeyIdentity(QTableMetaData table, Serializable value)
+   {
+      return (UniqueKeyLookup.equalityValue(ValueUtils.getValueAsFieldType(table, table.getField(table.getPrimaryKeyField()), value)));
+   }
+
+   /*******************************************************************************
+    ** Reject conflicting aliases instead of selecting a guard by map iteration order.
+    *******************************************************************************/
+   public static Map<Object, Serializable> normalizedExpectedVersions(UpdateInput input)
+   {
+      Map<Object, Serializable> result = new LinkedHashMap<>();
+      QTableMetaData table = input.getTable();
+      QFieldMetaData version = table.getField(table.getRecordVersionField());
+      input.getExpectedVersions().forEach((key, value) ->
+      {
+         Object identity = primaryKeyIdentity(table, key);
+         Serializable typedVersion = ValueUtils.getValueAsFieldType(table, version, value);
+         if(result.containsKey(identity) && !Objects.equals(result.get(identity), typedVersion))
+         {
+            throw (new com.kingsrook.qqq.backend.core.exceptions.QValueException("Conflicting expected versions for the same primary key"));
+         }
+         result.put(identity, typedVersion);
+      });
+      return (result);
    }
 }
 

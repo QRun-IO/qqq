@@ -232,7 +232,7 @@ public class HealthMetaDataProvider
       registry.withCheck(new HealthCheckMetaData().withName("core.scheduler").withLabel("Scheduler").withComponent("core")
          .withCategory(HealthCategory.CORE).withKind(HealthCheckKind.READINESS).withSeverity(AlertSeverity.ERROR)
          .withCheck(new QCodeReference(HealthSchedulerCheck.class)));
-      if(QSessionStoreRegistry.getInstance().isAvailable())
+      if(QSessionStoreRegistry.getInstance(qInstance).isAvailable())
       {
          registry.withCheck(new HealthCheckMetaData().withName("core.session_store").withLabel("Session store").withComponent("core")
             .withCategory(HealthCategory.CORE).withKind(HealthCheckKind.READINESS).withSeverity(AlertSeverity.ERROR).withIntervalSeconds(30)

@@ -55,6 +55,7 @@ import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistentReadInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryLockMode;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableBackendDetails;
@@ -93,6 +94,17 @@ public class RDBMSBackendModule implements QBackendModuleInterface
       QBackendModuleDispatcher.registerBackendModule(new RDBMSBackendModule());
    }
 
+
+
+   /*******************************************************************************
+    ** Close only this application's providers after all dependent work stops.
+    *******************************************************************************/
+   @Override
+   public void afterApplicationStop(QInstance instance)
+   {
+      ConnectionManager.closeConnectionProviders(instance);
+   }
+
    /*******************************************************************************
     ** A read-only readiness probe; connection configuration never becomes details.
     *******************************************************************************/
@@ -110,7 +122,8 @@ public class RDBMSBackendModule implements QBackendModuleInterface
          @Override
          public HealthCheckOutcome run(HealthCheckInput input)
          {
-            try(Connection connection = ConnectionManager.getConnection(rdbms);
+            QInstance owner = input.getQInstance() == null ? QContext.getQInstance() : input.getQInstance();
+            try(Connection connection = ConnectionManager.getConnection(owner, rdbms);
                 Statement statement = connection.createStatement())
             {
                long remaining = Duration.between(Instant.now(), input.getDeadline()).toMillis();
@@ -133,9 +146,9 @@ public class RDBMSBackendModule implements QBackendModuleInterface
             }
 
             HealthCheckOutcome outcome = HealthCheckOutcome.up("Database reachable").withDetails(new HealthDetails().withValue("vendor", rdbms.getVendor()));
-            if(!com.kingsrook.qqq.backend.core.health.HealthChecksMetaData.ofOrWithNew(input.getQInstance()).getNodeLocalChecksEnabled() && !ConnectionManager.getPoolMetrics(rdbms).isEmpty())
+            if(!com.kingsrook.qqq.backend.core.health.HealthChecksMetaData.ofOrWithNew(owner).getNodeLocalChecksEnabled() && !ConnectionManager.getPoolMetrics(owner, rdbms).isEmpty())
             {
-               return (withPoolMetrics(outcome, rdbms));
+               return (withPoolMetrics(outcome, owner, rdbms));
             }
             return (outcome);
          }
@@ -154,7 +167,8 @@ public class RDBMSBackendModule implements QBackendModuleInterface
       {
          return (null);
       }
-      return (input -> withPoolMetrics(HealthCheckOutcome.up("Connection pool healthy"), (RDBMSBackendMetaData) backend));
+      return (input -> withPoolMetrics(HealthCheckOutcome.up("Connection pool healthy"),
+         input.getQInstance() == null ? QContext.getQInstance() : input.getQInstance(), (RDBMSBackendMetaData) backend));
    }
 
 
@@ -166,10 +180,20 @@ public class RDBMSBackendModule implements QBackendModuleInterface
     *******************************************************************************/
    public static HealthCheckOutcome withPoolMetrics(HealthCheckOutcome outcome, RDBMSBackendMetaData rdbms)
    {
+      return withPoolMetrics(outcome, QContext.getQInstance(), rdbms);
+   }
+
+
+
+   /*******************************************************************************
+    ** Explicit application ownership keeps health results out of foreign pools.
+    *******************************************************************************/
+   public static HealthCheckOutcome withPoolMetrics(HealthCheckOutcome outcome, QInstance owner, RDBMSBackendMetaData rdbms)
+   {
       HealthDetails details = new HealthDetails().withValue("vendor", rdbms.getVendor());
       outcome.withDetails(details);
 
-      Map<String, Number> pool = ConnectionManager.getPoolMetrics(rdbms);
+      Map<String, Number> pool = ConnectionManager.getPoolMetrics(owner, rdbms);
       if(pool.isEmpty())
       {
          return (outcome.getStatus() == HealthStatus.UP ? outcome.withStatus(HealthStatus.UNKNOWN).withMessage("Connection pool not initialized or not pooled") : outcome);
@@ -183,7 +207,7 @@ public class RDBMSBackendModule implements QBackendModuleInterface
       });
       outcome.withMetrics(metrics);
 
-      HealthStatus pressure = ConnectionManager.getPoolPressureStatus(rdbms, pool);
+      HealthStatus pressure = ConnectionManager.getPoolPressureStatus(owner, rdbms, pool);
       if(outcome.getStatus() == HealthStatus.UP && pressure != HealthStatus.UP)
       {
          outcome.withStatus(pressure).withMessage(pressure == HealthStatus.DEGRADED

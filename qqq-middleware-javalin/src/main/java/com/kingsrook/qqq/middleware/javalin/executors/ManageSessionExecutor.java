@@ -92,12 +92,13 @@ public class ManageSessionExecutor extends AbstractMiddlewareExecutor<ManageSess
       //////////////////
       output.setUuid(session.getUuid());
 
+      LinkedHashMap<String, Serializable> valuesForFrontend = new LinkedHashMap<>();
       if(session.getValuesForFrontend() != null)
       {
-         LinkedHashMap<String, Serializable> valuesForFrontend = new LinkedHashMap<>(session.getValuesForFrontend());
-         addProfileValues(valuesForFrontend, session);
-         output.setValues(valuesForFrontend);
+         valuesForFrontend.putAll(session.getValuesForFrontend());
       }
+      addProfileValues(valuesForFrontend, session);
+      output.setValues(valuesForFrontend);
    }
 
 
@@ -110,7 +111,7 @@ public class ManageSessionExecutor extends AbstractMiddlewareExecutor<ManageSess
    private static void addProfileValues(LinkedHashMap<String, Serializable> valuesForFrontend, QSession session)
    {
       Map<String, Serializable> profile = UserProfiles.frontendUserValues(QContext.getQInstance(), session);
-      if(profile.isEmpty())
+      if(profile.isEmpty() && session.getUser() == null)
       {
          return;
       }
@@ -120,6 +121,11 @@ public class ManageSessionExecutor extends AbstractMiddlewareExecutor<ManageSess
          existing.forEach((key, value) -> user.put(String.valueOf(key), (Serializable) value));
       }
       user.putAll(profile);
+      if(session.getUser() != null)
+      {
+         // The authenticated identity is authoritative, independently of profile/email values.
+         user.put("id", session.getUser().getIdReference());
+      }
       valuesForFrontend.put("user", user);
    }
 

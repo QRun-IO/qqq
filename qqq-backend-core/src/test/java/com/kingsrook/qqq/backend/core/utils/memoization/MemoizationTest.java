@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -50,6 +51,58 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *******************************************************************************/
 class MemoizationTest extends BaseTest
 {
+
+   /*******************************************************************************
+    ** Invalidating a cache also prevents older in-flight lookups from filling it.
+    *******************************************************************************/
+   @Test
+   void testInvalidationDuringLookup() throws Exception
+   {
+      for(boolean clearAll : List.of(false, true))
+      {
+         for(boolean failLookup : List.of(false, true))
+         {
+            Memoization<String, String> memoization = new Memoization<>();
+            CountDownLatch entered = new CountDownLatch(1);
+            CountDownLatch release = new CountDownLatch(1);
+            try(var executor = Executors.newSingleThreadExecutor())
+            {
+               var lookup = executor.submit(() -> memoization.getResult("session", key ->
+               {
+                  entered.countDown();
+                  if(!release.await(5, TimeUnit.SECONDS))
+                  {
+                     throw new IllegalStateException("Owned lookup was not released");
+                  }
+                  if(failLookup)
+                  {
+                     throw new IllegalStateException("Owned lookup failure");
+                  }
+                  return "old-token";
+               }));
+               try
+               {
+                  assertTrue(entered.await(5, TimeUnit.SECONDS));
+                  if(clearAll)
+                  {
+                     memoization.clear();
+                  }
+                  else
+                  {
+                     memoization.clearKey("session");
+                  }
+                  memoization.storeResult("session", "new-token");
+               }
+               finally
+               {
+                  release.countDown();
+               }
+               assertEquals(failLookup ? Optional.empty() : Optional.of("old-token"), lookup.get(5, TimeUnit.SECONDS));
+               assertEquals(Optional.of("new-token"), memoization.getResult("session", key -> "unexpected-cache-miss"));
+            }
+         }
+      }
+   }
 
    /*******************************************************************************
     **

@@ -58,6 +58,53 @@ public class QBackendTransaction implements AutoCloseable
    private static final QLogger LOG = QLogger.getLogger(QBackendTransaction.class);
 
    private List<Runnable> afterCommitCallbacks = new ArrayList<>();
+   private List<Runnable> afterRollbackCallbacks = new ArrayList<>();
+
+
+
+   /*******************************************************************************
+    ** Only implementations with confirmed rollback semantics may compensate resources.
+    *******************************************************************************/
+   public boolean supportsRollbackCallbacks()
+   {
+      return (false);
+   }
+
+
+
+   /*******************************************************************************
+    ** Run only after confirmed rollback, never after an uncertain commit outcome.
+    *******************************************************************************/
+   public void addAfterRollbackCallback(Runnable callback)
+   {
+      if(!supportsRollbackCallbacks())
+      {
+         throw (new UnsupportedOperationException("This transaction cannot confirm rollback."));
+      }
+      afterRollbackCallbacks.add(Objects.requireNonNull(callback));
+   }
+
+
+
+   /*******************************************************************************
+    ** Called by an implementation only after its storage rollback succeeds.
+    *******************************************************************************/
+   protected void runAfterRollbackCallbacks()
+   {
+      var callbacks = afterRollbackCallbacks;
+      afterRollbackCallbacks = new ArrayList<>();
+      for(Runnable callback : callbacks)
+      {
+         try
+         {
+            callback.run();
+         }
+         catch(Exception | LinkageError e)
+         {
+            LOG.warn("Error running after-rollback callback", e);
+         }
+      }
+   }
 
 
 
@@ -175,6 +222,7 @@ public class QBackendTransaction implements AutoCloseable
     *******************************************************************************/
    protected void runAfterCommitCallbacks()
    {
+      afterRollbackCallbacks.clear();
       if(afterCommitCallbacks.isEmpty())
       {
          return;
@@ -212,6 +260,7 @@ public class QBackendTransaction implements AutoCloseable
    protected void discardAfterCommitCallbacks()
    {
       afterCommitCallbacks.clear();
+      afterRollbackCallbacks.clear();
    }
 
 

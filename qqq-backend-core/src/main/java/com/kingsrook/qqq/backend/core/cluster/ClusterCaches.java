@@ -120,7 +120,18 @@ public final class ClusterCaches
     *******************************************************************************/
    public static <V> Memoization<String, V> sessionKeyed(String name, Memoization<String, V> memoization)
    {
-      shared(name, memoization, Function.identity());
+      return (sessionKeyed(name, memoization, Function.identity()));
+   }
+
+
+
+   /*******************************************************************************
+    ** Translate a wire session UUID to the receiving application's cache key.
+    ** The parser runs in the target instance's context, like other handlers.
+    *******************************************************************************/
+   public static <V> Memoization<String, V> sessionKeyed(String name, Memoization<String, V> memoization, Function<String, String> keyParser)
+   {
+      shared(name, memoization, keyParser);
       SESSION_KEYS.add(name);
       return (memoization);
    }

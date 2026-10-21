@@ -256,10 +256,18 @@ class ClassifiedValueCanaryTest extends BaseTest
       }
       assertFalse(appender.getEventList().isEmpty());
       appender.getEventList().forEach(event -> outputs.add(event.getMessage().getFormattedMessage()));
-      for(String output : outputs)
+      for(int outputIndex = 0; outputIndex < outputs.size(); outputIndex++)
       {
-         assertNoFragments(output, marker);
-         assertNoFragments(output, updatedMarker);
+         String output = outputs.get(outputIndex);
+         try
+         {
+            assertNoFragments(output, marker);
+            assertNoFragments(output, updatedMarker);
+         }
+         catch(AssertionError e)
+         {
+            throw new AssertionError("Classified canary output index " + outputIndex + ", length " + output.length(), e);
+         }
       }
    }
 
@@ -272,7 +280,9 @@ class ClassifiedValueCanaryTest extends BaseTest
    {
       for(int start = 0; start <= marker.length() - 5; start++)
       {
-         assertFalse(output.contains(marker.substring(start, start + 5)), "Classified fragment escaped into captured output");
+         String syntheticFragment = marker.substring(start, start + 5);
+         assertFalse(output.contains(syntheticFragment), "Synthetic classified fragment [" + syntheticFragment
+            + "] at marker offset " + start + " matched output offset " + output.indexOf(syntheticFragment));
       }
    }
 

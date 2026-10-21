@@ -38,6 +38,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.WeakHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Pattern;
@@ -130,6 +131,8 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
 
    private static boolean mayMemoize = true;
 
+   private static final Map<QInstance, String> sessionCacheNamespaces = new WeakHashMap<>();
+
    ///////////////////////////////////////////////////////////////////////////////
    // session values (server-set only) that mark a stateless bearer-token      //
    // session: it is valid until the token's exp, and has no userSession row.  //
@@ -145,7 +148,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
    ////////////////////////////////////////////////////////////////////////
    private static final Memoization<String, String> getAccessTokenFromSessionUUIDMemoization = ClusterCaches.sessionKeyed("oauth2.accessTokenBySession", new Memoization<String, String>()
       .withTimeout(Duration.of(1, ChronoUnit.MINUTES))
-      .withMaxSize(1000));
+      .withMaxSize(1000), OAuth2AuthenticationModule::sessionCacheKey);
 
    private static final Memoization<String, OIDCProviderMetadata> oidcProviderMetadataMemoization = ClusterCaches.nodeLocal(new Memoization<String, OIDCProviderMetadata>()
       .withMayStoreNullValues(false), "the provider's discovery document is the same for every node");
@@ -996,7 +999,8 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
    {
       if(mayMemoize)
       {
-         String accessToken = getAccessTokenFromSessionUUIDMemoization.getResultThrowing(sessionUUID, (String x) ->
+         String cacheKey = sessionCacheKey(sessionUUID);
+         String accessToken = getAccessTokenFromSessionUUIDMemoization.getResultThrowing(cacheKey, (String x) ->
             doGetAccessTokenFromSessionUUID(sessionUUID)
          ).orElse(null);
 
@@ -1010,17 +1014,33 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
             return (accessToken);
          }
 
-         getAccessTokenFromSessionUUIDMemoization.clearKey(sessionUUID);
+         getAccessTokenFromSessionUUIDMemoization.clearKey(cacheKey);
          accessToken = doGetAccessTokenFromSessionUUID(sessionUUID);
          if(accessToken != null)
          {
-            getAccessTokenFromSessionUUIDMemoization.storeResult(sessionUUID, accessToken);
+            getAccessTokenFromSessionUUIDMemoization.storeResult(cacheKey, accessToken);
          }
          return (accessToken);
       }
       else
       {
          return (doGetAccessTokenFromSessionUUID(sessionUUID));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Local namespaces isolate applications without retaining their metadata.
+    ** Cluster messages carry the raw UUID; each receiver derives its own key.
+    *******************************************************************************/
+   private static String sessionCacheKey(String sessionUUID)
+   {
+      QInstance instance = QContext.getQInstance();
+      synchronized(sessionCacheNamespaces)
+      {
+         String namespace = instance == null ? "no-instance" : sessionCacheNamespaces.computeIfAbsent(instance, ignored -> UUID.randomUUID().toString());
+         return namespace + ":" + sessionUUID;
       }
    }
 
@@ -1784,7 +1804,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
     *******************************************************************************/
    public static void clearAccessTokenCache(String sessionUUID)
    {
-      getAccessTokenFromSessionUUIDMemoization.clearKey(sessionUUID);
+      getAccessTokenFromSessionUUIDMemoization.clearKey(sessionCacheKey(sessionUUID));
       QSessionStoreHelper.removeSession(sessionUUID);
       ClusterCaches.sessionEnded(sessionUUID);
    }

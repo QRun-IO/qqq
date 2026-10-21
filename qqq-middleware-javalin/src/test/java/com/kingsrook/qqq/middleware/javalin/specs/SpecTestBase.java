@@ -102,13 +102,7 @@ public abstract class SpecTestBase
    @BeforeEach
    void beforeEach() throws Exception
    {
-      //////////////////////////////////////////////////////////////////////////////////////
-      // during initial dev here, we were having issues running multiple tests together,  //
-      // where the second (but not first, and not any after second) would fail w/ javalin //
-      // not responding... so, this "works" - to constantly change our port, and stop     //
-      // and restart aggresively... could be optimized, but it works.                     //
-      //////////////////////////////////////////////////////////////////////////////////////
-      PORT++;
+      // Each test gets a fresh server and an OS-assigned port to avoid collisions.
       if(service != null)
       {
          service.stop();
@@ -146,7 +140,8 @@ public abstract class SpecTestBase
                   config.routes.apiBuilder(() -> additionalSpec.defineRoute(middlewareVersion, versionBasePath));
                }
             }
-         ).start(PORT);
+         ).start(0);
+         PORT = service.port();
       }
    }
 

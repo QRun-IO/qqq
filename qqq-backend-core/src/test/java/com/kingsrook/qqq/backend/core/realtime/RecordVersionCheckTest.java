@@ -61,6 +61,33 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class RecordVersionCheckTest extends BaseTest
 {
    /*******************************************************************************
+    ** Numeric key spellings must not silently remove an expected-version guard.
+    *******************************************************************************/
+   @Test
+   void alternateNumericKeyRetainsGuard() throws Exception
+   {
+      var input = new UpdateInput("realtimeRecord").withExpectedVersions(Map.of("01", 1))
+         .withRecord(new QRecord().withValue("id", 1).withValue("name", "stale"));
+      var result = new UpdateAction().execute(input).getRecords().getFirst();
+      assertInstanceOf(RecordVersionConflictError.class, result.getErrors().getFirst());
+      assertEquals("original", new GetAction().execute(new GetInput("realtimeRecord").withPrimaryKey(1)).getRecord().getValue("name"));
+   }
+
+   /*******************************************************************************
+    ** A competing writer cannot bypass the store's comparison by skipping preflight.
+    *******************************************************************************/
+   @Test
+   void memoryChecksVersionInsideWriteBoundary() throws Exception
+   {
+      var backend = new com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryUpdateAction();
+      var first = new UpdateInput("realtimeRecord").withRecord(new QRecord().withValue("id", 1).withValue("version", 3)).withExpectedVersions(Map.of(1, 2));
+      assertTrue(backend.execute(first).getRecords().getFirst().getErrors().isEmpty());
+      var stale = new UpdateInput("realtimeRecord").withRecord(new QRecord().withValue("id", 1).withValue("name", "stale")).withExpectedVersions(Map.of("01", 2));
+      assertInstanceOf(RecordVersionConflictError.class, backend.execute(stale).getRecords().getFirst().getErrors().getFirst());
+      assertEquals("original", new GetAction().execute(new GetInput("realtimeRecord").withPrimaryKey(1)).getRecord().getValue("name"));
+   }
+
+   /*******************************************************************************
     ** A minimal memory table with a typed version and modify-date default.
     *******************************************************************************/
    @BeforeEach
@@ -143,7 +170,7 @@ class RecordVersionCheckTest extends BaseTest
          transaction.commit();
          assertEquals("record.changed", events.get(0).getEvent());
          assertEquals("record:realtimeRecord:1", events.get(0).getChannel());
-         assertEquals(2, events.get(0).getData().get("version"));
+         assertEquals(3, events.get(0).getData().get("version"));
          assertTrue(((List<?>) events.get(0).getData().get("fields")).contains("name"));
          assertEquals(1, events.stream().filter(event -> event.getEvent().equals("table.changed")).count());
          QBackendTransaction rolledBack = new QBackendTransaction();

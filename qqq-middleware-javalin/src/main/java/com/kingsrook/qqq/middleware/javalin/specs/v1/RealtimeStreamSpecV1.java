@@ -175,7 +175,8 @@ public class RealtimeStreamSpecV1 extends AbstractEndpointSpec<RealtimeExecutor.
    {
       RealtimeHub.Attachment attachment = output.hub.connect(QContext.getQSession(), context.header("Last-Event-ID"));
       context.contentType("text/event-stream");
-      context.header("Cache-Control", "no-cache");
+      // Compression middleware must not buffer incremental frames behind a gzip transform.
+      context.header("Cache-Control", "no-cache, no-transform");
       context.header("X-Accel-Buffering", "no");
       context.res().setCharacterEncoding("UTF-8");
       context.async(config -> config.timeout = 0, () ->

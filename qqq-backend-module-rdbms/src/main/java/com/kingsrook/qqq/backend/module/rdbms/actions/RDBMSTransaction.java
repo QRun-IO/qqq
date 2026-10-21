@@ -48,6 +48,17 @@ public class RDBMSTransaction extends QBackendTransaction
 
 
    /*******************************************************************************
+    ** JDBC rollback provides a confirmed boundary for external resource compensation.
+    *******************************************************************************/
+   @Override
+   public boolean supportsRollbackCallbacks()
+   {
+      return (true);
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    public RDBMSTransaction(Connection connection) throws SQLException
@@ -140,6 +151,7 @@ public class RDBMSTransaction extends QBackendTransaction
       {
          LOG.info("Rolling back transaction");
          connection.rollback();
+         runAfterRollbackCallbacks();
          LOG.info("Rollback complete");
       }
       catch(Exception e)
@@ -172,7 +184,14 @@ public class RDBMSTransaction extends QBackendTransaction
             return;
          }
 
-         connection.close();
+         try
+         {
+            rollback();
+         }
+         finally
+         {
+            connection.close();
+         }
       }
       catch(Exception e)
       {

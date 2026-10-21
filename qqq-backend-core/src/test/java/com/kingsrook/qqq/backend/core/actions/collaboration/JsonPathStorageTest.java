@@ -155,14 +155,14 @@ public class JsonPathStorageTest extends BaseTest
          assertTrue(changed.getErrors().isEmpty());
          RealtimeMessage event = events.stream().filter(message -> "record.changed".equals(message.getEvent())).findFirst().orElseThrow();
          assertEquals("record:customTest:1", event.getChannel());
-         assertEquals(List.of("score"), event.getData().get("fields"));
-         assertEquals(2, event.getData().get("version"));
+         assertEquals(List.of("score", "version"), event.getData().get("fields"));
+         assertEquals(3, event.getData().get("version"));
          assertEquals(9, query(new QFilterCriteria("id", QCriteriaOperator.EQUALS, 1)).get(0).getValue("score"));
 
          events.clear();
          update(new QRecord().withValue("id", 1).withValue("note", null));
          event = events.stream().filter(message -> "record.changed".equals(message.getEvent())).findFirst().orElseThrow();
-         assertEquals(List.of("note"), event.getData().get("fields"));
+         assertEquals(List.of("note", "version"), event.getData().get("fields"));
          assertNull(query(new QFilterCriteria("id", QCriteriaOperator.EQUALS, 1)).get(0).getValue("note"));
       }
       finally

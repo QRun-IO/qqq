@@ -71,9 +71,10 @@ public class C3P0PooledConnectionProvider implements ConnectionProviderInterface
    {
       this.backend = backend;
 
+      ComboPooledDataSource pool = null;
       try
       {
-         ComboPooledDataSource pool = new ComboPooledDataSource();
+         pool = new ComboPooledDataSource();
          pool.setDriverClass(ConnectionManager.getJdbcDriverClassName(backend));
          pool.setJdbcUrl(getJdbcUrl(backend));
          pool.setUser(backend.getUsername());
@@ -146,18 +147,17 @@ public class C3P0PooledConnectionProvider implements ConnectionProviderInterface
             pool.setDebugUnreturnedConnectionStackTraces(true);
          }
 
-         pool.setIdentityToken(backend.getName());
-
          ///////////////////////////////////////////////////////////////////////////
          // the customizer runs queries for new connections and tracks checkouts  //
          // for leak detection (detect-and-log only; nothing is reclaimed)        //
+         // use C3P0's unique pool identity; backend names repeat across apps     //
          ///////////////////////////////////////////////////////////////////////////
          if(CollectionUtils.nullSafeHasContents(backend.getQueriesForNewConnections()))
          {
-            BaseC3P0ConnectionCustomizer.setQueriesForNewConnections(backend.getName(), backend.getQueriesForNewConnections());
+            BaseC3P0ConnectionCustomizer.setQueriesForNewConnections(pool.getIdentityToken(), backend.getQueriesForNewConnections());
          }
          Integer leakSeconds = poolSettings == null ? null : poolSettings.getLeakDetectionThresholdSeconds();
-         BaseC3P0ConnectionCustomizer.setLeakDetectionThreshold(backend.getName(), leakSeconds == null ? null : Duration.ofSeconds(leakSeconds));
+         BaseC3P0ConnectionCustomizer.setLeakDetectionThreshold(pool.getIdentityToken(), leakSeconds == null ? null : Duration.ofSeconds(leakSeconds));
          pool.setConnectionCustomizerClassName(BaseC3P0ConnectionCustomizer.class.getName());
 
          customizePool(pool);
@@ -166,6 +166,21 @@ public class C3P0PooledConnectionProvider implements ConnectionProviderInterface
       }
       catch(Exception e)
       {
+         if(pool != null)
+         {
+            try
+            {
+               pool.close();
+            }
+            catch(RuntimeException closeError)
+            {
+               e.addSuppressed(closeError);
+            }
+            finally
+            {
+               BaseC3P0ConnectionCustomizer.forget(pool.getIdentityToken());
+            }
+         }
          throw (new QException("Error Initializing C3P0PooledConnectionProvider for backend [" + backend.getName() + "]", e));
       }
    }
@@ -259,7 +274,7 @@ public class C3P0PooledConnectionProvider implements ConnectionProviderInterface
       if(now - lastLeakScanMillis >= 1000)
       {
          lastLeakScanMillis = now;
-         BaseC3P0ConnectionCustomizer.findLeaks(backend.getName());
+         BaseC3P0ConnectionCustomizer.findLeaks(connectionPool.getIdentityToken());
       }
    }
 
@@ -286,7 +301,7 @@ public class C3P0PooledConnectionProvider implements ConnectionProviderInterface
       }
       metrics.put("maxPoolSize", connectionPool.getMaxPoolSize());
       metrics.put("checkoutTimeouts", checkoutTimeouts.get());
-      metrics.put("suspectedLeaks", BaseC3P0ConnectionCustomizer.findLeaks(backend.getName()).size());
+      metrics.put("suspectedLeaks", BaseC3P0ConnectionCustomizer.findLeaks(connectionPool.getIdentityToken()).size());
       return (metrics);
    }
 
@@ -298,9 +313,19 @@ public class C3P0PooledConnectionProvider implements ConnectionProviderInterface
    @Override
    public void close()
    {
+      if(connectionPool == null)
+      {
+         return;
+      }
       LOG.info("Closing connection pool", logPair("backendName", backend.getName()), logPair("state", describeState()));
-      connectionPool.close();
-      BaseC3P0ConnectionCustomizer.forget(backend.getName());
+      try
+      {
+         connectionPool.close();
+      }
+      finally
+      {
+         BaseC3P0ConnectionCustomizer.forget(connectionPool.getIdentityToken());
+      }
    }
 
 
@@ -312,6 +337,7 @@ public class C3P0PooledConnectionProvider implements ConnectionProviderInterface
    public JSONObject dumpDebug() throws SQLException
    {
       JSONObject rs = new JSONObject(new LinkedHashMap<>());
+      rs.put("poolIdentityToken", connectionPool.getIdentityToken());
 
       JSONObject settings = new JSONObject(new LinkedHashMap<>());
       rs.put("settings", settings);

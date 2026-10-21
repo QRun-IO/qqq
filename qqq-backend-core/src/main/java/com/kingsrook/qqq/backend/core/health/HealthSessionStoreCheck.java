@@ -39,7 +39,8 @@ public class HealthSessionStoreCheck implements HealthCheck
    @Override
    public HealthCheckOutcome run(HealthCheckInput input)
    {
-      QSessionStoreProviderInterface provider = QSessionStoreRegistry.getInstance().getProvider().orElse(null);
+      QSessionStoreRegistry registry = input.getQInstance() == null ? QSessionStoreRegistry.getInstance() : QSessionStoreRegistry.getInstance(input.getQInstance());
+      QSessionStoreProviderInterface provider = registry.getProvider().orElse(null);
       if(provider == null)
       {
          return (HealthCheckOutcome.unknown("Session store not configured"));

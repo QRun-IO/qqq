@@ -38,6 +38,14 @@ public interface UpdateInterface
    UpdateOutput execute(UpdateInput updateInput) throws QException;
 
    /*******************************************************************************
+    ** A version preflight alone is not atomic protection against concurrent writes.
+    *******************************************************************************/
+   default boolean supportsAtomicRecordVersions()
+   {
+      return (false);
+   }
+
+   /*******************************************************************************
     ** Specify whether this particular module's update action can & should fetch
     ** records before updating them, e.g., for audits or "not-found-checks"
     *******************************************************************************/

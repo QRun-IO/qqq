@@ -21,13 +21,18 @@
 package com.kingsrook.qqq.backend.core.modules.authentication;
 
 
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.WeakHashMap;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
- ** Registry for session store providers.
+ ** Application-scoped registry for session store providers.
  **
  ** QBits or application code implement QSessionStoreProviderInterface and
  ** register their implementation with this registry on startup. QQQ core
@@ -38,7 +43,7 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  ** the interface and registry, implementations register themselves.
  **
  ** Usage:
- ** - QBit/App: QSessionStoreRegistry.getInstance().register(myProvider);
+ ** - Startup: QSessionStoreRegistry.getInstance(qInstance).register(myProvider);
  ** - Core: QSessionStoreRegistry.getInstance().getProvider().ifPresent(p -> p.store(...));
  *******************************************************************************/
 public class QSessionStoreRegistry
@@ -47,7 +52,9 @@ public class QSessionStoreRegistry
 
    private static final QSessionStoreRegistry INSTANCE = new QSessionStoreRegistry();
 
-   private QSessionStoreProviderInterface provider = null;
+   private static final Map<QInstance, QSessionStoreRegistry> INSTANCES = new WeakHashMap<>();
+
+   private volatile QSessionStoreProviderInterface provider = null;
 
 
 
@@ -61,13 +68,27 @@ public class QSessionStoreRegistry
 
 
    /***************************************************************************
-    ** Get the singleton instance of the registry.
+    ** Get the current application registry, or the standalone registry without context.
+    ** Startup callers must pass their QInstance explicitly; a context-free registration
+    ** is never inherited by an application.
     **
-    ** @return The singleton QSessionStoreRegistry instance
+    ** @return The registry for the current context
     ***************************************************************************/
    public static QSessionStoreRegistry getInstance()
    {
-      return INSTANCE;
+      QInstance instance = QContext.getQInstance();
+      return (instance == null ? INSTANCE : getInstance(instance));
+   }
+
+
+
+   /***************************************************************************
+    ** Resolve an application explicitly during startup or background operations.
+    ** No application ever falls back to the standalone, context-free registry.
+    ***************************************************************************/
+   public static synchronized QSessionStoreRegistry getInstance(QInstance instance)
+   {
+      return (INSTANCES.computeIfAbsent(Objects.requireNonNull(instance), ignored -> new QSessionStoreRegistry()));
    }
 
 
@@ -82,6 +103,7 @@ public class QSessionStoreRegistry
     ***************************************************************************/
    public synchronized void register(QSessionStoreProviderInterface provider)
    {
+      Objects.requireNonNull(provider);
       if(this.provider != null)
       {
          LOG.warn("Replacing existing session store provider",
@@ -126,6 +148,19 @@ public class QSessionStoreRegistry
    {
       provider = null;
       LOG.debug("Cleared session store provider");
+   }
+
+   /***************************************************************************
+    ** Release only the expected owner, preserving a concurrently replaced provider.
+    ***************************************************************************/
+   public synchronized boolean clearIfSame(QSessionStoreProviderInterface expected)
+   {
+      if(provider != expected)
+      {
+         return false;
+      }
+      provider = null;
+      return true;
    }
 
 }

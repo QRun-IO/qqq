@@ -195,7 +195,14 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
             throw new RuntimeException(message);
          }
 
-         staticFileConfig.directory = resource.getFile();
+         try
+         {
+            staticFileConfig.directory = java.nio.file.Path.of(resource.toURI()).toString();
+         }
+         catch(java.net.URISyntaxException e)
+         {
+            throw (new IllegalArgumentException("Invalid filesystem resource URI", e));
+         }
          staticFileConfig.hostedPath = spaPath;
          staticFileConfig.location = Location.EXTERNAL;
          LOG.info("Configuring SPA static files from filesystem",

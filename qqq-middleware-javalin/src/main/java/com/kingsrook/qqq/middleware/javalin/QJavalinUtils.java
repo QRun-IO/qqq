@@ -215,6 +215,11 @@ public class QJavalinUtils
             statusCode = Objects.requireNonNullElse(statusCode, HttpStatus.Code.NOT_FOUND); // 404
             respondWithError(context, statusCode, userFacingException.getMessage());
          }
+         else if(userFacingException instanceof com.kingsrook.qqq.backend.core.exceptions.QServiceUnavailableException)
+         {
+            statusCode = Objects.requireNonNullElse(statusCode, HttpStatus.Code.SERVICE_UNAVAILABLE);
+            respondWithError(context, statusCode, userFacingException.getMessage());
+         }
          else if(userFacingException instanceof QTooManyRequestsException)
          {
             statusCode = Objects.requireNonNullElse(statusCode, HttpStatus.Code.TOO_MANY_REQUESTS); // 429

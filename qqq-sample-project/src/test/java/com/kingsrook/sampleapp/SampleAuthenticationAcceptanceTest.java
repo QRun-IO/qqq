@@ -41,6 +41,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
@@ -91,14 +94,13 @@ class SampleAuthenticationAcceptanceTest
 {
    private CapturedContext previousContext;
    private Map<String, Serializable> previousObjects;
-   private QInstance instance;
+   protected QInstance instance;
    private Connection anchor;
-   private QApplicationJavalinServer server;
+   protected QApplicationJavalinServer server;
    private HttpClient client;
    private URI base;
-   private SampleAuthenticationProvider provider;
-   private QSessionStoreProviderInterface previousStore;
-   private final String username = "owned-" + UUID.randomUUID();
+   protected SampleAuthenticationProvider provider;
+   protected final String username = "owned-" + UUID.randomUUID();
 
 
 
@@ -109,8 +111,6 @@ class SampleAuthenticationAcceptanceTest
    void setUp() throws Exception
    {
       previousContext = QContext.capture();
-      previousStore = QSessionStoreRegistry.getInstance().getProvider().orElse(null);
-      QSessionStoreRegistry.getInstance().clear();
       previousObjects = QContext.getObjects();
       QContext.setObjects(new LinkedHashMap<>());
       ConnectionManager.resetConnectionProviders();
@@ -158,10 +158,9 @@ class SampleAuthenticationAcceptanceTest
       finally
       {
          ConnectionManager.resetConnectionProviders();
-         QSessionStoreRegistry.getInstance().clear();
-         if(previousStore != null)
+         if(instance != null)
          {
-            QSessionStoreRegistry.getInstance().register(previousStore);
+            QSessionStoreRegistry.getInstance(instance).clear();
          }
          MemoryRecordStore.getInstance().reset();
          QContext.clear();
@@ -342,6 +341,117 @@ class SampleAuthenticationAcceptanceTest
 
 
    /*******************************************************************************
+    ** HTTP authentication and logout must select only the server's application store.
+    *******************************************************************************/
+   @Test
+   void testOAuthSessionStoreIsolationAcrossApplications() throws Exception
+   {
+      configureOAuthAuthentication();
+      ((OAuth2AuthenticationMetaData) instance.getAuthentication()).setSessionStoreEnabled(true);
+      OwnedSessionStore store = new OwnedSessionStore();
+      OwnedSessionStore otherStore = new OwnedSessionStore();
+      QInstance otherInstance = new QInstance();
+      QSessionStoreRegistry.getInstance(instance).register(store);
+      QSessionStoreRegistry.getInstance(otherInstance).register(otherStore);
+      try
+      {
+         start();
+         QContext.setQInstance(otherInstance);
+         QContext.setQSession(null);
+         String uuid = sessionCookie(request("POST", "/manageSession", grant(provider.code(username), SampleAuthenticationProvider.CALLBACK, SampleAuthenticationProvider.VERIFIER), null));
+         assertTrue(store.sessions.containsKey(uuid));
+         assertTrue(otherStore.sessions.isEmpty());
+         QSession marker = new QSession().withValue("owner", "other-application");
+         otherStore.sessions.put(uuid, marker);
+         otherStore.rejectRemoval = true;
+         assertEquals(200, request("GET", "/metaData/table/person", null, uuid).statusCode());
+         success(logoutEvent(provider.logoutToken(username, false)));
+         assertFalse(store.sessions.containsKey(uuid));
+         assertEquals(marker, otherStore.sessions.get(uuid));
+         assertEquals(401, request("GET", "/metaData/table/person", null, uuid).statusCode());
+      }
+      finally
+      {
+         QSessionStoreRegistry.getInstance(otherInstance).clear();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A cached token from one application cannot validate a session in another.
+    *******************************************************************************/
+   @Test
+   void testOAuthTokenCacheIsolationAcrossApplications() throws Exception
+   {
+      configureOAuthAuthentication();
+      start();
+      String uuid = sessionCookie(request("POST", "/manageSession", grant(provider.code(username), SampleAuthenticationProvider.CALLBACK, SampleAuthenticationProvider.VERIFIER), null));
+      assertEquals(200, request("GET", "/metaData/table/person", null, uuid).statusCode());
+      CapturedContext before = QContext.capture();
+      String otherJdbcUrl = "jdbc:h2:mem:auth_other_" + UUID.randomUUID() + ";MODE=MySQL;DB_CLOSE_DELAY=0";
+      try(Connection otherAnchor = DriverManager.getConnection(otherJdbcUrl, "sa", ""))
+      {
+         try(InputStreamReader reader = new InputStreamReader(SampleMetaDataProvider.class.getResourceAsStream("/prime-test-database.sql"), StandardCharsets.UTF_8))
+         {
+            RunScript.execute(otherAnchor, reader);
+         }
+         QInstance otherInstance = SampleMetaDataProvider.defineTestInstance();
+         ((RDBMSBackendMetaData) otherInstance.getBackend(SampleMetaDataProvider.RDBMS_BACKEND_NAME)).setJdbcUrl(otherJdbcUrl);
+         otherInstance.registerAuthenticationProvider(AuthScope.instanceDefault(), instance.getAuthentication());
+         QContext.init(otherInstance, new QSystemUserSession());
+         assertEquals(null, new GetAction().executeForRecord(new GetInput(UserSession.TABLE_NAME).withUniqueKey(Map.of("uuid", uuid))));
+         QContext.setQSession(null);
+         QSession candidateSession = new QSession();
+         candidateSession.setUuid(uuid);
+         assertFalse(new OAuth2AuthenticationModule().isSessionValid(otherInstance, candidateSession),
+            "An application with no authoritative session must not accept another application's cached token");
+      }
+      finally
+      {
+         QContext.init(before);
+      }
+      assertEquals(200, request("GET", "/metaData/table/person", null, uuid).statusCode());
+   }
+
+
+
+   /*******************************************************************************
+    ** An authentication cache fill started before logout must not revive a session.
+    *******************************************************************************/
+   @Test
+   void testLogoutRejectsDelayedSessionCacheFill() throws Exception
+   {
+      configureOAuthAuthentication();
+      ((OAuth2AuthenticationMetaData) instance.getAuthentication()).setSessionStoreEnabled(true);
+      OwnedSessionStore store = new OwnedSessionStore();
+      QSessionStoreRegistry.getInstance(instance).register(store);
+      start();
+      String uuid = sessionCookie(request("POST", "/manageSession", grant(provider.code(username), SampleAuthenticationProvider.CALLBACK, SampleAuthenticationProvider.VERIFIER), null));
+      store.sessions.remove(uuid);
+      store.storeEntered = new CountDownLatch(1);
+      store.releaseStore = new CountDownLatch(1);
+      try(var executor = Executors.newSingleThreadExecutor())
+      {
+         var inFlight = executor.submit(() -> request("GET", "/metaData/table/person", null, uuid));
+         try
+         {
+            assertTrue(store.storeEntered.await(5, TimeUnit.SECONDS), "Authentication must reach the cache fill before logout");
+            success(logoutEvent(provider.logoutToken(username, false)));
+         }
+         finally
+         {
+            store.releaseStore.countDown();
+         }
+         inFlight.get(15, TimeUnit.SECONDS);
+         assertTrue(store.sessions.containsKey(uuid), "Fixture must reproduce the delayed cache fill");
+         assertEquals(401, request("GET", "/metaData/table/person", null, uuid).statusCode());
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Exercise the full native login, cached use and signed logout boundary.
     *******************************************************************************/
    private void assertBackChannelLogout(Boolean useStore, Boolean failRemoval) throws Exception
@@ -350,13 +460,13 @@ class SampleAuthenticationAcceptanceTest
       OwnedSessionStore store = new OwnedSessionStore();
       if(useStore)
       {
-         QSessionStoreRegistry.getInstance().register(store);
+         QSessionStoreRegistry.getInstance(instance).register(store);
          ((OAuth2AuthenticationMetaData) instance.getAuthentication()).setSessionStoreEnabled(true);
       }
       else
       {
          store.rejectRemoval = true;
-         QSessionStoreRegistry.getInstance().register(store);
+         QSessionStoreRegistry.getInstance(instance).register(store);
       }
       start();
       String uuid = sessionCookie(request("POST", "/manageSession", grant(provider.code(username), SampleAuthenticationProvider.CALLBACK, SampleAuthenticationProvider.VERIFIER), null));
@@ -463,7 +573,7 @@ class SampleAuthenticationAcceptanceTest
    /*******************************************************************************
     ** Canonical sample tables own the OAuth session and callback state data.
     *******************************************************************************/
-   private void configureOAuthAuthentication() throws Exception
+   protected void configureOAuthAuthentication() throws Exception
    {
       provider = new SampleAuthenticationProvider();
       OAuth2AuthenticationMetaData auth = new OAuth2AuthenticationMetaData().withBaseUrl(provider.issuer())
@@ -478,7 +588,7 @@ class SampleAuthenticationAcceptanceTest
    /*******************************************************************************
     ** Serve the canonical sample through native V1 middleware.
     *******************************************************************************/
-   private void start() throws Exception
+   protected void start() throws Exception
    {
       server = new QApplicationJavalinServer(new SampleMetaDataProvider()
       {
@@ -508,7 +618,7 @@ class SampleAuthenticationAcceptanceTest
    /*******************************************************************************
     ** Send credentials or explicit cookies without a browser cookie jar.
     *******************************************************************************/
-   private HttpResponse<String> request(String method, String path, String body, String credential) throws Exception
+   protected HttpResponse<String> request(String method, String path, String body, String credential) throws Exception
    {
       HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(base + path)).timeout(Duration.ofSeconds(15));
       if(credential != null)
@@ -534,7 +644,7 @@ class SampleAuthenticationAcceptanceTest
    /*******************************************************************************
     ** The back-channel protocol uses a form-encoded signed logout event.
     *******************************************************************************/
-   private HttpResponse<String> logoutEvent(String token) throws Exception
+   protected HttpResponse<String> logoutEvent(String token) throws Exception
    {
       return client.send(HttpRequest.newBuilder(URI.create(base + "/oidc/backchannel-logout")).timeout(Duration.ofSeconds(15))
          .header("Content-Type", "application/x-www-form-urlencoded")
@@ -546,7 +656,7 @@ class SampleAuthenticationAcceptanceTest
    /*******************************************************************************
     ** Include the response in an assertion only for owned synthetic test data.
     *******************************************************************************/
-   private JSONObject success(HttpResponse<String> response)
+   protected JSONObject success(HttpResponse<String> response)
    {
       assertEquals(200, response.statusCode(), response.body());
       return new JSONObject(response.body());
@@ -557,7 +667,7 @@ class SampleAuthenticationAcceptanceTest
    /*******************************************************************************
     ** HttpOnly authentication returns the identifier only through the cookie.
     *******************************************************************************/
-   private String sessionCookie(HttpResponse<String> response)
+   protected String sessionCookie(HttpResponse<String> response)
    {
       assertFalse(success(response).has("uuid"));
       String cookie = response.headers().allValues("Set-Cookie").stream().filter(value -> value.startsWith("sessionUUID=")).findFirst().orElseThrow();
@@ -580,7 +690,7 @@ class SampleAuthenticationAcceptanceTest
    /*******************************************************************************
     ** Use the native SPA authorization-code request shape.
     *******************************************************************************/
-   private String grant(String code, String redirectUri, String verifier)
+   protected String grant(String code, String redirectUri, String verifier)
    {
       return new JSONObject().put("code", code).put("redirectUri", redirectUri).put("codeVerifier", verifier).toString();
    }
@@ -594,6 +704,8 @@ class SampleAuthenticationAcceptanceTest
    {
       private final Map<String, QSession> sessions = new ConcurrentHashMap<>();
       private Boolean rejectRemoval = false;
+      private volatile CountDownLatch storeEntered;
+      private volatile CountDownLatch releaseStore;
 
 
 
@@ -603,6 +715,22 @@ class SampleAuthenticationAcceptanceTest
       @Override
       public void store(String uuid, QSession session, Duration ttl)
       {
+         if(storeEntered != null)
+         {
+            storeEntered.countDown();
+            try
+            {
+               if(!releaseStore.await(10, TimeUnit.SECONDS))
+               {
+                  throw new IllegalStateException("Timed out waiting to release owned cache fill");
+               }
+            }
+            catch(InterruptedException e)
+            {
+               Thread.currentThread().interrupt();
+               throw new IllegalStateException("Owned cache fill interrupted", e);
+            }
+         }
          sessions.put(uuid, session);
       }
 

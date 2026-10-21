@@ -22,17 +22,22 @@ package com.kingsrook.qqq.middleware.javalin;
 
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
+import com.kingsrook.qqq.backend.core.context.CapturedContext;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.instances.AbstractMetaDataProducerBasedQQQApplication;
 import com.kingsrook.qqq.backend.core.instances.AbstractQQQApplication;
 import com.kingsrook.qqq.backend.core.instances.QRuntimeServiceInterface;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.scheduledjobs.ScheduledJob;
+import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleDispatcher;
 import com.kingsrook.qqq.backend.core.scheduler.QScheduleManager;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import org.apache.commons.lang3.BooleanUtils;
@@ -270,6 +275,10 @@ public class QApplicationLauncher
                LOG.warn("Error in final application service cleanup", e, logPair("service", startedService.name()));
             }
          }
+         if(!startedServices.isEmpty())
+         {
+            closeBackendResources();
+         }
          startedServices.clear();
 
          if(shutdownHook != null)
@@ -291,6 +300,38 @@ public class QApplicationLauncher
       finally
       {
          stopping = false;
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Backend resources outlive service finalizers, including failed server startup.
+    ** Dispatch through the backend SPI so the launcher has no storage dependencies.
+    *******************************************************************************/
+   private void closeBackendResources()
+   {
+      QInstance owner = qInstance == null && server != null ? server.getQInstance() : qInstance;
+      if(owner == null)
+      {
+         return;
+      }
+      HashSet<String> cleanedTypes = new HashSet<>();
+      for(QBackendMetaData backend : CollectionUtils.nonNullMap(owner.getBackends()).values())
+      {
+         if(!cleanedTypes.add(backend.getBackendType()))
+         {
+            continue;
+         }
+         try
+         {
+            QContext.withTemporaryContext(new CapturedContext(owner, null), () ->
+               new QBackendModuleDispatcher().getQBackendModule(backend).afterApplicationStop(owner));
+         }
+         catch(Exception | LinkageError e)
+         {
+            LOG.warn("Error in final backend resource cleanup", e, logPair("backendType", backend.getBackendType()));
+         }
       }
    }
 

@@ -57,8 +57,18 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
 public class RDBMSUpdateAction extends AbstractRDBMSAction implements UpdateInterface
 {
    private static final QLogger LOG = QLogger.getLogger(RDBMSUpdateAction.class);
-
    private int statusCounter = 0;
+
+
+
+   /*******************************************************************************
+    ** Version predicates are applied by the same SQL statement that changes the row.
+    *******************************************************************************/
+   @Override
+   public boolean supportsAtomicRecordVersions()
+   {
+      return (true);
+   }
 
 
 
@@ -106,6 +116,10 @@ public class RDBMSUpdateAction extends AbstractRDBMSAction implements UpdateInte
             {
                updateRecordsWithMatchingListOfFields(updateInput, connection, table, entry.getValue(), entry.getKey());
             }
+            for(int i = 0; i < updateInput.getRecords().size(); i++)
+            {
+               rs.getRecords().get(i).setErrors(updateInput.getRecords().get(i).getErrors());
+            }
          }
          finally
          {
@@ -134,6 +148,12 @@ public class RDBMSUpdateAction extends AbstractRDBMSAction implements UpdateInte
       if(fieldsBeingUpdated.isEmpty())
       {
          incrementStatus(updateInput, recordList.size());
+         return;
+      }
+
+      if(updateInput.getExpectedVersions() != null && !updateInput.getExpectedVersions().isEmpty() && StringUtils.hasContent(table.getRecordVersionField()))
+      {
+         updateVersionedRecords(updateInput, connection, table, recordList, fieldsBeingUpdated);
          return;
       }
 
@@ -196,6 +216,43 @@ public class RDBMSUpdateAction extends AbstractRDBMSAction implements UpdateInte
       {
          logSQL(sql, values, mark);
          statementTimer.finish(sql);
+      }
+   }
+
+   /*******************************************************************************
+    ** Preserve the ordinary column handling while making compare-and-write atomic.
+    *******************************************************************************/
+   private void updateVersionedRecords(UpdateInput input, Connection connection, QTableMetaData table, List<QRecord> records, List<String> fields) throws SQLException
+   {
+      Map<Object, Serializable> expected = com.kingsrook.qqq.backend.core.actions.tables.helpers.RecordVersionCheck.normalizedExpectedVersions(input);
+      QFieldMetaData versionField = table.getField(table.getRecordVersionField());
+      for(QRecord record : records)
+      {
+         if(CollectionUtils.nullSafeHasContents(record.getErrors()))
+         {
+            continue;
+         }
+         Serializable id = record.getValue(table.getPrimaryKeyField());
+         List<Serializable> values = new ArrayList<>(updateValues(table, fields, record));
+         values.add(scrubValue(table, table.getField(table.getPrimaryKeyField()), table.getField(table.getPrimaryKeyField()).getType(), id));
+         String sql = writeUpdateSQLPrefix(table, fields) + " = ?";
+         Object identity = com.kingsrook.qqq.backend.core.actions.tables.helpers.RecordVersionCheck.primaryKeyIdentity(table, id);
+         boolean guarded = expected.containsKey(identity);
+         if(guarded)
+         {
+            Serializable version = expected.get(identity);
+            sql += " AND " + fieldExpression(null, versionField) + (version == null ? " IS NULL" : " = ?");
+            if(version != null)
+            {
+               values.add(scrubValue(table, versionField, versionField.getType(), version));
+            }
+         }
+         int count = getActionStrategy().executeUpdateForRowCount(connection, sql, values.toArray());
+         if(guarded && count == 0)
+         {
+            record.addError(new com.kingsrook.qqq.backend.core.model.statusmessages.RecordVersionConflictError(null, null, null, List.of()));
+         }
+         incrementStatus(input, 1);
       }
    }
 

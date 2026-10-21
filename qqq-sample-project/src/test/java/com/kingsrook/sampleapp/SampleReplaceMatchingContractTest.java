@@ -101,6 +101,8 @@ class SampleReplaceMatchingContractTest
       canonical = instance.getTable(TABLE);
       canonicalJson = JsonUtils.toJson(canonical);
       active = canonical.clone();
+      // These fixtures freeze generated fields to compare complete native rows.
+      active.setRecordVersionField("");
       for(String field : List.of("createDate", "modifyDate", "createdDay", "modifiedDay", "userIdValue"))
       {
          active.getField(field).withBehaviors(new HashSet<>(active.getField(field).getBehaviors()))

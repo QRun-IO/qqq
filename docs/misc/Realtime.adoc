@@ -128,7 +128,7 @@ Close handles returned by `subscribe` when their owner stops.
 == Optimistic record versions
 
 `QTableMetaData.withRecordVersionField("revision")` chooses a version field. Enrichment
-defaults to the field with the MODIFY_DATE behavior (including conventional
+defaults to a DATE_TIME field with the MODIFY_DATE behavior (including conventional
 `modifyDate` fields). An explicit empty string disables checking. Custom version
 fields are advanced by ordinary core updates: integer and long versions increment,
 string versions receive a new UUID, and timestamps advance at millisecond precision.

@@ -52,6 +52,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
@@ -60,6 +61,25 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *******************************************************************************/
 class RecordVersionCheckTest extends BaseTest
 {
+   /*******************************************************************************
+    ** Day-only defaults cannot distinguish successive writes within the same day.
+    *******************************************************************************/
+   @Test
+   void inferredVersionRequiresTimestamp() throws Exception
+   {
+      QTableMetaData table = QContext.getQInstance().getTable("realtimeRecord");
+      table.setRecordVersionField(null);
+      table.getField("modifyDate").withBehavior(com.kingsrook.qqq.backend.core.model.metadata.fields.DynamicDefaultValueBehavior.NONE);
+      table.withField(new QFieldMetaData("modifiedDay", QFieldType.DATE)
+         .withBehavior(com.kingsrook.qqq.backend.core.model.metadata.fields.DynamicDefaultValueBehavior.MODIFY_DATE));
+      new QInstanceEnricher(QContext.getQInstance()).enrich();
+      assertNull(table.getRecordVersionField());
+      table.withField(new QFieldMetaData("modifiedAt", QFieldType.DATE_TIME)
+         .withBehavior(com.kingsrook.qqq.backend.core.model.metadata.fields.DynamicDefaultValueBehavior.MODIFY_DATE));
+      new QInstanceEnricher(QContext.getQInstance()).enrich();
+      assertEquals("modifiedAt", table.getRecordVersionField());
+   }
+
    /*******************************************************************************
     ** Numeric key spellings must not silently remove an expected-version guard.
     *******************************************************************************/

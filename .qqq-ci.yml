@@ -1,5 +1,5 @@
 profile: core
-orb_version: 0.7.12
+orb_version: 0.7.18
 default_branch: develop
 java_version: '21'
 browsers: true

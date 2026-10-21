@@ -25,4 +25,4 @@ permissions:
   contents: read
 jobs:
   analyze:
-    uses: QRun-IO/qqq-orb/.github/workflows/core-codeql.yml@bcab95daa80eb4741b7916cd07f4854b5d99eadf
+    uses: QRun-IO/qqq-orb/.github/workflows/core-codeql.yml@0f33ddadf88b9a1b940b8883782fe2000ee1d2bd

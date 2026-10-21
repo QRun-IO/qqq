@@ -147,6 +147,18 @@ public class RDBMSTransaction extends QBackendTransaction
    @Override
    public void rollback() throws QException
    {
+      rollbackConnection();
+   }
+
+
+
+   /*******************************************************************************
+    ** Release pending JDBC work and compensate resources. Close uses this directly
+    ** so cleanup does not invoke an application's explicit rollback override after
+    ** a successful commit.
+    *******************************************************************************/
+   private void rollbackConnection() throws QException
+   {
       try
       {
          LOG.info("Rolling back transaction");
@@ -186,7 +198,7 @@ public class RDBMSTransaction extends QBackendTransaction
 
          try
          {
-            rollback();
+            rollbackConnection();
          }
          finally
          {

@@ -37,7 +37,6 @@ import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
@@ -85,9 +84,6 @@ import com.kingsrook.qqq.backend.module.rdbms.jdbc.C3P0PooledConnectionProvider;
 import com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager;
 import com.kingsrook.qqq.backend.module.rdbms.model.metadata.ConnectionPoolSettings;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
-import com.mchange.v2.c3p0.C3P0Registry;
-import com.mchange.v2.c3p0.DataSources;
-import com.mchange.v2.c3p0.PooledDataSource;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -191,7 +187,7 @@ class SamplePostgresAcceptanceIT
 
 
    /*******************************************************************************
-    ** Registry reset is not a pool shutdown API; explicitly destroy only our pool.
+    ** Close this application's providers and verify their native connections are gone.
     *******************************************************************************/
    @AfterEach
    void tearDown() throws Exception
@@ -789,20 +785,13 @@ class SamplePostgresAcceptanceIT
 
 
    /*******************************************************************************
-    ** C3P0's public registry identifies the one uniquely named pool owned here.
+    ** Use the owner-scoped shutdown API; pool identities are not backend names.
     *******************************************************************************/
-   private void closeOwnedPools() throws Exception
+   private void closeOwnedPools()
    {
-      if(backend != null)
+      if(instance != null)
       {
-         for(Object entry : Set.copyOf(C3P0Registry.getPooledDataSources()))
-         {
-            PooledDataSource pool = (PooledDataSource) entry;
-            if(backend.getName().equals(pool.getIdentityToken()))
-            {
-               DataSources.destroy(pool);
-            }
-         }
+         ConnectionManager.closeConnectionProviders(instance);
       }
    }
 

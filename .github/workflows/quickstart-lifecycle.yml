@@ -24,7 +24,7 @@ permissions:
   contents: read
 jobs:
   lifecycle:
-    uses: QRun-IO/qqq-orb/.github/workflows/core-quickstart-lifecycle.yml@bcab95daa80eb4741b7916cd07f4854b5d99eadf
+    uses: QRun-IO/qqq-orb/.github/workflows/core-quickstart-lifecycle.yml@0f33ddadf88b9a1b940b8883782fe2000ee1d2bd
     with:
       version: ${{ inputs.version || '' }}
       source_sha: ${{ inputs.source_sha || '' }}

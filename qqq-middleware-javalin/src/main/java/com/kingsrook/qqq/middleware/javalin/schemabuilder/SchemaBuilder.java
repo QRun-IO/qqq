@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin.schemabuilder;
@@ -26,7 +25,6 @@ import java.lang.reflect.AccessibleObject;
 import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -73,6 +71,17 @@ public class SchemaBuilder
    public static class SchemaFromBuilder extends Schema
    {
       private Class<?> originalClass;
+      private Boolean  deprecated;
+
+
+
+      /*******************************************************************************
+       ** Whether this schema member is deprecated.
+       *******************************************************************************/
+      public Boolean getDeprecated()
+      {
+         return (deprecated);
+      }
 
 
 
@@ -120,8 +129,9 @@ public class SchemaBuilder
    {
       SchemaFromBuilder schema = new SchemaFromBuilder();
       schema.setOriginalClass(c);
+      schema.deprecated = element.isAnnotationPresent(Deprecated.class) ? true : null;
 
-      if(c.isEnum())
+      if(c.isEnum() || (c.equals(String.class) && element.isAnnotationPresent(OpenAPIEnumSubSet.class)))
       {
          schema.withType(Type.STRING);
 
@@ -148,13 +158,17 @@ public class SchemaBuilder
       {
          schema.withType(Type.STRING);
       }
-      else if(c.equals(Integer.class) || c.equals(Long.class) || c.equals(BigDecimal.class))
+      else if(Number.class.isAssignableFrom(c) || c.equals(int.class) || c.equals(long.class) || c.equals(short.class) || c.equals(byte.class) || c.equals(float.class) || c.equals(double.class))
       {
-         schema.withType(Type.NUMBER);
+         schema.withType(c.equals(int.class) || c.equals(long.class) || c.equals(short.class) || c.equals(byte.class) ? Type.INTEGER : Type.NUMBER);
       }
-      else if(c.equals(Boolean.class))
+      else if(c.equals(Boolean.class) || c.equals(boolean.class))
       {
          schema.withType(Type.BOOLEAN);
+         if(!c.isPrimitive())
+         {
+            schema.withNullable(true);
+         }
       }
       else if(c.equals(List.class))
       {
@@ -197,14 +211,10 @@ public class SchemaBuilder
          OpenAPIMapValueType openAPIMapValueTypeAnnotation = element.getAnnotation(OpenAPIMapValueType.class);
          if(openAPIMapValueTypeAnnotation != null)
          {
-            if(openAPIMapValueTypeAnnotation.useRef())
-            {
-               schema.withAdditionalProperties(new Schema().withRef("#/components/schemas/" + openAPIMapValueTypeAnnotation.value().getSimpleName()));
-            }
-            else
-            {
-               schema.withAdditionalProperties(classToSchema(openAPIMapValueTypeAnnotation.value()));
-            }
+            Schema valueSchema = openAPIMapValueTypeAnnotation.useRef()
+               ? new Schema().withRef("#/components/schemas/" + openAPIMapValueTypeAnnotation.value().getSimpleName())
+               : classToSchema(openAPIMapValueTypeAnnotation.value());
+            schema.withAdditionalProperties(openAPIMapValueTypeAnnotation.array() ? new Schema().withType(Type.ARRAY).withItems(valueSchema) : valueSchema);
          }
       }
       else

@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.modules.authentication.implementations;
@@ -113,5 +112,30 @@ class MockAuthenticationModuleTest extends BaseTest
       assertEquals(first.getUuid(), restored.getUuid());
       assertEquals(first.getIdReference(), restored.getIdReference());
       assertNotEquals(first.getIdReference(), module.createSession(instance, Map.of()).getIdReference());
+   }
+
+
+
+   /*******************************************************************************
+    ** A session named by its sessionUUID (or sessionId) is resumed with the same
+    ** uuid and the same user, so calls carrying it (e.g. the in-process UI API
+    ** invoker) act as the same user.
+    *******************************************************************************/
+   @Test
+   void testCreateSession_resumesBySessionUuidWithStableUser() throws Exception
+   {
+      QInstance                qInstance = QContext.getQInstance();
+      MockAuthenticationModule module    = new MockAuthenticationModule();
+
+      QSession first  = module.createSession(qInstance, Map.of("sessionUUID", "abc-123"));
+      QSession second = module.createSession(qInstance, Map.of("sessionUUID", "abc-123"));
+      assertEquals("abc-123", first.getUuid());
+      assertEquals(first.getUuid(), second.getUuid());
+      assertEquals(first.getUser().getIdReference(), second.getUser().getIdReference());
+
+      QSession byId = module.createSession(qInstance, Map.of("sessionId", "abc-123"));
+      assertEquals(first.getUser().getIdReference(), byId.getUser().getIdReference());
+
+      assertNotEquals("abc-123", module.createSession(qInstance, Map.of()).getUuid());
    }
 }

@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin;
@@ -24,10 +23,12 @@ package com.kingsrook.qqq.middleware.javalin;
 
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
 import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
+import com.kingsrook.qqq.backend.core.exceptions.QTooManyRequestsException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.exceptions.QValueException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -37,6 +38,7 @@ import com.kingsrook.qqq.backend.core.utils.ExceptionUtils;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.BasicErrorResponseV1;
 import io.javalin.http.Context;
 import org.eclipse.jetty.http.HttpStatus;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
@@ -48,6 +50,9 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 public class QJavalinUtils
 {
    private static final QLogger LOG = QLogger.getLogger(QJavalinUtils.class);
+
+   public static final String TRACE_ID_HEADER    = "X-QQQ-Trace-Id";
+   public static final String TRACE_ID_ATTRIBUTE = "qqq.traceId";
 
 
 
@@ -126,7 +131,7 @@ public class QJavalinUtils
     ** the first one found, looking in that order, null if neither is found.
     ** uses try-catch on reading each of those, as they apparently can throw!
     ***************************************************************************/
-   static String getFormParamOrQueryParam(Context context, String parameterName)
+   public static String getFormParamOrQueryParam(Context context, String parameterName)
    {
       String value = null;
       try
@@ -210,6 +215,11 @@ public class QJavalinUtils
             statusCode = Objects.requireNonNullElse(statusCode, HttpStatus.Code.NOT_FOUND); // 404
             respondWithError(context, statusCode, userFacingException.getMessage());
          }
+         else if(userFacingException instanceof QTooManyRequestsException)
+         {
+            statusCode = Objects.requireNonNullElse(statusCode, HttpStatus.Code.TOO_MANY_REQUESTS); // 429
+            respondWithError(context, statusCode, userFacingException.getMessage());
+         }
          else if(userFacingException instanceof QBadRequestException)
          {
             statusCode = Objects.requireNonNullElse(statusCode, HttpStatus.Code.BAD_REQUEST); // 400
@@ -217,7 +227,7 @@ public class QJavalinUtils
          }
          else
          {
-            LOG.info("User-facing exception", e);
+            LOG.info("User-facing exception", e, logPair("traceId", getTraceId(context)));
             statusCode = Objects.requireNonNullElse(statusCode, HttpStatus.Code.INTERNAL_SERVER_ERROR); // 500
             respondWithError(context, statusCode, userFacingException.getMessage());
          }
@@ -239,7 +249,7 @@ public class QJavalinUtils
          ////////////////////////////////
          // default exception handling //
          ////////////////////////////////
-         LOG.warn("Exception in javalin request", e);
+         LOG.warn("Exception in javalin request", e, logPair("traceId", getTraceId(context)));
          respondWithError(context, HttpStatus.Code.INTERNAL_SERVER_ERROR, e.getClass().getSimpleName() + " (" + e.getMessage() + ")"); // 500
       }
    }
@@ -252,7 +262,31 @@ public class QJavalinUtils
    public static void respondWithError(Context context, HttpStatus.Code statusCode, String errorMessage)
    {
       context.status(statusCode.getCode());
-      context.result(JsonUtils.toJson(Map.of("error", errorMessage)));
+      context.result(JsonUtils.toJson(new BasicErrorResponseV1()
+         .withError(errorMessage)
+         .withCode(BasicErrorResponseV1.codeForStatus(statusCode.getCode()))
+         .withTraceId(getTraceId(context))
+         .toMap()));
+   }
+
+
+
+   /*******************************************************************************
+    ** The trace id of a request: the client's X-Request-Id (when it is a short,
+    ** safe token), else a new one.  It is set as the X-QQQ-Trace-Id response
+    ** header, and is the error body's traceId.
+    *******************************************************************************/
+   public static String getTraceId(Context context)
+   {
+      String traceId = context.attribute(TRACE_ID_ATTRIBUTE);
+      if(traceId == null)
+      {
+         String requested = context.header("X-Request-Id");
+         traceId = requested != null && requested.matches("[A-Za-z0-9._:-]{1,64}") ? requested : UUID.randomUUID().toString();
+         context.attribute(TRACE_ID_ATTRIBUTE, traceId);
+         context.header(TRACE_ID_HEADER, traceId);
+      }
+      return (traceId);
    }
 
 

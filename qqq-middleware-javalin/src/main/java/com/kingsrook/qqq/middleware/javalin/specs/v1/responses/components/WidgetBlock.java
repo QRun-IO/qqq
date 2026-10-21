@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components;
@@ -34,6 +33,7 @@ import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIEnu
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIExclude;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIListItems;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIOneOf;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.utils.HtmlText;
 
 
 /*******************************************************************************
@@ -98,7 +98,18 @@ public class WidgetBlock implements Serializable, ToSchema
    @OpenAPIDescription("What type of block to render.")
    public BlockType getBlockType()
    {
-      return (BlockType.valueOf(this.wrapped.getBlockTypeName()));
+      /////////////////////////////////////////////////////////////////////////
+      // a block type this version does not know is left out (blockTypeName //
+      // still names it) rather than failing the whole response            //
+      /////////////////////////////////////////////////////////////////////////
+      try
+      {
+         return (BlockType.valueOf(this.wrapped.getBlockTypeName()));
+      }
+      catch(IllegalArgumentException | NullPointerException e)
+      {
+         return (null);
+      }
    }
 
 
@@ -229,4 +240,47 @@ public class WidgetBlock implements Serializable, ToSchema
    private Map<String, Serializable> overlayStyleOverrides = new HashMap<>();
    */
 
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @OpenAPIDescription("Name of the block's type, as the backend declares it (including types this API version does not enumerate in blockType).")
+   public String getBlockTypeName()
+   {
+      return (this.wrapped.getBlockTypeName());
+   }
+
+
+
+   /*******************************************************************************
+    ** Add client-neutral display fields while preserving the original payload.
+    *******************************************************************************/
+   @OpenAPIDescription("Footer as plain text.")
+   public String getFooterText()
+   {
+      return (HtmlText.fromHtml(wrapped.getFooterHTML()));
+   }
+
+
+
+   /*******************************************************************************
+    ** Add client-neutral display fields while preserving the original payload.
+    *******************************************************************************/
+   @OpenAPIDescription("Composite overlay as HTML.")
+   public String getOverlayHtml()
+   {
+      return (wrapped instanceof CompositeWidgetData composite ? composite.getOverlayHtml() : null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Add client-neutral display fields while preserving the original payload.
+    *******************************************************************************/
+   @OpenAPIDescription("Composite overlay as plain text.")
+   public String getOverlayText()
+   {
+      return (HtmlText.fromHtml(getOverlayHtml()));
+   }
 }

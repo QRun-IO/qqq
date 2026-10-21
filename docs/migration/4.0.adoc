@@ -352,12 +352,13 @@ qqq-utility-lambdas
 The module now targets Java 21 bytecode (previously Java 11). If your project targets Java 11
 or 17, you cannot use `qqq-utility-lambdas`. Upgrade to Java 21.
 
-=== BREAK-04-03: qqq-middleware-javalin annotation-processor block retained at Java 11
+=== BREAK-04-03: qqq-middleware-javalin annotation processor uses Java 21
 
 *Module:* `qqq-middleware-javalin`
 
-The annotation-processor compiler block that generates OpenAPI bytecode is intentionally
-retained at Java 11. The Java 21 JDK can legally produce Java 11 class files. No action required.
+The OpenAPI annotation processor remains explicitly configured at version 7.2.3, while the
+annotation processor inherits Java 21 compiler settings from the parent. There is no Java 11
+source/target override in this module. Build and run the migrated application with Java 21.
 
 === BREAK-04-04: Qodana static analysis aligned to JDK 21
 
@@ -394,6 +395,7 @@ String json = JsonUtils.toJsonCustomized(myObject,
 ----
 
 Or use `toJsonWithMapper` when you need post-build mapper access:
+Here `customProvider` is a Jackson `DefaultSerializerProvider`.
 
 [source,java]
 .After (4.0) — use toJsonWithMapper for post-build mapper config

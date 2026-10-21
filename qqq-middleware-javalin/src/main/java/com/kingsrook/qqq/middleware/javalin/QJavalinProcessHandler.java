@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin;
@@ -49,6 +48,7 @@ import com.kingsrook.qqq.backend.core.actions.async.AsyncJobStatus;
 import com.kingsrook.qqq.backend.core.actions.async.JobGoingAsyncException;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.processes.CancelProcessAction;
+import com.kingsrook.qqq.backend.core.actions.processes.OneTimeSecretHandoff;
 import com.kingsrook.qqq.backend.core.actions.processes.ProcessFileDownload;
 import com.kingsrook.qqq.backend.core.actions.processes.QProcessCallback;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
@@ -56,6 +56,7 @@ import com.kingsrook.qqq.backend.core.actions.reporting.GenerateReportAction;
 import com.kingsrook.qqq.backend.core.actions.tables.StorageAction;
 import com.kingsrook.qqq.backend.core.actions.values.QValueFormatter;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
@@ -88,6 +89,7 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import com.kingsrook.qqq.backend.core.utils.lambdas.UnsafeConsumer;
 import com.kingsrook.qqq.backend.core.utils.lambdas.UnsafeFunction;
+import com.kingsrook.qqq.middleware.javalin.executors.utils.ProcessExecutorUtils;
 import io.javalin.apibuilder.EndpointGroup;
 import io.javalin.http.Context;
 import io.javalin.http.HttpResponseException;
@@ -421,11 +423,19 @@ public class QJavalinProcessHandler
          // run the process as an async action //
          ////////////////////////////////////////
          Integer timeout = getTimeoutMillis(context);
+         final String handoffKey = processUUID;
          RunProcessOutput runProcessOutput = new AsyncJobManager().withProcessUUID(processUUID).startJob(processName, timeout, TimeUnit.MILLISECONDS, (callback) ->
          {
             runProcessInput.setAsyncJobCallback(callback);
-            return (new RunProcessAction().execute(runProcessInput));
+            RunProcessOutput jobOutput = new RunProcessAction().execute(runProcessInput);
+            ////////////////////////////////////////////////////////////////////
+            // park one-time secrets for a status poll, in case the step went //
+            // async; taken right back below when it finished synchronously   //
+            ////////////////////////////////////////////////////////////////////
+            OneTimeSecretHandoff.offer(handoffKey, jobOutput.getOneTimeSecrets());
+            return (jobOutput);
          });
+         OneTimeSecretHandoff.take(handoffKey);
 
          LOG.debug("Process result error? " + runProcessOutput.getException());
          for(QFieldMetaData outputField : QJavalinImplementation.qInstance.getProcess(runProcessInput.getProcessName()).getOutputFields())
@@ -433,17 +443,26 @@ public class QJavalinProcessHandler
             LOG.debug("Process result output value: " + outputField.getName() + ": " + runProcessOutput.getValues().get(outputField.getName()));
          }
 
-         serializeRunProcessResultForCaller(resultForCaller, runProcessOutput);
+         serializeRunProcessResultForCaller(resultForCaller, processName, runProcessOutput);
+         if(!runProcessOutput.getOneTimeSecrets().isEmpty())
+         {
+            resultForCaller.put("oneTimeSecrets", runProcessOutput.getOneTimeSecrets());
+            context.header("Cache-Control", "no-store");
+         }
          QJavalinAccessLogger.logProcessSummary(processName, processUUID, runProcessOutput);
       }
       catch(JobGoingAsyncException jgae)
       {
          resultForCaller.put("jobUUID", jgae.getJobUUID());
       }
-      catch(QPermissionDeniedException pde)
+      catch(QPermissionDeniedException | QAuthenticationException e)
       {
-         returningException = pde;
-         QJavalinImplementation.handleException(context, pde);
+         //////////////////////////////////////////////////////////////////////////////
+         // permission and authentication failures get their HTTP status (403 / 401) //
+         // so frontends can refuse or send the user to sign in                      //
+         //////////////////////////////////////////////////////////////////////////////
+         returningException = e;
+         QJavalinImplementation.handleException(context, e);
       }
       catch(Exception e)
       {
@@ -518,7 +537,7 @@ public class QJavalinProcessHandler
     ** Whether a step finished synchronously or asynchronously, return its data
     ** to the caller the same way.
     *******************************************************************************/
-   private static void serializeRunProcessResultForCaller(Map<String, Object> resultForCaller, RunProcessOutput runProcessOutput)
+   private static void serializeRunProcessResultForCaller(Map<String, Object> resultForCaller, String processName, RunProcessOutput runProcessOutput)
    {
       if(runProcessOutput.getException().isPresent())
       {
@@ -527,7 +546,7 @@ public class QJavalinProcessHandler
          ////////////////////////////////////////////////////////////////
          serializeRunProcessExceptionForCaller(resultForCaller, runProcessOutput.getException().get());
       }
-      resultForCaller.put("values", runProcessOutput.getValues());
+      resultForCaller.put("values", ProcessExecutorUtils.valuesForCaller(processName, runProcessOutput.getValues()));
       runProcessOutput.getProcessState().getNextStepName().ifPresent(nextStep -> resultForCaller.put("nextStep", nextStep));
       runProcessOutput.getProcessState().getBackStepName().ifPresent(backStep -> resultForCaller.put("backStep", backStep));
 
@@ -806,7 +825,13 @@ public class QJavalinProcessHandler
                if(processState.isPresent())
                {
                   RunProcessOutput runProcessOutput = new RunProcessOutput(processState.get());
-                  serializeRunProcessResultForCaller(resultForCaller, runProcessOutput);
+                  serializeRunProcessResultForCaller(resultForCaller, processName, runProcessOutput);
+                  java.util.List<com.kingsrook.qqq.backend.core.model.secrets.OneTimeSecret> secrets = OneTimeSecretHandoff.take(processUUID);
+                  if(!secrets.isEmpty())
+                  {
+                     resultForCaller.put("oneTimeSecrets", secrets);
+                     context.header("Cache-Control", "no-store");
+                  }
                   QJavalinAccessLogger.logProcessSummary(processName, processUUID, runProcessOutput);
                }
                else
@@ -871,7 +896,7 @@ public class QJavalinProcessHandler
          else
          {
             List<QRecord> recordPage = CollectionUtils.safelyGetPage(records, skip, limit);
-            resultForCaller.put("records", recordPage);
+            resultForCaller.put("records", ProcessExecutorUtils.recordsForCaller(context.pathParam("processName"), processState, recordPage));
             resultForCaller.put("totalRecords", records.size());
          }
 

@@ -5,30 +5,47 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components;
 
 
 import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessTier;
+import com.kingsrook.qqq.backend.core.actions.values.ContingentPossibleValueHelper;
+import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehavior;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehaviorForFrontend;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QSupplementalFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendFieldValidation;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.PossibleValueDependencyBehavior;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValuePicker;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
+import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
+import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIEnumSubSet;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIExclude;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIListItems;
 
@@ -193,9 +210,106 @@ public class FieldMetaData implements ToSchema
 
    }
 
-   // todo - PVS filter!!
 
-   // todo - inline PVS
+
+   /*******************************************************************************
+    ** Other input fields that control this field's possible values.
+    *******************************************************************************/
+   @OpenAPIDescription("Names of fields controlling this field's choices, including explicit and filter dependencies. Absent for non-contingent fields.")
+   @OpenAPIListItems(String.class)
+   public List<String> getPossibleValueSourceDependsOn()
+   {
+      if(wrappedFull == null)
+      {
+         return (wrappedFrontend.getPossibleValueSourceDependsOn());
+      }
+      return (ContingentPossibleValueHelper.isContingent(wrappedFull) ? new ArrayList<>(ContingentPossibleValueHelper.getDependencyFieldNames(wrappedFull)) : null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Enum values for the string wire representation.
+    *******************************************************************************/
+   public static class DependencyBehaviors implements OpenAPIEnumSubSet.EnumSubSet<PossibleValueDependencyBehavior>
+   {
+      /*******************************************************************************
+       ** All supported dependency behaviors.
+       *******************************************************************************/
+      public EnumSet<PossibleValueDependencyBehavior> getSubSet()
+      {
+         return (EnumSet.allOf(PossibleValueDependencyBehavior.class));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Behavior while any dependency is unset.
+    *******************************************************************************/
+   @OpenAPIDescription("DISABLE_UNTIL_SET disables a contingent field until its dependencies are set (default). SHOW_ALL_UNTIL_SET keeps it enabled and omits criteria with missing inputs in form searches. Absent for non-contingent fields.")
+   @OpenAPIEnumSubSet(DependencyBehaviors.class)
+   public String getPossibleValueSourceDependencyBehavior()
+   {
+      if(wrappedFull == null)
+      {
+         return (wrappedFrontend.getPossibleValueSourceDependencyBehavior());
+      }
+      return (ContingentPossibleValueHelper.isContingent(wrappedFull)
+         ? Objects.requireNonNullElse(wrappedFull.getPossibleValueSourceDependencyBehavior(), PossibleValueDependencyBehavior.DISABLE_UNTIL_SET).name() : null);
+   }
+
+
+
+
+   /***************************************************************************
+    ** The record picker declared by this field's possible value source, if any.
+    ***************************************************************************/
+   @OpenAPIDescription("When this field's possible value source declares a record picker (for sources over large tables), its configuration: thumbnail, preview, subtitle and detail fields, filter fields, search fields, sorts and page size.  Frontends offer a searchable, paged picker dialog.")
+   public QPossibleValuePicker getPicker()
+   {
+      QPossibleValueSource source = pickerSource();
+      return (source == null ? null : source.getPicker());
+   }
+
+
+
+   /***************************************************************************
+    ** The table behind this field's picker (for its field labels and types).
+    ***************************************************************************/
+   @OpenAPIDescription("When this field has a picker, the table its possible value source reads, whose metadata describes the picker's fields.")
+   public String getPickerTableName()
+   {
+      QPossibleValueSource source = pickerSource();
+      return (source == null ? null : source.getTableName());
+   }
+
+
+
+   /***************************************************************************
+    ** This field's possible value source, when it declares a picker.
+    ***************************************************************************/
+   private QPossibleValueSource pickerSource()
+   {
+      String name = getPossibleValueSourceName();
+      if(name == null || QContext.getQInstance() == null)
+      {
+         return (null);
+      }
+      QPossibleValueSource source = QContext.getQInstance().getPossibleValueSource(name);
+      return (source == null || source.getPicker() == null ? null : source);
+   }
+
+
+
+   /***************************************************************************
+    ** Inline possible values declared on a field, as in frontend metadata.
+    ***************************************************************************/
+   @OpenAPIDescription("Inline possible-value source for this field; enumValues supply choices without a separate lookup.")
+   public QPossibleValueSource getInlinePossibleValueSource()
+   {
+      return (this.wrappedFull != null ? this.wrappedFull.getInlinePossibleValueSource() : this.wrappedFrontend.getInlinePossibleValueSource());
+   }
 
 
 
@@ -208,7 +322,107 @@ public class FieldMetaData implements ToSchema
       return (this.wrappedFull != null ? this.wrappedFull.getMaxLength() : this.wrappedFrontend.getMaxLength());
    }
 
-   // todo behaviors?
+
+
+
+   /***************************************************************************
+    ** The smallest value a field accepts, when its value range rejects smaller
+    ** ones, so a form can say so before the user saves.
+    ***************************************************************************/
+   @OpenAPIDescription("For number fields, the smallest value the field accepts (inclusive).  Absent when there is no such limit.")
+   public String getMinValue()
+   {
+      return (rangeBound(this.wrappedFull != null ? new QFrontendFieldMetaData(this.wrappedFull).getMinValue() : this.wrappedFrontend.getMinValue()));
+   }
+
+
+
+   /***************************************************************************
+    ** The largest value a field accepts, when its value range rejects larger
+    ** ones.
+    ***************************************************************************/
+   @OpenAPIDescription("For number fields, the largest value the field accepts (inclusive).  Absent when there is no such limit.")
+   public String getMaxValue()
+   {
+      return (rangeBound(this.wrappedFull != null ? new QFrontendFieldMetaData(this.wrappedFull).getMaxValue() : this.wrappedFrontend.getMaxValue()));
+   }
+
+
+
+   /***************************************************************************
+    ** The field's validation rules in one place (UI API 1.6.0).
+    ***************************************************************************/
+   @OpenAPIDescription("The field's validation rules, as the server enforces them on insert and update (required, maxLength and tooLongBehavior, min/max value, pattern).  Absent when the field has none.  Since 1.6.0.")
+   public FieldValidationV1 getValidation()
+   {
+      QFrontendFieldValidation validation = this.wrappedFull != null ? QFrontendFieldValidation.of(this.wrappedFull) : this.wrappedFrontend.getValidation();
+      return (validation == null ? null : new FieldValidationV1(validation));
+   }
+
+
+
+   /***************************************************************************
+    ** a bound as plain digits (a string, so a long or decimal keeps its exact value).
+    ***************************************************************************/
+   private static String rangeBound(Number bound)
+   {
+      return (bound == null ? null : new java.math.BigDecimal(bound.toString()).toPlainString());
+   }
+
+
+
+   /***************************************************************************
+    ** Width of the field in a 12-column grid, as the Material dashboard lays out
+    ** record forms and views (QRun-IO/qqq#723).
+    ***************************************************************************/
+   @OpenAPIDescription("Width of this field in a 12-column record form or view grid (e.g., 12 for the full width, 6 for half).  Absent when the frontend's default applies.")
+   public Integer getGridColumns()
+   {
+      return (this.wrappedFull != null ? this.wrappedFull.getGridColumns() : this.wrappedFrontend.getGridColumns());
+   }
+
+
+
+   /***************************************************************************
+    ** Names of the behaviors a frontend applies while a value is edited (e.g.,
+    ** TO_UPPER_CASE applied as the user types, QRun-IO/qqq#723), as the legacy
+    ** table meta-data lists them.
+    ***************************************************************************/
+   @OpenAPIDescription("Names of the field's behaviors that a frontend applies while editing, e.g., TO_UPPER_CASE, TO_LOWER_CASE or TRIM.  Absent when the field has none.")
+   @OpenAPIListItems(String.class)
+   public List<String> getBehaviors()
+   {
+      List<String> names = new ArrayList<>();
+      if(this.wrappedFull != null)
+      {
+         for(FieldBehavior<?> behavior : CollectionUtils.nonNullCollection(this.wrappedFull.getBehaviors()))
+         {
+            if(behavior instanceof FieldBehaviorForFrontend frontendBehavior)
+            {
+               names.add(behaviorName(frontendBehavior));
+            }
+         }
+      }
+      else
+      {
+         for(FieldBehaviorForFrontend frontendBehavior : CollectionUtils.nonNullList(this.wrappedFrontend.getBehaviors()))
+         {
+            names.add(behaviorName(frontendBehavior));
+         }
+      }
+      return (names.isEmpty() ? null : names);
+   }
+
+
+
+   /***************************************************************************
+    ** the name a frontend knows a behavior by (the enum constant for the
+    ** standard case and white-space behaviors).
+    ***************************************************************************/
+   private static String behaviorName(FieldBehaviorForFrontend behavior)
+   {
+      return (behavior instanceof Enum<?> constant ? constant.name() : String.valueOf(behavior));
+   }
 
 
 
@@ -223,8 +437,77 @@ public class FieldMetaData implements ToSchema
       return (fieldAdornments == null ? null : fieldAdornments.stream().map(a -> new FieldAdornment(a)).toList());
    }
 
-   // todo help content
 
-   // todo supplemental...
 
+   /***************************************************************************
+    ** help content for the field (e.g., shown on view, edit and insert
+    ** screens, per each entry's roles), as in the legacy table meta-data.
+    ***************************************************************************/
+   @OpenAPIDescription("Help Contents for this field.")
+   @OpenAPIListItems(value = HelpContentV1.class, useRef = true)
+   public List<HelpContentV1> getHelpContents()
+   {
+      return (HelpContentV1.of(this.wrappedFull != null ? this.wrappedFull.getHelpContents() : this.wrappedFrontend.getHelpContents()));
+   }
+
+
+   /***************************************************************************
+    ** Frontend-visible field settings, including Material form adjusters.
+    ** Keep the same visibility filter as QFrontendFieldMetaData so backend-only
+    ** supplemental metadata does not leak through the versioned API.
+    ***************************************************************************/
+   @OpenAPIDescription("Additional frontend-visible metadata for this field, keyed by supplemental type.")
+   public Map<String, QSupplementalFieldMetaData> getSupplementalMetaData()
+   {
+      if(this.wrappedFull == null)
+      {
+         return (this.wrappedFrontend.getSupplementalFieldMetaData());
+      }
+
+      Map<String, QSupplementalFieldMetaData> result = new LinkedHashMap<>();
+      for(Map.Entry<String, QSupplementalFieldMetaData> entry : CollectionUtils.nonNullMap(this.wrappedFull.getSupplementalMetaData()).entrySet())
+      {
+         if(entry.getValue().includeInFrontendMetaData())
+         {
+            result.put(entry.getKey(), entry.getValue());
+         }
+      }
+      return (result.isEmpty() ? null : result);
+   }
+
+
+
+
+   /*******************************************************************************
+    ** Effective tier; HIDDEN fields are omitted from table metadata.
+    *******************************************************************************/
+   @OpenAPIDescription("Effective field access: FULL, REVEALABLE, MASKED, or HIDDEN. Omitted means FULL. Restricted values are strings, regardless of field type.")
+   public FieldAccessTier getAccessTier()
+   {
+      return (wrappedFrontend == null || wrappedFrontend.getAccessTier() == null ? null : FieldAccessTier.valueOf(wrappedFrontend.getAccessTier()));
+   }
+
+
+
+   /*******************************************************************************
+    ** Exact-match operators may also be disabled by the resolver.
+    *******************************************************************************/
+   @OpenAPIDescription("Allowed filter operators when restricted: EQUALS and IN for REVEALABLE when exact match is enabled, otherwise empty. Omitted means unrestricted.")
+   @OpenAPIListItems(String.class)
+   @JsonInclude(JsonInclude.Include.NON_NULL)
+   public List<String> getAllowedFilterOperators()
+   {
+      return (wrappedFrontend == null ? null : wrappedFrontend.getAllowedFilterOperators());
+   }
+
+
+
+   /*******************************************************************************
+    ** Sorting is available only for FULL fields.
+    *******************************************************************************/
+   @OpenAPIDescription("False for restricted fields; omitted means sortable.")
+   public Boolean getIsSortable()
+   {
+      return (wrappedFrontend == null ? null : wrappedFrontend.getIsSortable());
+   }
 }

@@ -1,0 +1,374 @@
+{
+  "schema_version": 1,
+  "target": "Next successor; no claim that Next tested Material Dashboard",
+  "authority": "James explicitly directed Next only / EOL legacy Material, and authorized QQQ-side crosswalk/import under #798/#790 on 2026-09-28. This target substitution preserves all behaviors and negative cases; no waiver.",
+  "next_sha": "93b7b5a4335fa11a8f5a4a54ae9afdd1323eb94a",
+  "historical_material": {
+    "frontend_version": "0.40.0",
+    "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+    "scope": "Historical source pin for #575 through #579; original feature ledger remains authoritative. #606 also records a later 0.41.0 release clarification in its issue."
+  },
+  "sources": {
+    "scripts/acceptance-gate.mjs": "6b97b5d744bfad6a09ea540f376f7e817ff60a6a81605c270f188b528944e230",
+    "tests/acceptance/playwright.config.ts": "e771917e2ab4864c98d3db76f701e45ce56348bc5d50252f958bf84cc9c4f207",
+    ".github/workflows/acceptance.yml": "c0a8fa4b04ccaddb0865078b531b3098a0073cc3d284c92ffa2e35482b7f7af6",
+    "tests/acceptance/matrix/navigation.json": "8055dbe3368dba1065acfed9bb802e0422dd050617e7271a7b6e88fc5315b152",
+    "tests/acceptance/matrix/performance.json": "801ce8bf6102e92a76f5ffd1ec7756aa1c2942a9feae69b861e00967bb3b43bb",
+    "tests/acceptance/matrix/processes.json": "2e9e3f5ef319ed02f158ee6f9d9a15cb643937242e0068b5db6bd85b6577b1c6",
+    "tests/acceptance/matrix/query.json": "acc97a7d74a4062c72c8a28bd01eb357ae239fd05a8552969b3eec5cb31a3d78",
+    "tests/acceptance/matrix/records.json": "b50ce6dd9c44a61264cd9f888a99c74736393bd541d4e173c57f834407195a09",
+    "tests/acceptance/matrix/security.json": "5450c9480c3651bf31091a5f98e3b89f2119dc5599d7532ee357d9a09f7f864c",
+    "tests/acceptance/matrix/widgets.json": "d67d02cba7ae55952a4e2767b463156d1c93acefd91e220dc5ef6ab7452dad51",
+    "tests/acceptance/specs/widgets/record-widgets.spec.ts": "bf57318ab83f2d31a6161aea77f6d1fa92269c4b894329a6028955707e6f5434",
+    "tests/acceptance/specs/widgets/saved-reports-sharing.spec.ts": "4bd560af87b5a4b5ebc044d4667be72acfd6370a9822c8229164ee5ead3b0bc0",
+    "tests/acceptance/specs/widgets/blocks.spec.ts": "ee70c8bce3ee9695dca479a6df12d9d893dff744a31f6b3fed7c43f42f965908"
+  },
+  "features": [
+    {
+      "id": "core.widget.data_bag_viewer",
+      "historical": {
+        "feature": "Widget contract: DATA_BAG_VIEWER",
+        "source_paths": [
+          "docs/metaData/Widgets.adoc",
+          "docs/misc/RenderingWidgets.adoc",
+          "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+          "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+        ],
+        "owning_module": "qqq-backend-core",
+        "acceptance_cases": [
+          "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+        ],
+        "negative_cases": [
+          "Empty/malformed data, invalid reference, renderer failure and denied source data"
+        ],
+        "acceptance_stage": "source",
+        "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+        "verified_tests": []
+      },
+      "requirements": [
+        {
+          "kind": "acceptance_cases",
+          "text": "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0",
+          "tests": [
+            {
+              "matrix_id": "WID-028",
+              "file": "widgets/record-widgets.spec.ts",
+              "title": "[WID-028] data bag viewer lists versions newest first and shows the selected contents @mobile",
+              "projects": [
+                "chromium",
+                "firefox",
+                "webkit",
+                "mobile",
+                "tablet"
+              ]
+            }
+          ],
+          "pending": null
+        },
+        {
+          "kind": "negative_cases",
+          "text": "Empty/malformed data, invalid reference, renderer failure and denied source data",
+          "tests": [],
+          "pending": "Original negative behaviors need applicable per-test/source mapping; shared widget IDs are not type-specific proof."
+        }
+      ]
+    },
+    {
+      "id": "core.widget.pivot_table_setup",
+      "historical": {
+        "feature": "Widget contract: PIVOT_TABLE_SETUP",
+        "source_paths": [
+          "docs/metaData/Widgets.adoc",
+          "docs/misc/RenderingWidgets.adoc",
+          "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+          "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+        ],
+        "owning_module": "qqq-backend-core",
+        "acceptance_cases": [
+          "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+        ],
+        "negative_cases": [
+          "Empty/malformed data, invalid reference, renderer failure and denied source data"
+        ],
+        "acceptance_stage": "source",
+        "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+        "verified_tests": []
+      },
+      "requirements": [
+        {
+          "kind": "acceptance_cases",
+          "text": "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0",
+          "tests": [
+            {
+              "matrix_id": "WID-029",
+              "file": "widgets/saved-reports-sharing.spec.ts",
+              "title": "[WID-029] pivot table setup shows the saved rows, columns and values by label @mobile",
+              "projects": [
+                "chromium",
+                "firefox",
+                "webkit",
+                "mobile",
+                "tablet"
+              ]
+            }
+          ],
+          "pending": null
+        },
+        {
+          "kind": "negative_cases",
+          "text": "Empty/malformed data, invalid reference, renderer failure and denied source data",
+          "tests": [],
+          "pending": "Original negative behaviors need applicable per-test/source mapping; shared widget IDs are not type-specific proof."
+        }
+      ]
+    },
+    {
+      "id": "core.widget.filter_and_columns_setup",
+      "historical": {
+        "feature": "Widget contract: FILTER_AND_COLUMNS_SETUP",
+        "source_paths": [
+          "docs/metaData/Widgets.adoc",
+          "docs/misc/RenderingWidgets.adoc",
+          "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+          "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+        ],
+        "owning_module": "qqq-backend-core",
+        "acceptance_cases": [
+          "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+        ],
+        "negative_cases": [
+          "Empty/malformed data, invalid reference, renderer failure and denied source data"
+        ],
+        "acceptance_stage": "source",
+        "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+        "verified_tests": []
+      },
+      "requirements": [
+        {
+          "kind": "acceptance_cases",
+          "text": "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0",
+          "tests": [
+            {
+              "matrix_id": "WID-030",
+              "file": "widgets/saved-reports-sharing.spec.ts",
+              "title": "[WID-030] filter and columns setup shows the saved filter, sort and visible columns by label @mobile",
+              "projects": [
+                "chromium",
+                "firefox",
+                "webkit",
+                "mobile",
+                "tablet"
+              ]
+            }
+          ],
+          "pending": null
+        },
+        {
+          "kind": "negative_cases",
+          "text": "Empty/malformed data, invalid reference, renderer failure and denied source data",
+          "tests": [],
+          "pending": "Original negative behaviors need applicable per-test/source mapping; shared widget IDs are not type-specific proof."
+        }
+      ]
+    },
+    {
+      "id": "core.widget.row_builder",
+      "historical": {
+        "feature": "Widget contract: ROW_BUILDER",
+        "source_paths": [
+          "docs/metaData/Widgets.adoc",
+          "docs/misc/RenderingWidgets.adoc",
+          "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+          "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+        ],
+        "owning_module": "qqq-backend-core",
+        "acceptance_cases": [
+          "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+        ],
+        "negative_cases": [
+          "Empty/malformed data, invalid reference, renderer failure and denied source data"
+        ],
+        "acceptance_stage": "source",
+        "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+        "verified_tests": []
+      },
+      "requirements": [
+        {
+          "kind": "acceptance_cases",
+          "text": "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0",
+          "tests": [
+            {
+              "matrix_id": "WID-031",
+              "file": "widgets/record-widgets.spec.ts",
+              "title": "[WID-031] row builder without an association shows its rows read-only @mobile",
+              "projects": [
+                "chromium",
+                "firefox",
+                "webkit",
+                "mobile",
+                "tablet"
+              ]
+            }
+          ],
+          "pending": null
+        },
+        {
+          "kind": "negative_cases",
+          "text": "Empty/malformed data, invalid reference, renderer failure and denied source data",
+          "tests": [],
+          "pending": "Original negative behaviors need applicable per-test/source mapping; shared widget IDs are not type-specific proof."
+        }
+      ]
+    },
+    {
+      "id": "core.widget.script_viewer",
+      "historical": {
+        "feature": "Widget contract: SCRIPT_VIEWER",
+        "source_paths": [
+          "docs/metaData/Widgets.adoc",
+          "docs/misc/RenderingWidgets.adoc",
+          "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+          "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+        ],
+        "owning_module": "qqq-backend-core",
+        "acceptance_cases": [
+          "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+        ],
+        "negative_cases": [
+          "Empty/malformed data, invalid reference, renderer failure and denied source data"
+        ],
+        "acceptance_stage": "source",
+        "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+        "verified_tests": []
+      },
+      "requirements": [
+        {
+          "kind": "acceptance_cases",
+          "text": "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0",
+          "tests": [
+            {
+              "matrix_id": "WID-032",
+              "file": "widgets/record-widgets.spec.ts",
+              "title": "[WID-032] script viewer marks the current revision and shows each revision file @mobile",
+              "projects": [
+                "chromium",
+                "firefox",
+                "webkit",
+                "mobile",
+                "tablet"
+              ]
+            }
+          ],
+          "pending": null
+        },
+        {
+          "kind": "negative_cases",
+          "text": "Empty/malformed data, invalid reference, renderer failure and denied source data",
+          "tests": [],
+          "pending": "Original negative behaviors need applicable per-test/source mapping; shared widget IDs are not type-specific proof."
+        }
+      ]
+    },
+    {
+      "id": "core.widget.blocks",
+      "historical": {
+        "feature": "Composite widget block types, styles, links and interactions",
+        "source_paths": [
+          "docs/misc/RenderingWidgets.adoc",
+          "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/CompositeWidgetData.java"
+        ],
+        "owning_module": "qqq-backend-core",
+        "acceptance_cases": [
+          "Text, image, icon, audio, button, input, divider, progress, number badges, nested composition, links/tooltips/styles"
+        ],
+        "negative_cases": [
+          "Missing asset, invalid slot/value, empty children, action permission denial and unsafe user content"
+        ],
+        "acceptance_stage": "source",
+        "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+        "verified_tests": [
+          "com.kingsrook.sampleapp.selenium.SampleBrowserIT#testCanonicalWidgets",
+          "com.kingsrook.sampleapp.selenium.SampleWidgetControlsBrowserIT#testBlockCallbacks",
+          "com.kingsrook.sampleapp.selenium.SampleWidgetControlsBrowserIT#testMalformedBlockType"
+        ]
+      },
+      "requirements": [
+        {
+          "kind": "acceptance_cases",
+          "text": "Text, image, icon, audio, button, input, divider, progress, number badges, nested composition, links/tooltips/styles",
+          "tests": [
+            {
+              "matrix_id": "WID-057",
+              "file": "widgets/blocks.spec.ts",
+              "title": "[WID-057] every block type renders its values and styles @mobile",
+              "projects": [
+                "chromium",
+                "firefox",
+                "webkit",
+                "mobile",
+                "tablet"
+              ]
+            },
+            {
+              "matrix_id": "WID-058",
+              "file": "widgets/blocks.spec.ts",
+              "title": "[WID-058] composite layouts apply their flex rules and slot links carry tooltips @mobile",
+              "projects": [
+                "chromium",
+                "firefox",
+                "webkit",
+                "mobile",
+                "tablet"
+              ]
+            }
+          ],
+          "pending": null
+        },
+        {
+          "kind": "negative_cases",
+          "text": "Missing asset, invalid slot/value, empty children, action permission denial and unsafe user content",
+          "tests": [],
+          "pending": "Original negative behaviors need applicable per-test/source mapping; shared widget IDs are not type-specific proof."
+        }
+      ]
+    },
+    {
+      "id": "dashboard.acceptance",
+      "historical": {
+        "feature": "Dashboard 0.40.0 end-to-end feature/use-case acceptance",
+        "source_paths": [
+          "qqq-sample-project/README.md",
+          "docs/metaData/Tables.adoc",
+          "docs/metaData/Processes.adoc",
+          "qqq-sample-project/pom.xml"
+        ],
+        "owning_module": "qqq-frontend-material-dashboard",
+        "acceptance_cases": [
+          "Navigate apps, query/filter/sort/page, view/create/edit/delete records, associations/PVS, bulk operations, process forms/results/downloads, widgets and responsive layouts"
+        ],
+        "negative_cases": [
+          "Auth/permission denial, validation errors, empty/loading/error states, expired session, broken deep links/assets and client console errors"
+        ],
+        "acceptance_stage": "source",
+        "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+        "verified_tests": [
+          "com.kingsrook.sampleapp.selenium.SampleBrowserIT#testCanonicalWidgets"
+        ]
+      },
+      "requirements": [
+        {
+          "kind": "acceptance_cases",
+          "text": "Navigate apps, query/filter/sort/page, view/create/edit/delete records, associations/PVS, bulk operations, process forms/results/downloads, widgets and responsive layouts",
+          "tests": [],
+          "pending": "Needs full NAV/QRY/REC/PRC/WID/RPT/SEC/INT behavior mapping and default-entry-point evidence; aggregate green is insufficient."
+        },
+        {
+          "kind": "negative_cases",
+          "text": "Auth/permission denial, validation errors, empty/loading/error states, expired session, broken deep links/assets and client console errors",
+          "tests": [],
+          "pending": "Original negative behaviors need applicable per-test/source mapping; shared widget IDs are not type-specific proof."
+        }
+      ]
+    }
+  ]
+}

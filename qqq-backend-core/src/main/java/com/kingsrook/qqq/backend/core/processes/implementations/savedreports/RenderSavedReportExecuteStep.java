@@ -5,27 +5,25 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.processes.implementations.savedreports;
 
 
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.Serializable;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -36,6 +34,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import com.kingsrook.qqq.backend.core.actions.messaging.SendMessageAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.actions.processes.ProcessFileDownload;
 import com.kingsrook.qqq.backend.core.actions.reporting.GenerateReportAction;
@@ -59,16 +59,20 @@ import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportFormatPossib
 import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportInput;
 import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.storage.StorageInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.reporting.QReportDataSource;
 import com.kingsrook.qqq.backend.core.model.metadata.reporting.QReportMetaData;
 import com.kingsrook.qqq.backend.core.model.savedreports.RenderedReport;
 import com.kingsrook.qqq.backend.core.model.savedreports.RenderedReportStatus;
 import com.kingsrook.qqq.backend.core.model.savedreports.SavedReport;
+import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.ExceptionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValidationUtils;
+import org.apache.commons.io.output.CloseShieldOutputStream;
 import org.jsoup.nodes.Element;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
@@ -126,6 +130,14 @@ public class RenderSavedReportExecuteStep implements BackendStep
          LOG.info("Starting to render a report", logPair("savedReportId", savedReport.getId()), logPair("tableName", savedReport.getTableName()), logPair("storageReference", storageReference));
          runBackendStepInput.getAsyncJobCallback().updateStatus("Generating Report");
 
+         ////////////////////////////////////////////////////////////////////////////////////////////
+         // convert the report record to report meta-data, which the GenerateReportAction works on //
+         // - and make sure the caller may read every table it reads: the report runs its queries  //
+         // trusted, and a saved report's table and joins are whatever its author chose            //
+         ////////////////////////////////////////////////////////////////////////////////////////////
+         QReportMetaData reportMetaData = new SavedReportToReportMetaDataAdapter().adapt(savedReport, reportFormat);
+         checkTableReadPermissions(reportMetaData);
+
          //////////////////////////////////////////////////////////////////
          // insert a rendered-report record indicating that it's running //
          //////////////////////////////////////////////////////////////////
@@ -137,11 +149,6 @@ public class RenderSavedReportExecuteStep implements BackendStep
             .withReportFormat(ReportFormatPossibleValueEnum.valueOf(reportFormat.name()).getPossibleValueId())
          )).getRecords().get(0);
          runBackendStepOutput.addValue("renderedReportId", renderedReportRecord.getValue("id"));
-
-         ////////////////////////////////////////////////////////////////////////////////////////////
-         // convert the report record to report meta-data, which the GenerateReportAction works on //
-         ////////////////////////////////////////////////////////////////////////////////////////////
-         QReportMetaData reportMetaData = new SavedReportToReportMetaDataAdapter().adapt(savedReport, reportFormat);
 
          /////////////////////////////////////
          // setup & run the generate action //
@@ -258,27 +265,76 @@ public class RenderSavedReportExecuteStep implements BackendStep
 
 
    /*******************************************************************************
-    ** Generate locally before touching archive storage. Resource cleanup also runs
-    ** after generation or publication failure, preserving the original exception.
+    ** The session must have READ on each data source's table, and on the tables
+    ** its joins (explicit, or implied by its filter) read.
+    *******************************************************************************/
+   static void checkTableReadPermissions(QReportMetaData reportMetaData) throws QException
+   {
+      for(QReportDataSource dataSource : CollectionUtils.nonNullList(reportMetaData.getDataSources()))
+      {
+         if(StringUtils.hasContent(dataSource.getSourceTable()))
+         {
+            QueryInput permissionInput = new QueryInput(dataSource.getSourceTable());
+            PermissionsHelper.checkTablePermissionThrowing(permissionInput, TablePermissionSubType.READ);
+            PermissionsHelper.checkJoinedTableReadPermissions(permissionInput, dataSource.getQueryJoins(), dataSource.getQueryFilter());
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Stream into storage; close before deleting a failed output, and preserve
+    ** the original exception if cleanup also fails.
     *******************************************************************************/
    private ReportOutput generateAndStoreReport(ReportInput reportInput, StorageInput storageInput) throws Exception
    {
-      Path temporaryFile = Files.createTempFile("qqq-saved-report-", "." + reportInput.getReportDestination().getReportFormat().getExtension());
-      try(AutoCloseable cleanup = () -> Files.deleteIfExists(temporaryFile))
+      ///////////////////////////////////////////////////////////////////////////
+      // stream into a staging object in the same storage table, and copy it  //
+      // over the final reference only when the render succeeded: a failure   //
+      // never touches an existing archive object (no local temp file).       //
+      ///////////////////////////////////////////////////////////////////////////
+      StorageInput staging = new StorageInput(storageInput.getTableName())
+         .withReference(storageInput.getReference() + ".partial-" + UUID.randomUUID())
+         .withContentType(storageInput.getContentType());
+      ReportOutput reportOutput;
+      try
       {
-         ReportOutput reportOutput;
-         try(OutputStream output = Files.newOutputStream(temporaryFile))
+         try(OutputStream output = new StorageAction().createOutputStream(staging))
          {
-            reportInput.getReportDestination().setReportOutputStream(output);
+            // The step owns closing storage, even when the report generator closes its destination.
+            reportInput.getReportDestination().setReportOutputStream(CloseShieldOutputStream.wrap(output));
             reportOutput = new GenerateReportAction().execute(reportInput);
          }
 
-         try(OutputStream output = new StorageAction().createOutputStream(storageInput))
+         try(InputStream input = new StorageAction().getInputStream(staging); OutputStream output = new StorageAction().createOutputStream(storageInput))
          {
-            Files.copy(temporaryFile, output);
+            input.transferTo(output);
          }
-         return reportOutput;
       }
+      catch(Exception e)
+      {
+         try
+         {
+            new StorageAction().deleteObject(staging);
+         }
+         catch(Exception cleanupException)
+         {
+            e.addSuppressed(cleanupException);
+            LOG.warn("Could not delete the staged report output", cleanupException, logPair("storageReference", staging.getReference()));
+         }
+         throw e;
+      }
+
+      try
+      {
+         new StorageAction().deleteObject(staging);
+      }
+      catch(Exception cleanupException)
+      {
+         LOG.warn("Could not delete the staged report output", cleanupException, logPair("storageReference", staging.getReference()));
+      }
+      return reportOutput;
    }
 
 

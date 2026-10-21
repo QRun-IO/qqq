@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.module.rdbms.actions;
@@ -33,10 +32,14 @@ import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.actions.interfaces.UpdateInterface;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.UpdateActionRecordSplitHelper;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.instrumentation.StatementOperation;
+import com.kingsrook.qqq.backend.core.instrumentation.StatementTimer;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.JsonPathStorage;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.ListingHash;
@@ -163,14 +166,9 @@ public class RDBMSUpdateAction extends AbstractRDBMSAction implements UpdateInte
          List<Serializable> rowValues = new ArrayList<>();
          values.add(rowValues);
 
-         for(String fieldName : fieldsBeingUpdated)
-         {
-            Serializable value = record.getValue(fieldName);
-            value = scrubValue(table.getField(fieldName), value);
-            rowValues.add(value);
-         }
+         rowValues.addAll(updateValues(table, fieldsBeingUpdated, record));
          Serializable idValue = record.getValue(table.getPrimaryKeyField());
-         idValue = scrubValue(table.getField(table.getPrimaryKeyField()), idValue);
+         idValue = scrubValue(table, table.getField(table.getPrimaryKeyField()), table.getField(table.getPrimaryKeyField()).getType(), idValue);
          rowValues.add(idValue);
       }
 
@@ -182,7 +180,8 @@ public class RDBMSUpdateAction extends AbstractRDBMSAction implements UpdateInte
          return;
       }
 
-      Long mark = System.currentTimeMillis();
+      Long           mark           = System.currentTimeMillis();
+      StatementTimer statementTimer = startStatementTimer(table.getName(), StatementOperation.UPDATE);
 
       ////////////////////////////////////////////////////////////////////////////////
       // let query manager do the batch updates - note that it will internally page //
@@ -190,11 +189,13 @@ public class RDBMSUpdateAction extends AbstractRDBMSAction implements UpdateInte
       try
       {
          getActionStrategy().executeBatchUpdate(connection, sql, values);
+         statementTimer.succeeded(recordList.size());
          incrementStatus(updateInput, recordList.size());
       }
       finally
       {
          logSQL(sql, values, mark);
+         statementTimer.finish(sql);
       }
    }
 
@@ -205,8 +206,10 @@ public class RDBMSUpdateAction extends AbstractRDBMSAction implements UpdateInte
     *******************************************************************************/
    private String writeUpdateSQLPrefix(QTableMetaData table, List<String> fieldsBeingUpdated)
    {
-      String columns = fieldsBeingUpdated.stream()
-         .map(f -> escapeIdentifier(this.getColumnName(table.getField(f))) + " = ?")
+      String columns = JsonStorageValues.columns(fieldsBeingUpdated.stream().map(table::getField).toList()).stream()
+         .map(field -> field.getBackendStorage() instanceof JsonPathStorage
+            ? getActionStrategy().jsonMergeAssignment(escapeIdentifier(getColumnName(field)))
+            : escapeIdentifier(getColumnName(field)) + " = ?")
          .collect(Collectors.joining(", "));
 
       String tableName = escapeIdentifier(getTableName(table));
@@ -242,12 +245,7 @@ public class RDBMSUpdateAction extends AbstractRDBMSAction implements UpdateInte
          ////////////////////////////////////////////////////////////////
          QRecord      record0 = page.get(0);
          List<Object> params  = new ArrayList<>();
-         for(String fieldName : fieldsBeingUpdated)
-         {
-            Serializable value = record0.getValue(fieldName);
-            value = scrubValue(table.getField(fieldName), value);
-            params.add(value);
-         }
+         params.addAll(updateValues(table, fieldsBeingUpdated, record0));
 
          //////////////////////////////////////////////////////////////////////
          // values in the where clause (in list) are the id from each record //
@@ -255,11 +253,12 @@ public class RDBMSUpdateAction extends AbstractRDBMSAction implements UpdateInte
          for(QRecord record : page)
          {
             Serializable idValue = record.getValue(table.getPrimaryKeyField());
-            idValue = scrubValue(table.getField(table.getPrimaryKeyField()), idValue);
+            idValue = scrubValue(table, table.getField(table.getPrimaryKeyField()), table.getField(table.getPrimaryKeyField()).getType(), idValue);
             params.add(idValue);
          }
 
-         Long mark = System.currentTimeMillis();
+         Long           mark           = System.currentTimeMillis();
+         StatementTimer statementTimer = startStatementTimer(table.getName(), StatementOperation.UPDATE);
 
          /////////////////////////////////////
          // let query manager do the update //
@@ -267,11 +266,13 @@ public class RDBMSUpdateAction extends AbstractRDBMSAction implements UpdateInte
          try
          {
             getActionStrategy().executeUpdate(connection, sql, params);
+            statementTimer.succeeded(page.size());
             incrementStatus(updateInput, page.size());
          }
          finally
          {
             logSQL(sql, params, mark);
+            statementTimer.finish(sql);
          }
       }
    }
@@ -285,6 +286,30 @@ public class RDBMSUpdateAction extends AbstractRDBMSAction implements UpdateInte
    {
       statusCounter += amount;
       updateInput.getAsyncJobCallback().updateStatusOnlyUpwards(statusCounter, updateInput.getRecords().size());
+   }
+
+
+
+   /*******************************************************************************
+    ** Bind each physical column once; JSON merges include only submitted logical fields.
+    *******************************************************************************/
+   protected List<Serializable> updateValues(QTableMetaData table, List<String> fieldNames, QRecord record)
+   {
+      List<QFieldMetaData> fields = fieldNames.stream().map(table::getField).toList();
+      List<Serializable> values = new ArrayList<>();
+      for(QFieldMetaData field : JsonStorageValues.columns(fields))
+      {
+         if(field.getBackendStorage() instanceof JsonPathStorage storage)
+         {
+            values.add(JsonStorageValues.object(record, fields, storage.getColumnName()));
+            values.add(JsonStorageValues.removedKeys(record, fields, storage.getColumnName()));
+         }
+         else
+         {
+            values.add(scrubValue(table, field, field.getType(), record.getValue(field.getName())));
+         }
+      }
+      return (values);
    }
 
 }

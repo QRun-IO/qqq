@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin.specs.v1.responses;
@@ -25,11 +24,16 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1.responses;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.Auth0AuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2AuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.branding.QBrandingMetaData;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.middleware.javalin.executors.io.AuthenticationMetaDataOutputInterface;
+import com.kingsrook.qqq.middleware.javalin.routeproviders.NextDashboardCspSources;
+import com.kingsrook.qqq.middleware.javalin.schemabuilder.SchemaBuilder;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIOneOf;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.PublicBranding;
+import com.kingsrook.qqq.openapi.model.Schema;
 
 
 /*******************************************************************************
@@ -57,6 +61,14 @@ public class AuthenticationMetaDataResponseV1 implements AuthenticationMetaDataO
    @OpenAPIOneOf()
    private Values values;
 
+   @OpenAPIDescription("""
+      The application's branding that is safe to show before sign-in (names, logo, icon and accent colors; never
+      banners), so a login page can look like the application.  Absent when the instance defines no branding.""")
+   private PublicBranding branding;
+
+   @OpenAPIDescription("Optional public CSP source additions for standalone dashboards, derived from configured application features; never a full policy or inline script hashes.")
+   private NextDashboardCspSources dashboardCspSources;
+
 
 
    /***************************************************************************
@@ -65,6 +77,25 @@ public class AuthenticationMetaDataResponseV1 implements AuthenticationMetaDataO
    public sealed interface Values permits EmptyValues, Auth0Values, OAuth2Values
    {
 
+   }
+
+
+
+   /***************************************************************************
+    ** values is one of several shapes, but the empty shape matches any object,
+    ** so it is an anyOf (a oneOf would refuse every non-empty values object).
+    ***************************************************************************/
+   @Override
+   public Schema toSchema()
+   {
+      Schema schema = new SchemaBuilder().classToSchema(getClass());
+      Schema values = schema.getProperties() == null ? null : schema.getProperties().get("values");
+      if(values != null && values.getOneOf() != null)
+      {
+         values.setAnyOf(values.getOneOf());
+         values.setOneOf(null);
+      }
+      return (schema);
    }
 
 
@@ -216,6 +247,15 @@ public class AuthenticationMetaDataResponseV1 implements AuthenticationMetaDataO
       @OpenAPIDescription("OAuth2 scopes to request (space-separated)")
       private String scopes;
 
+      @OpenAPIDescription("The public OAuth2 client for native clients (CLI, TUI, mobile): use it with auth-code + PKCE or the device-authorization grant, then send the access token as Authorization: Bearer. Absent when the app has no native client. Since 1.6.0.")
+      private String nativeClientId;
+
+      @OpenAPIDescription("The issuer (OIDC discovery base URL) of nativeClientId, when it differs from baseUrl. Since 1.6.0.")
+      private String nativeClientBaseUrl;
+
+      @OpenAPIDescription("True when the server accepts the provider's access tokens as Authorization: Bearer <JWT>. Since 1.6.0.")
+      private Boolean bearerTokensAccepted;
+
 
 
       /*******************************************************************************
@@ -309,6 +349,66 @@ public class AuthenticationMetaDataResponseV1 implements AuthenticationMetaDataO
          return (this);
       }
 
+
+
+      /*******************************************************************************
+       ** Getter for nativeClientId
+       *******************************************************************************/
+      public String getNativeClientId()
+      {
+         return nativeClientId;
+      }
+
+
+
+      /*******************************************************************************
+       ** Setter for nativeClientId
+       *******************************************************************************/
+      public void setNativeClientId(String nativeClientId)
+      {
+         this.nativeClientId = nativeClientId;
+      }
+
+
+
+      /*******************************************************************************
+       ** Getter for nativeClientBaseUrl
+       *******************************************************************************/
+      public String getNativeClientBaseUrl()
+      {
+         return nativeClientBaseUrl;
+      }
+
+
+
+      /*******************************************************************************
+       ** Setter for nativeClientBaseUrl
+       *******************************************************************************/
+      public void setNativeClientBaseUrl(String nativeClientBaseUrl)
+      {
+         this.nativeClientBaseUrl = nativeClientBaseUrl;
+      }
+
+
+
+      /*******************************************************************************
+       ** Getter for bearerTokensAccepted
+       *******************************************************************************/
+      public Boolean getBearerTokensAccepted()
+      {
+         return bearerTokensAccepted;
+      }
+
+
+
+      /*******************************************************************************
+       ** Setter for bearerTokensAccepted
+       *******************************************************************************/
+      public void setBearerTokensAccepted(Boolean bearerTokensAccepted)
+      {
+         this.bearerTokensAccepted = bearerTokensAccepted;
+      }
+
    }
 
 
@@ -329,6 +429,12 @@ public class AuthenticationMetaDataResponseV1 implements AuthenticationMetaDataO
          oauth2Values.setClientId(oauth2MetaData.getClientId());
          oauth2Values.setBaseUrl(StringUtils.hasContent(oauth2MetaData.getExternalBaseUrl()) ? oauth2MetaData.getExternalBaseUrl() : oauth2MetaData.getBaseUrl());
          oauth2Values.setScopes(oauth2MetaData.getScopes());
+         oauth2Values.setNativeClientId(StringUtils.hasContent(oauth2MetaData.getNativeClientId()) ? oauth2MetaData.getNativeClientId() : null);
+         if(StringUtils.hasContent(oauth2MetaData.getNativeClientId()) && StringUtils.hasContent(oauth2MetaData.getNativeClientBaseUrl()))
+         {
+            oauth2Values.setNativeClientBaseUrl(oauth2MetaData.getNativeClientBaseUrl());
+         }
+         oauth2Values.setBearerTokensAccepted(Boolean.TRUE.equals(oauth2MetaData.getBearerTokensEnabled()));
       }
       else if(qAuthenticationMetaData instanceof Auth0AuthenticationMetaData auth0MetaData)
       {
@@ -360,6 +466,27 @@ public class AuthenticationMetaDataResponseV1 implements AuthenticationMetaDataO
          }
       }
       */
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @Override
+   public void setBranding(QBrandingMetaData branding)
+   {
+      this.branding = branding == null ? null : new PublicBranding(branding);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for branding
+    *******************************************************************************/
+   public PublicBranding getBranding()
+   {
+      return (this.branding);
    }
 
 
@@ -455,4 +582,23 @@ public class AuthenticationMetaDataResponseV1 implements AuthenticationMetaDataO
       return (this);
    }
 
+
+   /*******************************************************************************
+    ** Public policy inputs, independent of any individual HTML document.
+    *******************************************************************************/
+   public NextDashboardCspSources getDashboardCspSources()
+   {
+      return (dashboardCspSources);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Override
+   public void setDashboardCspSources(NextDashboardCspSources sources)
+   {
+      dashboardCspSources = sources;
+   }
 }

@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.sampleapp;
@@ -33,6 +32,9 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.Statement;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.LinkedHashMap;
@@ -112,7 +114,7 @@ import com.kingsrook.qqq.backend.module.filesystem.base.model.metadata.Cardinali
 import com.kingsrook.qqq.backend.module.filesystem.base.model.metadata.RecordFormat;
 import com.kingsrook.qqq.backend.module.filesystem.local.model.metadata.FilesystemBackendMetaData;
 import com.kingsrook.qqq.backend.module.filesystem.local.model.metadata.FilesystemTableBackendDetails;
-import com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager;
+import com.kingsrook.qqq.middleware.javalin.QApplicationJavalinServer;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
 import io.javalin.Javalin;
 import org.json.JSONArray;
@@ -126,6 +128,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -143,7 +146,8 @@ class SampleSavedReportContractTest
 
    private final AtomicReference<Javalin> service = new AtomicReference<>();
    private final HttpClient client = HttpClient.newHttpClient();
-   private SampleJavalinServer server;
+   private QApplicationJavalinServer server;
+   private SampleUploadTestFixture fixture;
    private SampleScheduledReportContractTest.SmtpSink smtpSink;
    private QInstance instance;
    private Integer reportId;
@@ -178,17 +182,8 @@ class SampleSavedReportContractTest
          .withDescription("Owned sample report acceptance API").withContactEmail("reports@example.test")
          .withCurrentVersion(new APIVersion("2026.Q3")).withSupportedVersions(List.of(new APIVersion("2026.Q3")))));
       apiProcess = RenderSavedReportProcessApiMetaDataEnricher.setupProcessForApi(instance.getProcess("renderSavedReport"), apiName, "2026.Q3");
-      server = new SampleJavalinServer(new SampleMetaDataProvider()
-      {
-         /*******************************************************************************
-          **
-          *******************************************************************************/
-         @Override
-         public QInstance defineQInstance()
-         {
-            return instance;
-         }
-      });
+      fixture = new SampleUploadTestFixture(instance);
+      server = fixture.server();
       server.setPort(0);
       server.withJavalinConfigurationCustomizer(service::set);
       server.start();
@@ -214,9 +209,9 @@ class SampleSavedReportContractTest
    {
       try
       {
-         if(server != null)
+         if(fixture != null)
          {
-            server.stop();
+            fixture.close();
          }
          if(smtpSink != null)
          {
@@ -226,8 +221,6 @@ class SampleSavedReportContractTest
       finally
       {
          client.close();
-         QContext.clear();
-         ConnectionManager.resetConnectionProviders();
       }
    }
 
@@ -269,6 +262,96 @@ class SampleSavedReportContractTest
       assertEquals(RenderedReportStatus.COMPLETE.getId(), rendered.getValueInteger("renderedReportStatusId"));
       assertEquals(2, rendered.getValueInteger("rowCount"));
       assertEquals(reference, rendered.getValueString("resultPath"));
+   }
+
+
+
+   /*******************************************************************************
+    ** JDBC-only markers distinguish this database from every canonical sample seed.
+    ** Legacy archive/download and API storage streaming must read that exact data.
+    *******************************************************************************/
+   @Test
+   void testSavedReportArchiveAndStreamUseOwnedJdbcRows() throws Exception
+   {
+      configurePeopleReport("id", "firstName");
+      String marker = "archive-" + UUID.randomUUID();
+      try(PreparedStatement statement = fixture.database().prepareStatement("UPDATE person SET first_name=? WHERE id=1"))
+      {
+         statement.setString(1, marker);
+         assertEquals(1, statement.executeUpdate());
+      }
+      Map<Integer, String> expected = new LinkedHashMap<>();
+      try(Statement statement = fixture.database().createStatement(); ResultSet result = statement.executeQuery("SELECT id,first_name FROM person ORDER BY id"))
+      {
+         while(result.next())
+         {
+            expected.put(result.getInt(1), result.getString(2));
+         }
+      }
+      assertEquals(marker, expected.get(1));
+      HttpResponse<byte[]> response = request(OWNER, "/processes/renderSavedReport/run?recordsParam=recordIds&recordIds=" + reportId
+         + "&reportFormat=JSON&_qStepTimeoutMillis=10000");
+      assertEquals(200, response.statusCode(), body(response));
+      JSONObject result = new JSONObject(body(response));
+      assertFalse(isError(result), result.toString());
+      JSONObject values = result.getJSONObject("values");
+      String reference = values.getString("storageReference");
+      assertEquals(SavedReportsMetaDataProvider.REPORT_STORAGE_TABLE_NAME, values.getString("storageTableName"));
+      Path archive = directory.resolve("reports").resolve(reference);
+      byte[] archived = Files.readAllBytes(archive);
+      assertPersonRows(archived, expected);
+      QRecord history = new GetAction().executeForRecord(new GetInput(RenderedReport.TABLE_NAME).withPrimaryKey(values.getInt("renderedReportId")));
+      assertEquals(RenderedReportStatus.COMPLETE.getId(), history.getValueInteger("renderedReportStatusId"));
+      assertEquals(expected.size(), history.getValueInteger("rowCount"));
+      assertEquals(reference, history.getValueString("resultPath"));
+      for(String prefix : List.of("", "/qqq/v1"))
+      {
+         String path = prefix + "/download/owned.json?storageTableName=reportStorage&storageReference=" + URLEncoder.encode(reference, StandardCharsets.UTF_8);
+         HttpResponse<byte[]> download = request(OWNER, path);
+         assertEquals(200, download.statusCode(), body(download));
+         assertArrayEquals(archived, download.body());
+         assertEquals(403, request(UUID.randomUUID().toString(), path).statusCode());
+         assertEquals(403, request(OWNER, path + ".unregistered").statusCode());
+      }
+
+      String streamMarker = "stream-" + UUID.randomUUID();
+      try(PreparedStatement statement = fixture.database().prepareStatement("UPDATE person SET first_name=? WHERE id=1"))
+      {
+         statement.setString(1, streamMarker);
+         assertEquals(1, statement.executeUpdate());
+      }
+      expected.put(1, streamMarker);
+      response = request(OWNER, "/report-api/2026.Q3/savedReport/renderSavedReport/" + reportId + "?reportFormat=JSON");
+      assertEquals(200, response.statusCode(), body(response));
+      assertTrue(response.headers().firstValue("Content-Type").orElseThrow().startsWith("application/json"));
+      assertPersonRows(response.body(), expected);
+      List<QRecord> streamedHistory = QueryAction.execute(RenderedReport.TABLE_NAME, null).stream()
+         .filter(record -> reportId.equals(record.getValueInteger("savedReportId")) && !reference.equals(record.getValueString("resultPath"))).toList();
+      assertEquals(1, streamedHistory.size());
+      QRecord streamed = streamedHistory.get(0);
+      assertEquals(RenderedReportStatus.COMPLETE.getId(), streamed.getValueInteger("renderedReportStatusId"));
+      assertEquals(expected.size(), streamed.getValueInteger("rowCount"));
+      assertArrayEquals(response.body(), Files.readAllBytes(directory.resolve("reports").resolve(streamed.getValueString("resultPath"))));
+      assertArrayEquals(archived, Files.readAllBytes(archive));
+      assertEquals(2, snapshot().size());
+   }
+
+
+
+   /*******************************************************************************
+    ** Compare actual JSON rows to native JDBC values, including exact multiplicity.
+    *******************************************************************************/
+   private void assertPersonRows(byte[] bytes, Map<Integer, String> expected)
+   {
+      JSONArray rows = new JSONArray(new String(bytes, StandardCharsets.UTF_8));
+      assertEquals(expected.size(), rows.length());
+      Map<Integer, String> actual = new LinkedHashMap<>();
+      for(int i = 0; i < rows.length(); i++)
+      {
+         JSONObject row = rows.getJSONObject(i);
+         assertNull(actual.put(row.getInt("id"), row.getString("firstName")));
+      }
+      assertEquals(expected, actual);
    }
 
 

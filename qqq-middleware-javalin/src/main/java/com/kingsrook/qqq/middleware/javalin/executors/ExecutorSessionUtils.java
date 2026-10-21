@@ -5,38 +5,45 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin.executors;
 
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.HashMap;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
+import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QModuleDispatchException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.ClientChannelsMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.Auth0AuthenticationModule;
+import com.kingsrook.qqq.backend.core.modules.authentication.implementations.OAuth2AuthenticationModule;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.collections.MapBuilder;
+import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
+import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiInProcessSessions;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.TableVariant;
 import io.javalin.http.Context;
+import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
@@ -48,6 +55,7 @@ public class ExecutorSessionUtils
 
    public static final int    SESSION_COOKIE_AGE       = 60 * 60 * 24;
    public static final String SESSION_ID_COOKIE_NAME   = "sessionId";
+   public static final String CLIENT_CHANNEL_HEADER    = "X-QQQ-Client";
    public static final String API_KEY_NAME             = "apiKey";
 
 
@@ -55,82 +63,101 @@ public class ExecutorSessionUtils
    /*******************************************************************************
     **
     *******************************************************************************/
-   public static QSession setupSession(Context context, QInstance qInstance) throws QModuleDispatchException, QAuthenticationException
+   public static QSession setupSession(Context context, QInstance qInstance) throws QModuleDispatchException, QAuthenticationException, QBadRequestException
    {
       QAuthenticationModuleDispatcher qAuthenticationModuleDispatcher = new QAuthenticationModuleDispatcher();
       QAuthenticationModuleInterface  authenticationModule            = qAuthenticationModuleDispatcher.getQModule(qInstance.getAuthentication());
 
+      String inProcessToken = context.header(UiApiInProcessSessions.HEADER);
       try
       {
          /////////////////////////////////////////////////
          // note:  duplicated in QJavalinImplementation //
          /////////////////////////////////////////////////
-         Map<String, String> authenticationContext = new HashMap<>();
-
-         String sessionIdCookieValue     = context.cookie(SESSION_ID_COOKIE_NAME);
-         String sessionUuidCookieValue   = context.cookie(Auth0AuthenticationModule.SESSION_UUID_KEY);
-         String authorizationHeaderValue = context.header("Authorization");
-         String apiKeyHeaderValue        = context.header("x-api-key");
-         String codeQueryParamValue      = context.queryParam("code");
-         String stateQueryParamValue     = context.queryParam("state");
-
-         if(StringUtils.hasContent(codeQueryParamValue) && StringUtils.hasContent(stateQueryParamValue))
+         QSession session;
+         if(inProcessToken != null)
          {
-            authenticationContext.put("code", codeQueryParamValue);
-            authenticationContext.put("state", stateQueryParamValue);
-         }
-         else if(StringUtils.hasContent(sessionIdCookieValue))
-         {
-            ///////////////////////////////////////////////////////
-            // sessionId - maybe used by table-based auth module //
-            ///////////////////////////////////////////////////////
-            authenticationContext.put(SESSION_ID_COOKIE_NAME, sessionIdCookieValue);
-         }
-         else if(StringUtils.hasContent(sessionUuidCookieValue))
-         {
-            ///////////////////////////////////////////////////////////////////////////
-            // session UUID - known to be used by auth0 module (in aug. 2023 update) //
-            ///////////////////////////////////////////////////////////////////////////
-            authenticationContext.put(Auth0AuthenticationModule.SESSION_UUID_KEY, sessionUuidCookieValue);
-         }
-         else if(apiKeyHeaderValue != null)
-         {
-            /////////////////////////////////////////////////////////////////
-            // next, look for an api key header:                           //
-            // this will be used to look up auth0 values via an auth table //
-            /////////////////////////////////////////////////////////////////
-            authenticationContext.put(API_KEY_NAME, apiKeyHeaderValue);
-         }
-         else if(authorizationHeaderValue != null)
-         {
-            /////////////////////////////////////////////////////////////////////////////////////////////////
-            // second, look for the authorization header:                                                  //
-            // either with a "Basic " prefix (for a username:password pair)                                //
-            // or with a "Bearer " prefix (for a token that can be handled the same as a sessionId cookie) //
-            /////////////////////////////////////////////////////////////////////////////////////////////////
-            processAuthorizationValue(authenticationContext, authorizationHeaderValue);
+            session = resolveInProcessSession(context.req().getRemoteAddr(), inProcessToken);
          }
          else
          {
-            try
+            Map<String, String> authenticationContext = new HashMap<>();
+
+            String sessionIdCookieValue     = context.cookie(SESSION_ID_COOKIE_NAME);
+            String sessionUuidCookieValue   = context.cookie(Auth0AuthenticationModule.SESSION_UUID_KEY);
+            String authorizationHeaderValue = context.header("Authorization");
+            String apiKeyHeaderValue        = context.header("x-api-key");
+            String codeQueryParamValue      = context.queryParam("code");
+            String stateQueryParamValue     = context.queryParam("state");
+
+            if(StringUtils.hasContent(codeQueryParamValue) && StringUtils.hasContent(stateQueryParamValue))
             {
-               String authorizationFormValue = context.formParam("Authorization");
-               if(StringUtils.hasContent(authorizationFormValue))
+               authenticationContext.put("code", codeQueryParamValue);
+               authenticationContext.put("state", stateQueryParamValue);
+            }
+            else if(StringUtils.hasContent(sessionIdCookieValue))
+            {
+               ///////////////////////////////////////////////////////
+               // sessionId - maybe used by table-based auth module //
+               ///////////////////////////////////////////////////////
+               authenticationContext.put(SESSION_ID_COOKIE_NAME, sessionIdCookieValue);
+            }
+            else if(StringUtils.hasContent(sessionUuidCookieValue))
+            {
+               ///////////////////////////////////////////////////////////////////////////
+               // session UUID - known to be used by auth0 module (in aug. 2023 update) //
+               ///////////////////////////////////////////////////////////////////////////
+               authenticationContext.put(Auth0AuthenticationModule.SESSION_UUID_KEY, sessionUuidCookieValue);
+            }
+            else if(apiKeyHeaderValue != null)
+            {
+               /////////////////////////////////////////////////////////////////
+               // next, look for an api key header:                           //
+               // this will be used to look up auth0 values via an auth table //
+               /////////////////////////////////////////////////////////////////
+               authenticationContext.put(API_KEY_NAME, apiKeyHeaderValue);
+            }
+            else if(authorizationHeaderValue != null)
+            {
+               /////////////////////////////////////////////////////////////////////////////////////////////////
+               // second, look for the authorization header:                                                  //
+               // either with a "Basic " prefix (for a username:password pair)                                //
+               // or with a "Bearer " prefix (for a token that can be handled the same as a sessionId cookie) //
+               /////////////////////////////////////////////////////////////////////////////////////////////////
+               processAuthorizationValue(authenticationContext, authorizationHeaderValue);
+            }
+            else
+            {
+               try
                {
-                  processAuthorizationValue(authenticationContext, authorizationFormValue);
+                  //////////////////////////////////////////////////////////////////////
+                  // the form-parameter fallback (legacy downloads) never carries a   //
+                  // bearer JWT: a form can be posted cross-site, a header cannot     //
+                  //////////////////////////////////////////////////////////////////////
+                  String authorizationFormValue = context.formParam("Authorization");
+                  if(StringUtils.hasContent(authorizationFormValue) && !isBearerJwt(authorizationFormValue))
+                  {
+                     processAuthorizationValue(authenticationContext, authorizationFormValue);
+                  }
+               }
+               catch(Exception e)
+               {
+                  LOG.info("Exception looking for Authorization formParam", e);
                }
             }
-            catch(Exception e)
-            {
-               LOG.info("Exception looking for Authorization formParam", e);
-            }
+
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // put the qInstance into context - but no session yet (since, the whole point of this call is to setup the session!) //
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            QContext.init(qInstance, null);
+            session = authenticationModule.createSession(qInstance, authenticationContext);
          }
 
-         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-         // put the qInstance into context - but no session yet (since, the whole point of this call is to setup the session!) //
-         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-         QContext.init(qInstance, null);
-         QSession session = authenticationModule.createSession(qInstance, authenticationContext);
+         ////////////////////////////////////////////////////////////////////
+         // record-lock keys of the core user profile (own row; all rows   //
+         // for user_profile_admin), once the module set the permissions   //
+         ////////////////////////////////////////////////////////////////////
+         com.kingsrook.qqq.backend.core.actions.profile.UserProfiles.applyIfInstalled(qInstance, session);
          QContext.init(qInstance, session, null, null);
 
          //////////////////////////////////////////////////////////////////////////////////////////////
@@ -139,15 +166,20 @@ public class ExecutorSessionUtils
          //////////////////////////////////////////////////////////////////////////////////////////////
 
          /////////////////////////////////////////////////////////////////////////////////
-         // if we got a session id cookie in, then send it back with updated cookie age //
+         // refresh cookies only for sessions created by the authentication module    //
          /////////////////////////////////////////////////////////////////////////////////
-         if(authenticationModule.usesSessionIdCookie())
+         /////////////////////////////////////////////////////////////////////////////
+         // a bearer-token session (OAuth2 JWT) is stateless - the client sends the //
+         // token on each request, so it gets no cookie                             //
+         /////////////////////////////////////////////////////////////////////////////
+         if(inProcessToken == null && authenticationModule.usesSessionIdCookie() && !"true".equals(session.getValue(OAuth2AuthenticationModule.BEARER_SESSION_VALUE_KEY)))
          {
-            context.cookie(SESSION_ID_COOKIE_NAME, session.getIdReference(), SESSION_COOKIE_AGE);
+            QJavalinImplementation.setSessionCookie(context, SESSION_ID_COOKIE_NAME, session.getIdReference());
          }
 
          setUserTimezoneOffsetMinutesInSession(context, session);
          setUserTimezoneInSession(context, session);
+         setClientChannelInSession(context, qInstance, session);
 
          return (session);
       }
@@ -156,7 +188,7 @@ public class ExecutorSessionUtils
          ////////////////////////////////////////////////////////////////////////////////
          // if exception caught, clear out the cookie so the frontend will reauthorize //
          ////////////////////////////////////////////////////////////////////////////////
-         if(authenticationModule.usesSessionIdCookie())
+         if(inProcessToken == null && authenticationModule.usesSessionIdCookie())
          {
             context.removeCookie(SESSION_ID_COOKIE_NAME);
          }
@@ -168,26 +200,99 @@ public class ExecutorSessionUtils
 
 
    /*******************************************************************************
+    ** Accept a JVM-local token only from the socket's loopback peer. Forwarded
+    ** headers do not establish trust. Invalid tokens never fall back to other auth.
+    *******************************************************************************/
+   public static QSession resolveInProcessSession(String remoteAddr, String token) throws QAuthenticationException
+   {
+      try
+      {
+         if(remoteAddr != null && !remoteAddr.isBlank() && InetAddress.getByName(remoteAddr).isLoopbackAddress())
+         {
+            return (UiApiInProcessSessions.resolve(token).orElseThrow(() -> new QAuthenticationException("Invalid in-process session")));
+         }
+      }
+      catch(UnknownHostException e)
+      {
+         throw (new QAuthenticationException("Invalid in-process session"));
+      }
+      throw (new QAuthenticationException("Invalid in-process session"));
+   }
+
+
+
+   /*******************************************************************************
+    ** The client channel of the request (X-QQQ-Client: channel[/detail]) - set
+    ** on the session for every request (null when the header is absent), so a
+    ** session object never carries another request's channel.  The channel must
+    ** be allowed by ClientChannelsMetaData (else 400).  Attribution only: the
+    ** actor is the authenticated user, and a channel can only be denied things.
+    *******************************************************************************/
+   static void setClientChannelInSession(Context context, QInstance qInstance, QSession session) throws QBadRequestException
+   {
+      //////////////////////////////////////////////////////////////////////////
+      // a scoped credential (e.g. an access token) is always token:<id> - a  //
+      // request cannot relabel it                                            //
+      //////////////////////////////////////////////////////////////////////////
+      if(session.getCredentialScope() != null)
+      {
+         session.setClientChannel(session.getCredentialScope().getClientChannel());
+         return;
+      }
+
+      String header = context.header(CLIENT_CHANNEL_HEADER);
+      if(!StringUtils.hasContent(header))
+      {
+         session.setClientChannel(null);
+         return;
+      }
+
+      String value = header.strip();
+      String name  = ClientChannelsMetaData.channelName(value);
+      if(value.length() > 200 || !ClientChannelsMetaData.of(qInstance).isAllowedChannel(name))
+      {
+         throw (new QBadRequestException("Unknown client channel in " + CLIENT_CHANNEL_HEADER + ": " + name));
+      }
+      session.setClientChannel(value);
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
-   private static void processAuthorizationValue(Map<String, String> authenticationContext, String authorizationHeaderValue)
+   static void processAuthorizationValue(Map<String, String> authenticationContext, String authorizationHeaderValue)
    {
-      String basicPrefix  = "Basic ";
-      String bearerPrefix = "Bearer ";
-      if(authorizationHeaderValue.startsWith(basicPrefix))
+      //////////////////////////////////////////////////////////////////////
+      // auth schemes are case-insensitive (RFC 9110); never log the value //
+      //////////////////////////////////////////////////////////////////////
+      String value  = authorizationHeaderValue.strip();
+      int    space  = value.indexOf(' ');
+      String scheme = space < 0 ? value : value.substring(0, space);
+      String rest   = space < 0 ? "" : value.substring(space + 1).strip();
+      if("basic".equalsIgnoreCase(scheme))
       {
-         authorizationHeaderValue = authorizationHeaderValue.replaceFirst(basicPrefix, "");
-         authenticationContext.put(Auth0AuthenticationModule.BASIC_AUTH_KEY, authorizationHeaderValue);
+         authenticationContext.put(Auth0AuthenticationModule.BASIC_AUTH_KEY, rest);
       }
-      else if(authorizationHeaderValue.startsWith(bearerPrefix))
+      else if("bearer".equalsIgnoreCase(scheme))
       {
-         authorizationHeaderValue = authorizationHeaderValue.replaceFirst(bearerPrefix, "");
-         authenticationContext.put(Auth0AuthenticationModule.ACCESS_TOKEN_KEY, authorizationHeaderValue);
+         authenticationContext.put(Auth0AuthenticationModule.ACCESS_TOKEN_KEY, rest);
       }
       else
       {
-         LOG.debug("Authorization value did not have Basic or Bearer prefix. [" + authorizationHeaderValue + "]");
+         LOG.debug("Authorization value did not use the Basic or Bearer scheme", logPair("scheme", scheme.length() > 20 ? scheme.substring(0, 20) : scheme));
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** A Bearer authorization value carrying a JWT (three dot-separated parts).
+    *******************************************************************************/
+   static boolean isBearerJwt(String authorizationValue)
+   {
+      String value = authorizationValue.strip();
+      return (value.regionMatches(true, 0, "bearer ", 0, 7) && value.substring(7).strip().chars().filter(c -> c == '.').count() == 2);
    }
 
 

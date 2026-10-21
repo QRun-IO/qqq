@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin.specs.v1.utils;
@@ -28,6 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
@@ -81,13 +81,17 @@ public class QuerySpecUtils
     ***************************************************************************/
    public static QQueryFilter getFilterFromRequestBody(JSONObject requestBody) throws IOException
    {
-      if(requestBody.has("filter"))
+      if(requestBody.has("filter") && !requestBody.isNull("filter"))
       {
          Object filterFromJson = requestBody.get("filter");
          if(filterFromJson instanceof JSONObject filterJsonObject)
          {
             return (JsonUtils.toObject(filterJsonObject.toString(), QQueryFilter.class));
          }
+         ///////////////////////////////////////////////////////////////////////////////////////
+         // Keep the parser's IOException contract; middleware maps this user-facing cause400. //
+         ///////////////////////////////////////////////////////////////////////////////////////
+         throw new IOException(new QBadRequestException("Request filter must be a JSON object or null."));
       }
 
       return (null);

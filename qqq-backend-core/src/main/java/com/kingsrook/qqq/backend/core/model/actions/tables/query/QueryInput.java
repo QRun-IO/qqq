@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.model.actions.tables.query;
@@ -49,6 +48,7 @@ public class QueryInput extends AbstractTableActionInput implements QueryOrGetIn
 {
    private QBackendTransaction transaction;
    private QQueryFilter        filter;
+   private QueryLockMode       lockMode;
 
    private RecordPipe recordPipe;
    private Integer    timeoutSeconds;
@@ -58,6 +58,8 @@ public class QueryInput extends AbstractTableActionInput implements QueryOrGetIn
    private boolean shouldFetchHeavyFields        = false;
    private boolean shouldOmitHiddenFields        = true;
    private boolean shouldMaskPasswords           = true;
+
+   private RawReadReason rawReadReason;
 
    /////////////////////////////////////////////////////////////////////////////////////////
    // this field - only applies if shouldTranslatePossibleValues is true.                 //
@@ -807,6 +809,84 @@ public class QueryInput extends AbstractTableActionInput implements QueryOrGetIn
    public QueryInput withInputSource(InputSource inputSource)
    {
       super.withInputSource(inputSource);
+      return (this);
+   }
+
+   /*******************************************************************************
+    ** Opt in to a "raw read": hidden fields are returned, password fields are not
+    ** masked, heavy fields are fetched, and possible-value translation and display
+    ** values are skipped.
+    **
+    ** The flags are set here, and re-applied (and the reason's permission check and
+    ** an audit are done) when the query executes, so a raw read can't be granted
+    ** by flipping the individual flags, nor undone later by them.  Record locks
+    ** and field security locks still apply, unless the session has the all-access
+    ** security keys.
+    *******************************************************************************/
+   public QueryInput withRawRead(RawReadReason rawReadReason)
+   {
+      this.rawReadReason = rawReadReason;
+      if(rawReadReason != null)
+      {
+         applyRawReadFlags();
+      }
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set the individual flags that make up a raw read.
+    *******************************************************************************/
+   public void applyRawReadFlags()
+   {
+      this.shouldOmitHiddenFields = false;
+      this.shouldMaskPasswords = false;
+      this.shouldFetchHeavyFields = true;
+      this.shouldTranslatePossibleValues = false;
+      this.shouldGenerateDisplayValues = false;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for rawReadReason - non-null if this is a raw read.
+    *******************************************************************************/
+   public RawReadReason getRawReadReason()
+   {
+      return (rawReadReason);
+   }
+
+
+
+
+   /*******************************************************************************
+    ** Getter for lockMode: row locks to take (null for none). Only on backends
+    ** that support the mode; run inside a transaction.
+    *******************************************************************************/
+   public QueryLockMode getLockMode()
+   {
+      return (this.lockMode);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for lockMode
+    *******************************************************************************/
+   public void setLockMode(QueryLockMode lockMode)
+   {
+      this.lockMode = lockMode;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for lockMode
+    *******************************************************************************/
+   public QueryInput withLockMode(QueryLockMode lockMode)
+   {
+      this.lockMode = lockMode;
       return (this);
    }
 }

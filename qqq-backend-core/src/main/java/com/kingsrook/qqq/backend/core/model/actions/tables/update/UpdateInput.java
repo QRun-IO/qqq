@@ -5,26 +5,27 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.model.actions.tables.update;
 
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
@@ -42,6 +43,8 @@ import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
  *******************************************************************************/
 public class UpdateInput extends AbstractTableActionInput
 {
+   private Map<Serializable, Serializable> expectedVersions;
+
    private QBackendTransaction transaction;
    private List<QRecord>       records;
    private InputSource         inputSource = QInputSource.SYSTEM;
@@ -55,6 +58,15 @@ public class UpdateInput extends AbstractTableActionInput
    private Boolean areAllValuesBeingUpdatedTheSame = null;
 
    private boolean omitTriggeringAutomations = false;
+   private boolean dryRun = false;
+
+   /*******************************************************************************
+    ** For trusted system writes of derived values (counters, denormalized totals)
+    ** that are not business events. Required integrity listeners still run.
+    ** Record locks, field security, validation and permissions are unchanged.
+    *******************************************************************************/
+   private boolean omitRecordChangeEvents = false;
+
    private boolean omitDmlAudit              = false;
    private boolean omitModifyDateUpdate      = false;
    private String  auditContext              = null;
@@ -211,6 +223,37 @@ public class UpdateInput extends AbstractTableActionInput
    public void setAreAllValuesBeingUpdatedTheSame(Boolean areAllValuesBeingUpdatedTheSame)
    {
       this.areAllValuesBeingUpdatedTheSame = areAllValuesBeingUpdatedTheSame;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for omitRecordChangeEvents
+    *******************************************************************************/
+   public boolean getOmitRecordChangeEvents()
+   {
+      return (this.omitRecordChangeEvents);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for omitRecordChangeEvents
+    *******************************************************************************/
+   public void setOmitRecordChangeEvents(boolean omitRecordChangeEvents)
+   {
+      this.omitRecordChangeEvents = omitRecordChangeEvents;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for omitRecordChangeEvents
+    *******************************************************************************/
+   public UpdateInput withOmitRecordChangeEvents(boolean omitRecordChangeEvents)
+   {
+      this.omitRecordChangeEvents = omitRecordChangeEvents;
+      return (this);
    }
 
 
@@ -451,4 +494,71 @@ public class UpdateInput extends AbstractTableActionInput
       return (this.flags.contains(flag));
    }
 
+
+   /*******************************************************************************
+    ** Getter for dryRun - if true, fetch the old records and run the pre-update customizers (with
+    ** isPreview=true) and all validations (records exist and are accessible, required
+    ** fields, record security locks, field security locks and permissions if
+    ** enforced) but do NOT store anything: no backend update, no association
+    ** changes, audits, record change listeners or post-update customizers.  The output
+    ** records are the would-be records after the update (old values overlaid with the
+    ** input's values, when the backend can fetch old records), with errors/warnings.
+    *******************************************************************************/
+   public boolean getDryRun()
+   {
+      return (this.dryRun);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for dryRun - see getDryRun.
+    *******************************************************************************/
+   public void setDryRun(boolean dryRun)
+   {
+      this.dryRun = dryRun;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for dryRun - see getDryRun.
+    *******************************************************************************/
+   public UpdateInput withDryRun(boolean dryRun)
+   {
+      this.dryRun = dryRun;
+      return (this);
+   }
+
+
+
+
+   /*******************************************************************************
+    ** Getter for expectedVersions
+    *******************************************************************************/
+   public Map<Serializable, Serializable> getExpectedVersions()
+   {
+      return (expectedVersions);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for expectedVersions
+    *******************************************************************************/
+   public void setExpectedVersions(Map<Serializable, Serializable> expectedVersions)
+   {
+      this.expectedVersions = expectedVersions;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for expectedVersions
+    *******************************************************************************/
+   public UpdateInput withExpectedVersions(Map<Serializable, Serializable> expectedVersions)
+   {
+      setExpectedVersions(expectedVersions);
+      return (this);
+   }
 }

@@ -1,0 +1,5 @@
+# Append-only changelog: keep both sides of concurrent additions instead of conflicting.
+docs/UI-API-CHANGELOG.md merge=union
+
+# Mongo container startup fixtures must retain Linux shell line endings.
+qqq-backend-module-mongodb/src/test/resources/mongo-fixture/*.sh text eol=lf

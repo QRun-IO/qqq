@@ -1,0 +1,9 @@
+Order for ${customer}
+#foreach($item in $items)
+${foreach.count}: $item
+#end
+#if($paid)
+Paid
+#else
+Payment due
+#end

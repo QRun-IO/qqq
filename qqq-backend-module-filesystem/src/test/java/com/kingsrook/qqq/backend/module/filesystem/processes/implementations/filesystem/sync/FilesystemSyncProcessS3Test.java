@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.module.filesystem.processes.implementations.filesystem.sync;
@@ -24,7 +23,6 @@ package com.kingsrook.qqq.backend.module.filesystem.processes.implementations.fi
 
 import java.util.List;
 import java.util.stream.Collectors;
-import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.kingsrook.qqq.backend.core.actions.processes.RunBackendStepAction;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
@@ -44,6 +42,7 @@ import com.kingsrook.qqq.backend.module.filesystem.s3.BaseS3Test;
 import com.kingsrook.qqq.backend.module.filesystem.s3.S3BackendModule;
 import com.kingsrook.qqq.backend.module.filesystem.s3.S3BackendModuleSubclassForTest;
 import com.kingsrook.qqq.backend.module.filesystem.s3.actions.AbstractS3Action;
+import com.kingsrook.qqq.backend.module.filesystem.s3.model.S3ObjectSummary;
 import com.kingsrook.qqq.backend.module.filesystem.s3.model.metadata.S3BackendMetaData;
 import com.kingsrook.qqq.backend.module.filesystem.s3.model.metadata.S3TableBackendDetails;
 import org.junit.jupiter.api.Test;
@@ -70,9 +69,9 @@ class FilesystemSyncProcessS3Test extends BaseS3Test
       String archiveBucket    = "archive-bucket";
       String processingBucket = "processing-bucket";
 
-      getAmazonS3().createBucket(sourceBucket);
-      getAmazonS3().createBucket(archiveBucket);
-      getAmazonS3().createBucket(processingBucket);
+      createBucket(sourceBucket);
+      createBucket(archiveBucket);
+      createBucket(processingBucket);
 
       S3BackendMetaData sourceBackend     = defineBackend(qInstance, "source", sourceBucket);
       S3BackendMetaData archiveBackend    = defineBackend(qInstance, "archive", archiveBucket);
@@ -135,8 +134,8 @@ class FilesystemSyncProcessS3Test extends BaseS3Test
       String vendorBucket = "vendor-bucket";
       String localBucket  = "local-bucket";
 
-      getAmazonS3().createBucket(vendorBucket);
-      getAmazonS3().createBucket(localBucket);
+      createBucket(vendorBucket);
+      createBucket(localBucket);
 
       S3BackendMetaData vendorBackend = defineBackend(qInstance, "source", vendorBucket);
       S3BackendMetaData localBackend  = defineBackend(qInstance, "archive", localBucket);

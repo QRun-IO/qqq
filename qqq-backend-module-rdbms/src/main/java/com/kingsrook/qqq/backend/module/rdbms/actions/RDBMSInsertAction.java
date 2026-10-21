@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.module.rdbms.actions;
@@ -30,10 +29,13 @@ import java.util.List;
 import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.actions.interfaces.InsertInterface;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.instrumentation.StatementOperation;
+import com.kingsrook.qqq.backend.core.instrumentation.StatementTimer;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.JsonPathStorage;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
@@ -64,7 +66,8 @@ public class RDBMSInsertAction extends AbstractRDBMSAction implements InsertInte
 
       StringBuilder sql    = null;
       List<Object>  params = null;
-      Long          mark   = null;
+      Long           mark           = null;
+      StatementTimer statementTimer = StatementTimer.NOOP;
 
       try
       {
@@ -85,10 +88,12 @@ public class RDBMSInsertAction extends AbstractRDBMSAction implements InsertInte
          for(List<QRecord> page : insertPages(insertInput, primaryKeyField))
          {
             boolean suppliedKeys = page.stream().filter(record -> CollectionUtils.nullSafeIsEmpty(record.getErrors()))
-               .anyMatch(record -> scrubValue(primaryKeyField, record.getValue(primaryKeyField.getName())) != null);
-            boolean zeroKey = suppliedKeys && page.size() == 1 && isZeroPrimaryKey(primaryKeyField, scrubValue(primaryKeyField, page.get(0).getValue(primaryKeyField.getName())));
+               .anyMatch(record -> scrubValue(table, primaryKeyField, primaryKeyField.getType(), record.getValue(primaryKeyField.getName())) != null);
+            boolean zeroKey = suppliedKeys && page.size() == 1 && isZeroPrimaryKey(primaryKeyField, scrubValue(table, primaryKeyField, primaryKeyField.getType(), page.get(0).getValue(primaryKeyField.getName())));
             List<QFieldMetaData> insertableFields = table.getFields().values().stream()
                .filter(field -> suppliedKeys || !field.getName().equals(table.getPrimaryKeyField())).toList();
+            List<QFieldMetaData> logicalFields = insertableFields;
+            insertableFields = JsonStorageValues.columns(logicalFields);
             String columns = insertableFields.stream().map(field -> escapeIdentifier(getColumnName(field))).collect(Collectors.joining(", "));
             String backendTableName = escapeIdentifier(getTableName(table));
             sql = new StringBuilder("INSERT INTO ").append(backendTableName);
@@ -133,8 +138,16 @@ public class RDBMSInsertAction extends AbstractRDBMSAction implements InsertInte
                   {
                      sql.append(",");
                   }
-                  sql.append("?");
-                  params.add(scrubValue(field, record.getValue(field.getName())));
+                  if(field.getBackendStorage() instanceof JsonPathStorage storage)
+                  {
+                     sql.append(getActionStrategy().jsonObjectPlaceholder());
+                     params.add(JsonStorageValues.object(record, logicalFields, storage.getColumnName()));
+                  }
+                  else
+                  {
+                     sql.append("?");
+                     params.add(scrubValue(table, field, field.getType(), record.getValue(field.getName())));
+                  }
                }
                sql.append(")");
             }
@@ -157,6 +170,7 @@ public class RDBMSInsertAction extends AbstractRDBMSAction implements InsertInte
             }
 
             mark = System.currentTimeMillis();
+            statementTimer = startStatementTimer(table.getName(), StatementOperation.INSERT);
 
             ///////////////////////////////////////////////////////////
             // execute the insert, then foreach record in the input, //
@@ -205,6 +219,7 @@ public class RDBMSInsertAction extends AbstractRDBMSAction implements InsertInte
                }
             }
 
+            statementTimer.succeeded(recordIndex).finish(sql);
             logSQL(sql, params, mark);
          }
 
@@ -212,6 +227,7 @@ public class RDBMSInsertAction extends AbstractRDBMSAction implements InsertInte
       }
       catch(Exception e)
       {
+         statementTimer.finish(sql);
          logSQL(sql, params, mark);
          throw new QException("Error executing insert: " + e.getMessage(), e);
       }
@@ -252,7 +268,7 @@ public class RDBMSInsertAction extends AbstractRDBMSAction implements InsertInte
             {
                continue;
             }
-            Serializable keyValue = scrubValue(primaryKeyField, record.getValue(primaryKeyField.getName()));
+            Serializable keyValue = scrubValue(input.getTable(), primaryKeyField, primaryKeyField.getType(), record.getValue(primaryKeyField.getName()));
             if(isZeroPrimaryKey(primaryKeyField, keyValue))
             {
                //////////////////////////////////////////////////////////////////////////////////////////////////////

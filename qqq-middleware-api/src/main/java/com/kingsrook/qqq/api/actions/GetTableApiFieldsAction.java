@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.api.actions;
@@ -38,12 +37,14 @@ import com.kingsrook.qqq.api.model.metadata.tables.ApiTableMetaData;
 import com.kingsrook.qqq.api.model.metadata.tables.ApiTableMetaDataContainer;
 import com.kingsrook.qqq.backend.core.actions.AbstractQActionFunction;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.cluster.ClusterCaches;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.InputSource;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.ObjectUtils;
@@ -60,8 +61,8 @@ public class GetTableApiFieldsAction extends AbstractQActionFunction<GetTableApi
 {
    private static final QLogger LOG = QLogger.getLogger(GetTableApiFieldsAction.class);
 
-   private static Memoization<MemoizationKey, List<QFieldMetaData>>        fieldListMemoization = new Memoization<>();
-   private static Memoization<MemoizationKey, Map<String, QFieldMetaData>> fieldMapMemoization  = new Memoization<>();
+   private static Memoization<MemoizationKey, List<QFieldMetaData>>        fieldListMemoization = ClusterCaches.nodeLocal(new Memoization<>(), "derived from the instance's meta data, the same on every node");
+   private static Memoization<MemoizationKey, Map<String, QFieldMetaData>> fieldMapMemoization  = ClusterCaches.nodeLocal(new Memoization<>(), "derived from the instance's meta data, the same on every node");
 
 
 
@@ -82,7 +83,7 @@ public class GetTableApiFieldsAction extends AbstractQActionFunction<GetTableApi
    public static Map<String, QFieldMetaData> getTableApiFieldMap(GetTableApiFieldsInput input) throws QException
    {
       String         userId = ObjectUtils.tryElse(() -> QContext.getQSession().getUser().getIdReference(), null);
-      MemoizationKey key    = new MemoizationKey(input.getApiName(), input.getVersion(), input.getTableName(), userId, input.getInputSource());
+      MemoizationKey key    = new MemoizationKey(input.getApiName(), input.getVersion(), input.getTableName(), userId, input.getInputSource(), input.getIncludeVirtualFields(), input.getForSpecification());
 
       return fieldMapMemoization.getResultThrowing(key, k ->
       {
@@ -119,7 +120,7 @@ public class GetTableApiFieldsAction extends AbstractQActionFunction<GetTableApi
    public static List<QFieldMetaData> getTableApiFieldList(GetTableApiFieldsInput input) throws QException
    {
       String         userId = ObjectUtils.tryElse(() -> QContext.getQSession().getUser().getIdReference(), null);
-      MemoizationKey key    = new MemoizationKey(input.getApiName(), input.getVersion(), input.getTableName(), userId, input.getInputSource());
+      MemoizationKey key    = new MemoizationKey(input.getApiName(), input.getVersion(), input.getTableName(), userId, input.getInputSource(), input.getIncludeVirtualFields(), input.getForSpecification());
 
       return fieldListMemoization.getResultThrowing(key, k -> (new GetTableApiFieldsAction().execute(input).getFields())).orElse(null);
    }
@@ -130,7 +131,7 @@ public class GetTableApiFieldsAction extends AbstractQActionFunction<GetTableApi
     * memoization key.  Adds both userId and inputSource, as those are the
     * expected "keys" that would be used within a table personalizer.
     ***************************************************************************/
-   private record MemoizationKey(String apiName, String apiVersion, String tableName, String userId, InputSource inputSource)
+   private record MemoizationKey(String apiName, String apiVersion, String tableName, String userId, InputSource inputSource, boolean includeVirtualFields, boolean forSpecification)
    {
 
    }
@@ -150,7 +151,7 @@ public class GetTableApiFieldsAction extends AbstractQActionFunction<GetTableApi
          throw (new QNotFoundException("Unrecognized table name: " + input.getTableName()));
       }
 
-      table = TableMetaDataPersonalizerAction.execute(input);
+      table = input.getForSpecification() ? TableMetaDataPersonalizerAction.execute(input, false) : TableMetaDataPersonalizerAction.execute(input);
 
       APIVersion version = new APIVersion(input.getVersion());
 
@@ -181,6 +182,23 @@ public class GetTableApiFieldsAction extends AbstractQActionFunction<GetTableApi
          if(ApiFieldUtils.isIncluded(input.getApiName(), field) && ApiFieldUtils.getApiVersionRangeForRemovedField(input.getApiName(), field).includes(version))
          {
             fields.add(field);
+         }
+      }
+
+      //////////////////////////////////////////////////////////////////////////////
+      // virtual fields, when asked for: only those explicitly given api field   //
+      // meta data for this api (see ApiFieldUtils.isVirtualFieldIncluded), and //
+      // in this version. Their values come from the records (e.g. a post-query  //
+      // customizer); they are output-only.                                      //
+      //////////////////////////////////////////////////////////////////////////////
+      if(input.getIncludeVirtualFields())
+      {
+         for(QVirtualFieldMetaData field : CollectionUtils.nonNullMap(table.getVirtualFields()).values())
+         {
+            if(ApiFieldUtils.isVirtualFieldIncluded(input.getApiName(), field) && ApiFieldUtils.getApiVersionRange(input.getApiName(), field).includes(version))
+            {
+               fields.add(field);
+            }
          }
       }
 

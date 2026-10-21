@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
@@ -24,7 +23,9 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
+import com.kingsrook.qqq.middleware.javalin.executors.ExecutorSessionUtils;
 import com.kingsrook.qqq.middleware.javalin.executors.LogoutExecutor;
 import com.kingsrook.qqq.middleware.javalin.executors.io.LogoutInput;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
@@ -86,10 +87,13 @@ public class LogoutSpecV1 extends AbstractEndpointSpec<LogoutInput, LogoutRespon
    {
       LogoutResponseV1 result = super.serveRequest(abstractMiddlewareVersion, context);
 
-      ////////////////////////////////////////////////////////
-      // remove the session cookie by setting it to expired //
-      ////////////////////////////////////////////////////////
+      ///////////////////////////////////////////////////////////////////////////
+      // remove the session cookies by setting them to expired.  sessionId is   //
+      // also issued (by modules that use it) on every request; a stale one    //
+      // would otherwise shadow the next sign-in's sessionUUID.                //
+      ///////////////////////////////////////////////////////////////////////////
       context.removeCookie(QJavalinImplementation.SESSION_UUID_COOKIE_NAME);
+      context.removeCookie(QJavalinImplementation.SESSION_ID_COOKIE_NAME);
 
       return (result);
    }
@@ -104,6 +108,17 @@ public class LogoutSpecV1 extends AbstractEndpointSpec<LogoutInput, LogoutRespon
    {
       LogoutInput logoutInput = new LogoutInput();
       logoutInput.setSessionUUID(context.cookie(QJavalinImplementation.SESSION_UUID_COOKIE_NAME));
+      if(logoutInput.getSessionUUID() == null && (context.cookie(QJavalinImplementation.SESSION_ID_COOKIE_NAME) != null || context.header("Authorization") != null))
+      {
+         try
+         {
+            logoutInput.setSessionUUID(ExecutorSessionUtils.setupSession(context, qInstance).getUuid());
+         }
+         catch(QAuthenticationException ignored)
+         {
+            // An already invalid session can still have its cookies cleared.
+         }
+      }
       return (logoutInput);
    }
 

@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.model.metadata.frontend;
@@ -47,6 +46,8 @@ public class AppTreeNode implements Cloneable
    private Boolean           hideChildrenFromNavigation = false;
    private List<AppTreeNode> children;
 
+   private List<String> keywords;
+
    private Integer appAffinity;
 
    private QIcon icon;
@@ -64,6 +65,8 @@ public class AppTreeNode implements Cloneable
       if(appChildMetaData.getClass().equals(QTableMetaData.class))
       {
          this.type = AppTreeNodeType.TABLE;
+         List<String> sourceKeywords = ((QTableMetaData) appChildMetaData).getKeywords();
+         this.keywords = sourceKeywords == null || sourceKeywords.isEmpty() ? null : new ArrayList<>(sourceKeywords);
       }
       else if(appChildMetaData.getClass().equals(QProcessMetaData.class))
       {
@@ -76,6 +79,8 @@ public class AppTreeNode implements Cloneable
       else if(appChildMetaData.getClass().equals(QAppMetaData.class))
       {
          this.type = AppTreeNodeType.APP;
+         List<String> sourceKeywords = ((QAppMetaData) appChildMetaData).getKeywords();
+         this.keywords = sourceKeywords == null || sourceKeywords.isEmpty() ? null : new ArrayList<>(sourceKeywords);
          children = new ArrayList<>();
       }
       else
@@ -219,6 +224,7 @@ public class AppTreeNode implements Cloneable
       try
       {
          AppTreeNode clone = (AppTreeNode) super.clone();
+         clone.keywords = keywords == null ? null : new ArrayList<>(keywords);
          if(children != null)
          {
             clone.children = new ArrayList<>();
@@ -283,5 +289,27 @@ public class AppTreeNode implements Cloneable
       this.children = children;
       return (this);
    }
+
+
+
+   /*******************************************************************************
+    ** Getter for keywords
+    *******************************************************************************/
+   public List<String> getKeywords()
+   {
+      return (this.keywords);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for keywords
+    *******************************************************************************/
+   public void setKeywords(List<String> keywords)
+   {
+      this.keywords = keywords;
+   }
+
+
 
 }

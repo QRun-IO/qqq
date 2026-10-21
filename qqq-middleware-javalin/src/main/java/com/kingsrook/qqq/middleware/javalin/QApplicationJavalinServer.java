@@ -5,32 +5,37 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin;
 
 
+import java.lang.ref.WeakReference;
 import java.nio.charset.Charset;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Consumer;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
+import com.kingsrook.qqq.backend.core.cluster.ClusterBus;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QInstanceValidationException;
+import com.kingsrook.qqq.backend.core.health.HealthMonitoringMetaData;
 import com.kingsrook.qqq.backend.core.instances.AbstractQQQApplication;
+import com.kingsrook.qqq.backend.core.jobs.runtime.DurableJobsRuntime;
 import com.kingsrook.qqq.backend.core.logging.LogUtils;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -41,14 +46,23 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
 import com.kingsrook.qqq.middleware.javalin.QJavalinMetaData;
+import com.kingsrook.qqq.middleware.javalin.cluster.JavalinClusterSupport;
+import com.kingsrook.qqq.middleware.javalin.health.HealthJavalinMetaDataProducer;
+import com.kingsrook.qqq.middleware.javalin.health.HealthRuntimeService;
 import com.kingsrook.qqq.middleware.javalin.metadata.JavalinRouteProviderMetaData;
+import com.kingsrook.qqq.middleware.javalin.routeproviders.BrandingAssetsRouteProvider;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.IsolatedSpaRouteProvider;
+import com.kingsrook.qqq.middleware.javalin.routeproviders.NextDashboardRouteProvider;
+import com.kingsrook.qqq.middleware.javalin.routeproviders.NextDashboardSecurityHeaders;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.ProcessBasedRouter;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.SimpleFileSystemDirectoryRouter;
+import com.kingsrook.qqq.middleware.javalin.routeproviders.SpaPathUtils;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.handlers.RouteProviderAfterHandlerInterface;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.handlers.RouteProviderBeforeHandlerInterface;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractMiddlewareVersion;
+import com.kingsrook.qqq.middleware.javalin.specs.UiApiRouteAuditor;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.MiddlewareVersionV1;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.RealtimeStreamSpecV1;
 import io.javalin.Javalin;
 import io.javalin.apibuilder.EndpointGroup;
 import io.javalin.config.JavalinConfig;
@@ -72,28 +86,45 @@ import org.apache.commons.lang3.BooleanUtils;
  ** System property `qqq.javalin.hotSwapInstance` (defaults to false), causes the
  ** QInstance to be re-loaded every X millis, to avoid some server restarts while
  ** doing dev.
+ **
+ ** Admin dashboard selection: when the qqq-frontend-next jar is on the classpath
+ ** its dashboard is served at "/" by default; otherwise the Material Dashboard is.
+ ** Choose explicitly with withServeFrontendNext / withServeFrontendMaterialDashboard,
+ ** or, when neither is set in code, with system property `qqq.javalin.frontend`
+ ** set to `next`, `material` or `none`.
  *******************************************************************************/
 public class QApplicationJavalinServer
 {
    private static final QLogger LOG = QLogger.getLogger(QApplicationJavalinServer.class);
 
+   private final HealthRuntimeService healthRuntimeService = new HealthRuntimeService();
+
    private final AbstractQQQApplication application;
 
    private Integer                              port                                = 8000;
-   private boolean                              serveFrontendMaterialDashboard      = true;
+   private Boolean                              serveFrontendMaterialDashboard      = null;
+   private Boolean                              serveFrontendNext                   = null;
    private String                               frontendMaterialDashboardHostedPath = "/";
    private boolean                              serveLegacyUnversionedMiddlewareAPI = true;
+   private Boolean                              strictUiApiRoutes                   = null;
    private List<AbstractMiddlewareVersion>      middlewareVersionList               = List.of(new MiddlewareVersionV1());
    private List<QJavalinRouteProviderInterface> additionalRouteProviders            = null;
    private Consumer<Javalin>                    javalinConfigurationCustomizer      = null;
    private Consumer<JavalinConfig>              javalinConfigCustomizer;
    private QJavalinMetaData                     javalinMetaData                     = null;
 
+   private Consumer<NextDashboardSecurityHeaders> nextDashboardSecurityHeadersCustomizer = null;
+   private Boolean                                sessionCookieHttpOnly                  = null;
+
    private long                lastQInstanceHotSwapMillis;
    private long                millisBetweenHotSwaps = 2500;
    private Consumer<QInstance> hotSwapCustomizer     = null;
 
-   private Javalin service;
+   private Javalin   service;
+   private QInstance qInstance;
+
+   private          Thread  drainShutdownHook;
+   private volatile boolean stopped = false;
 
 
 
@@ -113,7 +144,17 @@ public class QApplicationJavalinServer
     ***************************************************************************/
    public void start() throws QException
    {
+      stopped = false;
       QInstance qInstance = application.defineValidatedQInstance();
+      this.qInstance = qInstance;
+      if(qInstance.getSupplementalMetaData(HealthMonitoringMetaData.NAME) != null)
+      {
+         new HealthJavalinMetaDataProducer().produce(qInstance);
+         if(qInstance.getRuntimeServices().stream().noneMatch(reference -> HealthRuntimeService.class.getName().equals(reference.getName())))
+         {
+            qInstance.withRuntimeService(new QCodeReference(HealthRuntimeService.class));
+         }
+      }
 
       QJavalinMetaData javalinMetaData = getJavalinMetaDataToUse(qInstance);
       if(javalinMetaData != null)
@@ -129,7 +170,14 @@ public class QApplicationJavalinServer
       // Note: This must be added BEFORE Javalin.create() so that acceptJavalinConfig() is called //
       // during the configuration phase, setting up static file serving with the correct paths.   //
       //////////////////////////////////////////////////////////////////////////////////////////////
-      if(serveFrontendMaterialDashboard)
+      boolean serveMaterial = getServeFrontendMaterialDashboard();
+      boolean serveNext     = getServeFrontendNext();
+      if(serveMaterial && serveNext && "/".equals(SpaPathUtils.normalizePath(frontendMaterialDashboardHostedPath)))
+      {
+         throw (new QException("The Next dashboard is served at \"/\"; host the Material Dashboard at another path (withFrontendMaterialDashboardHostedPath) to serve both."));
+      }
+
+      if(serveMaterial)
       {
          if(getClass().getResource("/material-dashboard/index.html") == null)
          {
@@ -147,9 +195,33 @@ public class QApplicationJavalinServer
          addRouteProvider(materialDashboardProvider);
       }
 
+      if(serveNext)
+      {
+         addRouteProvider(new NextDashboardRouteProvider().withSecurityHeadersCustomizer(nextDashboardSecurityHeadersCustomizer));
+      }
+
+      addRouteProvider(new BrandingAssetsRouteProvider());
+
+      LOG.info("Admin dashboard selection", LogUtils.logPair("next", serveNext), LogUtils.logPair("materialDashboard", serveMaterial));
+
+      ///////////////////////////////////////////////////////////////////////
+      // session cookies are HttpOnly unless the Material Dashboard, which //
+      // reads sessionUUID in the browser, is served (QRun-IO/qqq#733)     //
+      ///////////////////////////////////////////////////////////////////////
+      boolean sessionCookieHttpOnly = getSessionCookieHttpOnly();
+      QJavalinImplementation.setSessionCookieHttpOnly(sessionCookieHttpOnly);
+      LOG.info("Session cookies", LogUtils.logPair("httpOnly", sessionCookieHttpOnly));
+
       service = Javalin.create(config ->
       {
-         if(serveFrontendMaterialDashboard && getClass().getResource("/material-dashboard-overlay") != null)
+         //////////////////////////////////////////////////////////////////////
+         // cluster node: graceful Jetty stop, and (on a node without the    //
+         // web role) 503 for everything but probes - JavalinClusterSupport  //
+         //////////////////////////////////////////////////////////////////////
+         JavalinClusterSupport.configure(config);
+
+         config.events.serverStopped(healthRuntimeService::stop);
+         if((serveMaterial || serveNext) && getClass().getResource("/material-dashboard-overlay") != null)
          {
             config.staticFiles.add("/material-dashboard-overlay");
          }
@@ -271,6 +343,8 @@ public class QApplicationJavalinServer
          }
 
          config.routes.before((Context context) -> context.header("Content-Type", "application/json"));
+         config.routes.before(UnitOfWorkJavalinHandlers::before);
+         config.routes.after(UnitOfWorkJavalinHandlers::after);
          config.routes.after(QJavalinImplementation::clearQContext);
 
          addNullResponseCharsetFixer(config);
@@ -280,6 +354,15 @@ public class QApplicationJavalinServer
             javalinConfigCustomizer.accept(config);
          }
       });
+
+      ///////////////////////////////////////////////////////////////////////////
+      // every route under a UI API version must be described by a spec - warn //
+      // about raw ones (or fail, in strict mode).  docs/UI-API-EXTENSIONS.md   //
+      ///////////////////////////////////////////////////////////////////////////
+      if(CollectionUtils.nullSafeHasContents(middlewareVersionList))
+      {
+         UiApiRouteAuditor.audit(service, middlewareVersionList, isStrictUiApiRoutes());
+      }
 
       /////////////////////////////////////////////////////////////////////
       // Service observers run after all route configuration is complete. //
@@ -298,7 +381,50 @@ public class QApplicationJavalinServer
          javalinConfigurationCustomizer.accept(service);
       }
 
-      service.start(port);
+      try
+      {
+         healthRuntimeService.start(qInstance);
+         service.start(port);
+      }
+      catch(Exception e)
+      {
+         healthRuntimeService.stop();
+         throw e;
+      }
+
+      ///////////////////////////////////////////////////////////////////
+      // durable jobs (when the instance enables them): this pod's     //
+      // workers and lease reaper start with the server, and drain on  //
+      // stop (and on SIGTERM, through the runtime's shutdown hook).   //
+      ///////////////////////////////////////////////////////////////////
+      DurableJobsRuntime.start(qInstance);
+
+      ////////////////////////////////////////////////////////////////////////
+      // receive cluster control events (cache invalidation, session ends,  //
+      // overlay changes) from other nodes before serving any change       //
+      ////////////////////////////////////////////////////////////////////////
+      ClusterBus.connect(qInstance);
+
+      ////////////////////////////////////////////////////////////////////////
+      // SIGTERM drains this node (not-ready, async steps finish, in-flight //
+      // requests finish) before the server stops                          //
+      ////////////////////////////////////////////////////////////////////////
+      if(drainShutdownHook == null)
+      {
+         ///////////////////////////////////////////////////////////////////////
+         // the hook holds the server weakly: a server that is dropped without //
+         // stop() (tests) must not stay reachable from the JVM's hooks        //
+         ///////////////////////////////////////////////////////////////////////
+         WeakReference<QApplicationJavalinServer> self = new WeakReference<>(this);
+         drainShutdownHook = JavalinClusterSupport.installShutdownHook(() ->
+         {
+            QApplicationJavalinServer server = self.get();
+            if(server != null)
+            {
+               server.stop();
+            }
+         });
+      }
    }
 
 
@@ -484,6 +610,44 @@ public class QApplicationJavalinServer
          return;
       }
 
+      synchronized(this)
+      {
+         if(stopped)
+         {
+            return;
+         }
+         stopped = true;
+      }
+
+      if(drainShutdownHook != null && Thread.currentThread() != drainShutdownHook)
+      {
+         try
+         {
+            Runtime.getRuntime().removeShutdownHook(drainShutdownHook);
+         }
+         catch(IllegalStateException e)
+         {
+            /////////////////////////////////////////////
+            // the JVM is already shutting down - fine //
+            /////////////////////////////////////////////
+         }
+      }
+
+      if(this.qInstance != null)
+      {
+         DurableJobsRuntime.stop(this.qInstance, Duration.ofSeconds(25));
+      }
+
+      for(AbstractMiddlewareVersion version : middlewareVersionList)
+      {
+         for(var spec : version.getEndpointSpecs())
+         {
+            if(spec instanceof RealtimeStreamSpecV1 realtime)
+            {
+               realtime.close();
+            }
+         }
+      }
       this.service.stop();
    }
 
@@ -550,6 +714,7 @@ public class QApplicationJavalinServer
             routeProvider.setQInstance(newQInstance);
          }
 
+         this.qInstance = newQInstance;
          LOG.info("Swapped qInstance");
       }
       catch(QInstanceValidationException e)
@@ -560,6 +725,58 @@ public class QApplicationJavalinServer
       {
          LOG.error("Error hot-swapping QInstance", e);
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for the QInstance this server built from its application in start
+    ** (or the latest one, when hot-swapping) - null before start.
+    *******************************************************************************/
+   public QInstance getQInstance()
+   {
+      return (this.qInstance);
+   }
+
+
+
+   /*******************************************************************************
+    ** The port the running service is bound to (differs from getPort when the
+    ** server was configured with port 0); the configured port before start.
+    *******************************************************************************/
+   public Integer getBoundPort()
+   {
+      return (service == null ? port : service.port());
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether routes under a UI API version without an endpoint spec fail startup
+    ** (true, the default since UI API 1.3.0 / QRun-IO/qqq#1159) or are only
+    ** logged as warnings (false).  When not set, the system property
+    ** qqq.uiApi.strictRoutes or the environment variable QQQ_UI_API_STRICT_ROUTES
+    ** decides: only "false" turns strict mode off.
+    *******************************************************************************/
+   public boolean isStrictUiApiRoutes()
+   {
+      if(strictUiApiRoutes != null)
+      {
+         return (strictUiApiRoutes);
+      }
+      String value = System.getProperty("qqq.uiApi.strictRoutes", System.getenv("QQQ_UI_API_STRICT_ROUTES"));
+      return (!"false".equalsIgnoreCase(value));
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for strictUiApiRoutes
+    *******************************************************************************/
+   public QApplicationJavalinServer withStrictUiApiRoutes(boolean strictUiApiRoutes)
+   {
+      this.strictUiApiRoutes = strictUiApiRoutes;
+      return (this);
    }
 
 
@@ -596,11 +813,22 @@ public class QApplicationJavalinServer
 
 
    /*******************************************************************************
-    ** Getter for serveFrontendMaterialDashboard
+    ** Whether the Material Dashboard is served: the explicit setting, else the
+    ** `qqq.javalin.frontend` system property, else only when the Next dashboard
+    ** is not being served.
     *******************************************************************************/
    public boolean getServeFrontendMaterialDashboard()
    {
-      return (this.serveFrontendMaterialDashboard);
+      if(serveFrontendMaterialDashboard != null)
+      {
+         return (serveFrontendMaterialDashboard);
+      }
+      String selection = getFrontendSelectionProperty();
+      if(selection != null && serveFrontendNext == null)
+      {
+         return ("material".equals(selection));
+      }
+      return (!getServeFrontendNext());
    }
 
 
@@ -622,6 +850,146 @@ public class QApplicationJavalinServer
    {
       this.serveFrontendMaterialDashboard = serveFrontendMaterialDashboard;
       return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether the Next dashboard is served at "/": the explicit setting, else the
+    ** `qqq.javalin.frontend` system property, else when its jar is on the classpath
+    ** and the Material Dashboard was not explicitly requested.
+    *******************************************************************************/
+   public boolean getServeFrontendNext()
+   {
+      if(serveFrontendNext != null)
+      {
+         return (serveFrontendNext);
+      }
+      String selection = getFrontendSelectionProperty();
+      if(selection != null && serveFrontendMaterialDashboard == null)
+      {
+         return ("next".equals(selection));
+      }
+      return (!Boolean.TRUE.equals(serveFrontendMaterialDashboard) && NextDashboardRouteProvider.isAvailable());
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for serveFrontendNext
+    *******************************************************************************/
+   public void setServeFrontendNext(boolean serveFrontendNext)
+   {
+      this.serveFrontendNext = serveFrontendNext;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for serveFrontendNext
+    *******************************************************************************/
+   public QApplicationJavalinServer withServeFrontendNext(boolean serveFrontendNext)
+   {
+      this.serveFrontendNext = serveFrontendNext;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for nextDashboardSecurityHeadersCustomizer
+    *******************************************************************************/
+   public Consumer<NextDashboardSecurityHeaders> getNextDashboardSecurityHeadersCustomizer()
+   {
+      return (this.nextDashboardSecurityHeadersCustomizer);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for nextDashboardSecurityHeadersCustomizer: adjusts the
+    ** Content-Security-Policy and other security headers the Next dashboard is
+    ** served with (see NextDashboardSecurityHeaders). Set before start().
+    *******************************************************************************/
+   public void setNextDashboardSecurityHeadersCustomizer(Consumer<NextDashboardSecurityHeaders> nextDashboardSecurityHeadersCustomizer)
+   {
+      this.nextDashboardSecurityHeadersCustomizer = nextDashboardSecurityHeadersCustomizer;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for nextDashboardSecurityHeadersCustomizer, for example
+    ** {@code withNextDashboardSecurityHeadersCustomizer(headers -> headers.withSources("img-src", "https://cdn.example.com"))}.
+    *******************************************************************************/
+   public QApplicationJavalinServer withNextDashboardSecurityHeadersCustomizer(Consumer<NextDashboardSecurityHeaders> nextDashboardSecurityHeadersCustomizer)
+   {
+      this.nextDashboardSecurityHeadersCustomizer = nextDashboardSecurityHeadersCustomizer;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether session cookies (sessionUUID, sessionId) are HttpOnly: the explicit
+    ** setting, else the `qqq.javalin.sessionCookieHttpOnly` system property, else
+    ** on unless the Material Dashboard is served, because it reads sessionUUID in
+    ** the browser (QRun-IO/qqq#733). An application whose Material Dashboard is
+    ** served elsewhere on the same host should turn it off.
+    *******************************************************************************/
+   public boolean getSessionCookieHttpOnly()
+   {
+      if(sessionCookieHttpOnly != null)
+      {
+         return (sessionCookieHttpOnly);
+      }
+      String property = System.getProperty("qqq.javalin.sessionCookieHttpOnly");
+      if(property != null && !property.isBlank())
+      {
+         return (BooleanUtils.isTrue(ValueUtils.getValueAsBoolean(property.trim())));
+      }
+      return (!getServeFrontendMaterialDashboard());
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for sessionCookieHttpOnly (see getSessionCookieHttpOnly).
+    *******************************************************************************/
+   public void setSessionCookieHttpOnly(Boolean sessionCookieHttpOnly)
+   {
+      this.sessionCookieHttpOnly = sessionCookieHttpOnly;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for sessionCookieHttpOnly (see getSessionCookieHttpOnly).
+    *******************************************************************************/
+   public QApplicationJavalinServer withSessionCookieHttpOnly(Boolean sessionCookieHttpOnly)
+   {
+      this.sessionCookieHttpOnly = sessionCookieHttpOnly;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Normalized `qqq.javalin.frontend` value (next, material or none), or null.
+    *******************************************************************************/
+   private static String getFrontendSelectionProperty()
+   {
+      String value = System.getProperty("qqq.javalin.frontend");
+      if(value == null || value.isBlank())
+      {
+         return (null);
+      }
+      String normalized = value.trim().toLowerCase(Locale.ROOT);
+      if(!List.of("next", "material", "none").contains(normalized))
+      {
+         throw (new IllegalArgumentException("qqq.javalin.frontend must be next, material or none, not: " + value));
+      }
+      return (normalized);
    }
 
 

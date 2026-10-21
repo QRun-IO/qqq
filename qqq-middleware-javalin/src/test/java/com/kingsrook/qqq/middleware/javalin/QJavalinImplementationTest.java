@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin;
@@ -28,6 +27,7 @@ import java.io.Serializable;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -120,6 +120,22 @@ class QJavalinImplementationTest extends QJavalinTestBase
     **
     *******************************************************************************/
    @Test
+   public void test_legacyRoutesAreMarkedDeprecated()
+   {
+      for(String path : List.of("/metaData", "/metaData/table/person", "/serverInfo", "/data/person/1"))
+      {
+         HttpResponse<String> response = Unirest.get(BASE_URL + path).asString();
+         assertEquals(QJavalinImplementation.LEGACY_DEPRECATION_HEADER_VALUE, response.getHeaders().getFirst("Deprecation"), path);
+         assertThat(response.getHeaders().getFirst("Link")).contains("/qqq/v1/openapi.html", "successor-version");
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
    public void test_serverInfo()
    {
       HttpResponse<String> response = Unirest.get(BASE_URL + "/serverInfo").asString();
@@ -169,7 +185,7 @@ class QJavalinImplementationTest extends QJavalinTestBase
 
       assertEquals(HttpStatus.NOT_FOUND_404, response.getStatus());
       JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
-      assertEquals(1, jsonObject.keySet().size(), "Number of top-level keys");
+      assertEquals(java.util.Set.of("error", "code", "message", "traceId"), jsonObject.keySet(), "Error body keys");
       String error = jsonObject.getString("error");
       assertTrue(error.contains("not found"));
    }
@@ -214,7 +230,7 @@ class QJavalinImplementationTest extends QJavalinTestBase
 
       assertEquals(HttpStatus.NOT_FOUND_404, response.getStatus());
       JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
-      assertEquals(1, jsonObject.keySet().size(), "Number of top-level keys");
+      assertEquals(java.util.Set.of("error", "code", "message", "traceId"), jsonObject.keySet(), "Error body keys");
       String error = jsonObject.getString("error");
       assertTrue(error.contains("not found"));
    }
@@ -372,7 +388,7 @@ class QJavalinImplementationTest extends QJavalinTestBase
       HttpResponse<String> response = Unirest.get(BASE_URL + "/data/person/98765").asString();
       assertEquals(HttpStatus.NOT_FOUND_404, response.getStatus());
       JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
-      assertEquals(1, jsonObject.keySet().size(), "Number of top-level keys");
+      assertEquals(java.util.Set.of("error", "code", "message", "traceId"), jsonObject.keySet(), "Error body keys");
       String error = jsonObject.getString("error");
       assertEquals("Could not find Person with Id of 98765", error);
    }
@@ -389,7 +405,7 @@ class QJavalinImplementationTest extends QJavalinTestBase
       HttpResponse<String> response = Unirest.get(BASE_URL + "/data/person/not-an-integer").asString();
       assertEquals(HttpStatus.INTERNAL_SERVER_ERROR_500, response.getStatus());
       JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
-      assertEquals(1, jsonObject.keySet().size(), "Number of top-level keys");
+      assertEquals(java.util.Set.of("error", "code", "message", "traceId"), jsonObject.keySet(), "Error body keys");
    }
 
 
@@ -1393,22 +1409,32 @@ class QJavalinImplementationTest extends QJavalinTestBase
    @Test
    void testManageSession()
    {
-      String body = """
-         {
-            "accessToken": "abcd",
-            "doStoreUserSession": true
-         }
-         """;
-      HttpResponse<String> response = Unirest.post(BASE_URL + "/manageSession")
-         .header("Content-Type", "application/json")
-         .body(body)
-         .asString();
+      boolean previousHttpOnly = QJavalinImplementation.getSessionCookieHttpOnly();
+      try
+      {
+         // This contract describes the Material-compatible readable-cookie mode.
+         QJavalinImplementation.setSessionCookieHttpOnly(false);
+         String body = """
+            {
+               "accessToken": "abcd",
+               "doStoreUserSession": true
+            }
+            """;
+         HttpResponse<String> response = Unirest.post(BASE_URL + "/manageSession")
+            .header("Content-Type", "application/json")
+            .body(body)
+            .asString();
 
-      assertEquals(200, response.getStatus());
-      JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
-      assertNotNull(jsonObject);
-      assertTrue(jsonObject.has("uuid"));
-      response.getHeaders().get("Set-Cookie").stream().anyMatch(s -> s.contains("sessionUUID"));
+         assertEquals(200, response.getStatus());
+         JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
+         assertNotNull(jsonObject);
+         assertTrue(jsonObject.has("uuid"));
+         response.getHeaders().get("Set-Cookie").stream().anyMatch(s -> s.contains("sessionUUID"));
+      }
+      finally
+      {
+         QJavalinImplementation.setSessionCookieHttpOnly(previousHttpOnly);
+      }
    }
 
 

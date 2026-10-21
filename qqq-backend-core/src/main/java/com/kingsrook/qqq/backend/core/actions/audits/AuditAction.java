@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.actions.audits;
@@ -32,6 +31,7 @@ import java.util.Objects;
 import java.util.Optional;
 import com.kingsrook.qqq.backend.core.actions.AbstractQActionFunction;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
+import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -45,6 +45,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertOutput;
+import com.kingsrook.qqq.backend.core.model.audits.AuditsMetaDataProvider;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.security.MultiRecordSecurityLock;
@@ -52,6 +53,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLock
 import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLockFilters;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QUser;
+import com.kingsrook.qqq.backend.core.serviceidentity.ServiceIdentities;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.Pair;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
@@ -228,10 +230,26 @@ public class AuditAction extends AbstractQActionFunction<AuditInput, AuditOutput
 
 
    /*******************************************************************************
-    **
+    ** Store audits.  Writing them is the framework's own bookkeeping, done for
+    ** whoever made the change - so it runs trusted: the audit tables' permission
+    ** rules (audit.read - see SystemTablePermissions) never stop an audit from
+    ** being written, even when core permission enforcement is on.
     *******************************************************************************/
    @Override
    public AuditOutput execute(AuditInput input)
+   {
+      try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope())
+      {
+         return (executeTrusted(input));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** The audit writing itself, inside an authorized scope.
+    *******************************************************************************/
+   private AuditOutput executeTrusted(AuditInput input)
    {
       AuditOutput auditOutput = new AuditOutput();
 
@@ -306,6 +324,18 @@ public class AuditAction extends AbstractQActionFunction<AuditInput, AuditOutput
                   .withValue("timestamp", timestamp)
                   .withValue("message", auditSingleInput.getMessage())
                   .withValue("recordId", auditSingleInput.getRecordId());
+
+               ///////////////////////////////////////////////////////////////////////////
+               // which client made the change (when the audit table has the field) -   //
+               // the session's channel, e.g. next-ui or assistant/<turnId>; the actor  //
+               // (auditUserId) is always the human user                                //
+               ///////////////////////////////////////////////////////////////////////////
+               if(auditTableHasClientChannel())
+               {
+                  String clientChannel = auditSingleInput.getClientChannel() != null ? auditSingleInput.getClientChannel()
+                     : (QContext.getQSession() == null ? null : QContext.getQSession().getClientChannel());
+                  record.setValue(AuditsMetaDataProvider.FIELD_CLIENT_CHANNEL, clientChannel);
+               }
 
                if(auditSingleInput.getSecurityKeyValues() != null)
                {
@@ -513,6 +543,15 @@ public class AuditAction extends AbstractQActionFunction<AuditInput, AuditOutput
     *******************************************************************************/
    private static String getSessionUserName()
    {
+      ///////////////////////////////////////////////////////////////////////
+      // service principals: service:{name}, or {user} via service:{name}  //
+      ///////////////////////////////////////////////////////////////////////
+      String serviceAttribution = ServiceIdentities.attributionName(QContext.getQSession());
+      if(serviceAttribution != null)
+      {
+         return (serviceAttribution);
+      }
+
       QUser user = QContext.getQSession().getUser();
       if(user == null)
       {
@@ -607,4 +646,15 @@ public class AuditAction extends AbstractQActionFunction<AuditInput, AuditOutput
       return (null);
    }
 
+
+
+   /*******************************************************************************
+    ** Whether the audit table has the clientChannel field
+    ** (AuditsMetaDataProvider.withClientChannelField).
+    *******************************************************************************/
+   private static boolean auditTableHasClientChannel()
+   {
+      QTableMetaData auditTable = QContext.getQInstance() == null ? null : QContext.getQInstance().getTable(AuditsMetaDataProvider.TABLE_NAME_AUDIT);
+      return (auditTable != null && auditTable.getFields().containsKey(AuditsMetaDataProvider.FIELD_CLIENT_CHANNEL));
+   }
 }

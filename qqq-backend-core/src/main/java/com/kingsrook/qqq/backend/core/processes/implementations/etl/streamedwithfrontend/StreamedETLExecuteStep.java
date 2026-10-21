@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwithfrontend;
@@ -31,13 +30,17 @@ import com.kingsrook.qqq.backend.core.actions.audits.AuditAction;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.actions.reporting.RecordPipe;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.jobs.plans.JobChunkScope;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.audits.AuditInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.ProcessSummaryLineInterface;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
+import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.mapping.BulkLoadRecordUtils;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 
 
@@ -61,6 +64,7 @@ public class StreamedETLExecuteStep extends BaseStreamedETLStep implements Backe
    public void run(RunBackendStepInput runBackendStepInput, RunBackendStepOutput runBackendStepOutput) throws QException
    {
       Optional<QBackendTransaction> transaction = Optional.empty();
+      Exception                     primaryFailure = null;
 
       try
       {
@@ -120,8 +124,18 @@ public class StreamedETLExecuteStep extends BaseStreamedETLStep implements Backe
          /////////////////////////////////////////////////////////////////////////////
          // open a transaction for the whole process, if that's the requested level //
          /////////////////////////////////////////////////////////////////////////////
-         boolean doProcessLevelTransaction = StreamedETLWithFrontendProcess.TRANSACTION_LEVEL_PROCESS.equals(runBackendStepInput.getValueString(StreamedETLWithFrontendProcess.FIELD_TRANSACTION_LEVEL));
-         if(doProcessLevelTransaction)
+         //////////////////////////////////////////////////////////////////////////
+         // a durable job chunk may provide its own transaction: load into it,   //
+         // and leave committing it to the chunk (with the chunk's DONE mark).   //
+         //////////////////////////////////////////////////////////////////////////
+         Optional<QBackendTransaction> providedTransaction = JobChunkScope.providedTransaction();
+         boolean doProcessLevelTransaction = providedTransaction.isEmpty() && StreamedETLWithFrontendProcess.TRANSACTION_LEVEL_PROCESS.equals(runBackendStepInput.getValueString(StreamedETLWithFrontendProcess.FIELD_TRANSACTION_LEVEL));
+         if(providedTransaction.isPresent())
+         {
+            loadStep.setTransaction(providedTransaction);
+            transformStep.setTransaction(providedTransaction);
+         }
+         else if(doProcessLevelTransaction)
          {
             transaction = loadStep.openTransaction(runBackendStepInput);
             loadStep.setTransaction(transaction);
@@ -172,6 +186,7 @@ public class StreamedETLExecuteStep extends BaseStreamedETLStep implements Backe
          BackendStepPostRunInput  postRunInput  = new BackendStepPostRunInput(runBackendStepInput);
          transformStep.postRun(postRunInput, postRunOutput);
          loadStep.postRun(postRunInput, postRunOutput);
+         runBackendStepOutput.getOneTimeSecrets().addAll(postRunOutput.getOneTimeSecrets());
 
          //////////////////////////////////////////////////////////////////////
          // propagate data from inner-step state to process-level step state //
@@ -208,13 +223,14 @@ public class StreamedETLExecuteStep extends BaseStreamedETLStep implements Backe
       }
       catch(Exception e)
       {
+         primaryFailure = e;
          ////////////////////////////////////////////////////////////////////////////////
          // rollback the work, then re-throw the error for up-stream to catch & report //
          ////////////////////////////////////////////////////////////////////////////////
          if(transaction.isPresent())
          {
             LOG.warn("Caught top-level process exception - rolling back transaction", e);
-            transaction.get().rollback();
+            rollbackPreservingFailure(transaction.get(), e);
          }
          else
          {
@@ -229,7 +245,7 @@ public class StreamedETLExecuteStep extends BaseStreamedETLStep implements Backe
          ////////////////////////////////////////////////////////////
          if(transaction.isPresent())
          {
-            transaction.get().close();
+            closePreservingFailure(transaction.get(), primaryFailure);
          }
       }
    }
@@ -241,11 +257,17 @@ public class StreamedETLExecuteStep extends BaseStreamedETLStep implements Backe
     *******************************************************************************/
    private int consumeRecordsFromPipe(RecordPipe recordPipe, AbstractTransformStep transformStep, AbstractLoadStep loadStep, RunBackendStepInput runBackendStepInput, RunBackendStepOutput runBackendStepOutput, List<QRecord> loadedRecordList) throws QException
    {
+      ////////////////////////////////////////////////////////////////////////
+      // in a durable job chunk: stop here if the job was paused or cancelled //
+      ////////////////////////////////////////////////////////////////////////
+      JobChunkScope.checkBetweenPages();
+
       /////////////////////////////////////////////////////////////////////////////
       // open a transaction for the whole process, if that's the requested level //
       /////////////////////////////////////////////////////////////////////////////
       Optional<QBackendTransaction> transaction            = Optional.empty();
-      boolean                       doPageLevelTransaction = StreamedETLWithFrontendProcess.TRANSACTION_LEVEL_PAGE.equals(runBackendStepInput.getValueString(StreamedETLWithFrontendProcess.FIELD_TRANSACTION_LEVEL));
+      Exception                     primaryFailure        = null;
+      boolean                       doPageLevelTransaction = JobChunkScope.providedTransaction().isEmpty() && StreamedETLWithFrontendProcess.TRANSACTION_LEVEL_PAGE.equals(runBackendStepInput.getValueString(StreamedETLWithFrontendProcess.FIELD_TRANSACTION_LEVEL));
       if(doPageLevelTransaction)
       {
          transaction = loadStep.openTransaction(runBackendStepInput);
@@ -276,6 +298,7 @@ public class StreamedETLExecuteStep extends BaseStreamedETLStep implements Backe
          // pass the records through the transform function //
          /////////////////////////////////////////////////////
          transformStep.runOnePage(streamedBackendStepInput, streamedBackendStepOutput);
+         runBackendStepOutput.getOneTimeSecrets().addAll(streamedBackendStepOutput.getOneTimeSecrets());
          List<AuditInput> auditInputListFromTransform = streamedBackendStepOutput.getAuditInputList();
 
          //////////////////////////////////////////////////////////////////////
@@ -294,6 +317,7 @@ public class StreamedETLExecuteStep extends BaseStreamedETLStep implements Backe
          streamedBackendStepOutput = new StreamedBackendStepOutput(runBackendStepOutput);
 
          loadStep.runOnePage(streamedBackendStepInput, streamedBackendStepOutput);
+         runBackendStepOutput.getOneTimeSecrets().addAll(streamedBackendStepOutput.getOneTimeSecrets());
          List<AuditInput> auditInputListFromLoad = streamedBackendStepOutput.getAuditInputList();
 
          //////////////////////////////////////////////////////////////////////
@@ -303,6 +327,14 @@ public class StreamedETLExecuteStep extends BaseStreamedETLStep implements Backe
          {
             runBackendStepOutput.getProcessState().setStepList(streamedBackendStepOutput.getProcessState().getStepList());
             runBackendStepOutput.getProcessState().setProcessMetaDataAdjustment(streamedBackendStepOutput.getProcessMetaDataAdjustment());
+         }
+
+         ///////////////////////////////////////////////////////////////
+         // in a durable job, report rows the load step could not write //
+         ///////////////////////////////////////////////////////////////
+         if(JobChunkScope.current().isPresent())
+         {
+            reportLoadErrors(runBackendStepInput, streamedBackendStepOutput.getRecords());
          }
 
          ///////////////////////////////////////////////////////
@@ -338,10 +370,11 @@ public class StreamedETLExecuteStep extends BaseStreamedETLStep implements Backe
       }
       catch(Exception e)
       {
+         primaryFailure = e;
          if(doPageLevelTransaction && transaction.isPresent())
          {
             LOG.warn("Caught page-level process exception - rolling back transaction", e);
-            transaction.get().rollback();
+            rollbackPreservingFailure(transaction.get(), e);
          }
          throw (e);
       }
@@ -349,9 +382,73 @@ public class StreamedETLExecuteStep extends BaseStreamedETLStep implements Backe
       {
          if(doPageLevelTransaction && transaction.isPresent())
          {
-            transaction.get().close();
+            closePreservingFailure(transaction.get(), primaryFailure);
          }
       }
    }
 
+
+
+   /*******************************************************************************
+    ** A cleanup problem supplements the failure that caused the rollback.
+    *******************************************************************************/
+   private void rollbackPreservingFailure(QBackendTransaction transaction, Exception primaryFailure)
+   {
+      try
+      {
+         transaction.rollback();
+      }
+      catch(Exception cleanupFailure)
+      {
+         if(cleanupFailure != primaryFailure)
+         {
+            primaryFailure.addSuppressed(cleanupFailure);
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Always attempt close; expose close failures normally if no earlier failure exists.
+    *******************************************************************************/
+   private void closePreservingFailure(QBackendTransaction transaction, Exception primaryFailure)
+   {
+      try
+      {
+         transaction.close();
+      }
+      catch(RuntimeException cleanupFailure)
+      {
+         if(primaryFailure == null)
+         {
+            throw cleanupFailure;
+         }
+         if(cleanupFailure != primaryFailure)
+         {
+            primaryFailure.addSuppressed(cleanupFailure);
+         }
+      }
+   }
+
+
+
+
+   /*******************************************************************************
+    ** Report records that came back from the load step with errors to the open
+    ** durable job chunk (by file row number for bulk loads, else by key).
+    *******************************************************************************/
+   private static void reportLoadErrors(RunBackendStepInput runBackendStepInput, List<QRecord> records)
+   {
+      String         tableName = runBackendStepInput.getValueString(StreamedETLWithFrontendProcess.FIELD_DESTINATION_TABLE);
+      QTableMetaData table     = tableName == null ? null : QContext.getQInstance().getTable(tableName);
+      for(QRecord record : CollectionUtils.nonNullList(records))
+      {
+         if(CollectionUtils.nullSafeHasContents(record.getErrors()))
+         {
+            List<Integer> rowNumbers = record.getBackendDetail("fileRows") == null ? null : BulkLoadRecordUtils.getFileRowNos(record);
+            JobChunkScope.reportRecordErrors(record, rowNumbers, table == null ? null : record.getValue(table.getPrimaryKeyField()));
+         }
+      }
+   }
 }

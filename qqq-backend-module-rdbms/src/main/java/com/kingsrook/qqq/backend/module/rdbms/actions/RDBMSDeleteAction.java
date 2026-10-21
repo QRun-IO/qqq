@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.module.rdbms.actions;
@@ -31,6 +30,8 @@ import com.kingsrook.qqq.backend.core.actions.interfaces.DeleteInterface;
 import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.instrumentation.StatementOperation;
+import com.kingsrook.qqq.backend.core.instrumentation.StatementTimer;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteOutput;
@@ -195,11 +196,13 @@ public class RDBMSDeleteAction extends AbstractRDBMSAction implements DeleteInte
          + " WHERE "
          + escapeIdentifier(primaryKeyName) + " = ?";
 
-      Long mark = System.currentTimeMillis();
+      Long           mark           = System.currentTimeMillis();
+      StatementTimer statementTimer = startStatementTimer(table.getName(), StatementOperation.DELETE);
 
       try
       {
          int rowCount = getActionStrategy().executeUpdateForRowCount(connection, sql, primaryKey);
+         statementTimer.succeeded(rowCount);
          deleteOutput.addToDeletedRecordCount(rowCount);
 
          /////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -225,6 +228,7 @@ public class RDBMSDeleteAction extends AbstractRDBMSAction implements DeleteInte
       finally
       {
          logSQL(sql, List.of(primaryKey), mark);
+         statementTimer.finish(sql);
       }
    }
 
@@ -242,7 +246,8 @@ public class RDBMSDeleteAction extends AbstractRDBMSAction implements DeleteInte
 
          for(List<Serializable> page : CollectionUtils.getPages(primaryKeys, PAGE_SIZE))
          {
-            long mark = System.currentTimeMillis();
+            long           mark           = System.currentTimeMillis();
+            StatementTimer statementTimer = startStatementTimer(table.getName(), StatementOperation.DELETE);
             String sql = "DELETE FROM "
                + escapeIdentifier(tableName)
                + " WHERE "
@@ -254,11 +259,13 @@ public class RDBMSDeleteAction extends AbstractRDBMSAction implements DeleteInte
             try
             {
                Integer rowCount = getActionStrategy().executeUpdateForRowCount(connection, sql, page);
+               statementTimer.succeeded(rowCount);
                deleteOutput.addToDeletedRecordCount(rowCount);
             }
             finally
             {
                logSQL(sql, page, mark);
+               statementTimer.finish(sql);
             }
          }
       }
@@ -289,11 +296,13 @@ public class RDBMSDeleteAction extends AbstractRDBMSAction implements DeleteInte
          + " WHERE "
          + whereClause;
 
-      Long mark = System.currentTimeMillis();
+      Long           mark           = System.currentTimeMillis();
+      StatementTimer statementTimer = startStatementTimer(table.getName(), StatementOperation.DELETE);
 
       try
       {
          int rowCount = getActionStrategy().executeUpdateForRowCount(connection, sql, params);
+         statementTimer.succeeded(rowCount);
          deleteOutput.setDeletedRecordCount(rowCount);
       }
       catch(Exception e)
@@ -303,6 +312,7 @@ public class RDBMSDeleteAction extends AbstractRDBMSAction implements DeleteInte
       finally
       {
          logSQL(sql, params, mark);
+         statementTimer.finish(sql);
       }
    }
 

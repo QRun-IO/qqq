@@ -5,23 +5,23 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
@@ -113,7 +113,9 @@ public class ProcessStepSpecV1 extends AbstractEndpointSpec<ProcessInitOrStepInp
             .withRequired(true)
             .withSchema(new Schema().withType(Type.STRING))
             .withExample("inputForm")
-            .withIn(In.PATH)
+            .withIn(In.PATH),
+
+         ProcessSpecUtilsV1.defineTableVariantQueryParameter()
       );
    }
 
@@ -143,6 +145,8 @@ public class ProcessStepSpecV1 extends AbstractEndpointSpec<ProcessInitOrStepInp
                   .withType(Type.STRING)
                   .withFormat("binary")
                   .withDescription("A file upload, for process steps which expect an uploaded file."))
+
+               .withProperty(ProcessSpecUtilsV1.TABLE_VARIANT_PARAM, ProcessSpecUtilsV1.defineTableVariantFormProperty())
             )
          );
    }
@@ -160,12 +164,30 @@ public class ProcessStepSpecV1 extends AbstractEndpointSpec<ProcessInitOrStepInp
 
       processInitOrStepInput.setProcessName(getRequestParam(context, "processName"));
       processInitOrStepInput.setProcessUUID(getRequestParam(context, "processUUID"));
-      processInitOrStepInput.setStartAfterStep(getRequestParam(context, "stepName"));
+      ///////////////////////////////////////////////////////////////////////////////////
+      // with isStepBack=true, the named step is the process's back step: restart at it //
+      ///////////////////////////////////////////////////////////////////////////////////
+      String stepName = getRequestParam(context, "stepName");
+      if("true".equalsIgnoreCase(context.queryParam("isStepBack")))
+      {
+         processInitOrStepInput.setStartAtStep(stepName);
+      }
+      else
+      {
+         processInitOrStepInput.setStartAfterStep(stepName);
+      }
       processInitOrStepInput.setStepTimeoutMillis(Objects.requireNonNullElse(getRequestParamInteger(context, "stepTimeoutMillis"), DEFAULT_ASYNC_STEP_TIMEOUT_MILLIS));
       processInitOrStepInput.setValues(getRequestParamMap(context, "values"));
+      processInitOrStepInput.setTableVariant(ProcessSpecUtilsV1.getTableVariantParam(context));
 
-      // todo - uploaded files
-      // todo - archive uploaded files?
+      /////////////////////////////////////////////////////////////////////////
+      // uploaded files are stored and referenced from their process values //
+      /////////////////////////////////////////////////////////////////////////
+      if(processInitOrStepInput.getValues() == null)
+      {
+         processInitOrStepInput.setValues(new LinkedHashMap<>());
+      }
+      ProcessSpecUtilsV1.addUploadedFiles(context, processInitOrStepInput);
 
       return (processInitOrStepInput);
    }

@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.instances;
@@ -41,8 +40,13 @@ import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.AbstractWidgetRe
 import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.ParentWidgetRenderer;
 import com.kingsrook.qqq.backend.core.actions.metadata.DefaultNoopMetaDataActionCustomizer;
 import com.kingsrook.qqq.backend.core.actions.processes.CancelProcessActionTest;
+import com.kingsrook.qqq.backend.core.actions.processes.listeners.ProcessLifecycleListenerInterface;
 import com.kingsrook.qqq.backend.core.actions.reporting.RecordPipe;
 import com.kingsrook.qqq.backend.core.actions.reporting.customizers.ReportCustomRecordSourceInterface;
+import com.kingsrook.qqq.backend.core.actions.tables.TestRecordSearchProvider;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeEvent;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeListenerInterface;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeType;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QInstanceValidationException;
@@ -51,6 +55,8 @@ import com.kingsrook.qqq.backend.core.instances.validation.plugins.FailsIfEnable
 import com.kingsrook.qqq.backend.core.model.actions.processes.ProcessSummaryLineInterface;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
+import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
+import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessOutput;
 import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
@@ -80,12 +86,14 @@ import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinType;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.QJoinMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppSection;
+import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppSectionRole;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
 import com.kingsrook.qqq.backend.core.model.metadata.menus.QMenu;
 import com.kingsrook.qqq.backend.core.model.metadata.menus.QMenuSlot;
 import com.kingsrook.qqq.backend.core.model.metadata.menus.defaults.QMenuDefaultViewScreenActionsMenu;
 import com.kingsrook.qqq.backend.core.model.metadata.menus.items.QMenuItemRunProcess;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValue;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValuePicker;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSourceType;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QBackendStepMetaData;
@@ -176,6 +184,106 @@ public class QInstanceValidatorTest extends BaseTest
 
 
    /*******************************************************************************
+    ** The instance's home app, when set, must be one of its apps.
+    *******************************************************************************/
+   @Test
+   void testHomeAppName()
+   {
+      assertValidationSuccess((qInstance) -> qInstance.setHomeAppName(TestUtils.APP_NAME_GREETINGS));
+      assertValidationSuccess((qInstance) -> qInstance.setHomeAppName(null));
+      assertValidationFailureReasons((qInstance) -> qInstance.setHomeAppName("notAnApp"),
+         "Instance homeAppName [notAnApp] is not the name of an app in the instance");
+   }
+
+
+
+   /*******************************************************************************
+    ** Record change listener code references are validated like other instance
+    ** code references: each must load as a RecordChangeListenerInterface.
+    *******************************************************************************/
+   @Test
+   void testRecordChangeListeners()
+   {
+      assertValidationFailureReasons((qInstance) -> qInstance.withRecordChangeListener(new QCodeReference(QInstanceValidator.class)),
+         "Instance recordChangeListener CodeReference is not of the expected type");
+
+      assertValidationFailureReasons((qInstance) -> qInstance.withRecordChangeListener(new QCodeReference("com.kingsrook.qqq.NoSuchListener", QCodeType.JAVA)),
+         "Instance recordChangeListener Class for com.kingsrook.qqq.NoSuchListener could not be found");
+
+      assertValidationFailureReasons((qInstance) -> qInstance.withRecordChangeListener(null),
+         "Instance recordChangeListeners contains a null code reference");
+
+      assertValidationSuccess((qInstance) -> qInstance.withRecordChangeListener(new QCodeReference(ValidRecordChangeListener.class)));
+      assertValidationSuccess((qInstance) -> qInstance.setRecordChangeListeners(null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Process lifecycle listener code references are validated like other
+    ** instance code references: each must load as a
+    ** ProcessLifecycleListenerInterface.
+    *******************************************************************************/
+   @Test
+   void testProcessLifecycleListeners()
+   {
+      assertValidationFailureReasons((qInstance) -> qInstance.withProcessLifecycleListener(new QCodeReference(QInstanceValidator.class)),
+         "Instance processLifecycleListener CodeReference is not of the expected type");
+
+      assertValidationFailureReasons((qInstance) -> qInstance.withProcessLifecycleListener(new QCodeReference("com.kingsrook.qqq.NoSuchListener", QCodeType.JAVA)),
+         "Instance processLifecycleListener Class for com.kingsrook.qqq.NoSuchListener could not be found");
+
+      assertValidationFailureReasons((qInstance) -> qInstance.withProcessLifecycleListener(null),
+         "Instance processLifecycleListeners contains a null code reference");
+
+      assertValidationSuccess((qInstance) -> qInstance.withProcessLifecycleListener(new QCodeReference(ValidProcessLifecycleListener.class)));
+      assertValidationSuccess((qInstance) -> qInstance.setProcessLifecycleListeners(null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Runtime service code references are validated like other instance code
+    ** references: each must load as a QRuntimeServiceInterface.
+    *******************************************************************************/
+   @Test
+   void testRuntimeServices()
+   {
+      assertValidationFailureReasons((qInstance) -> qInstance.withRuntimeService(new QCodeReference(QInstanceValidator.class)),
+         "Instance runtimeService CodeReference is not of the expected type");
+
+      assertValidationFailureReasons((qInstance) -> qInstance.withRuntimeService(new QCodeReference("com.kingsrook.qqq.NoSuchService", QCodeType.JAVA)),
+         "Instance runtimeService Class for com.kingsrook.qqq.NoSuchService could not be found");
+
+      assertValidationFailureReasons((qInstance) -> qInstance.withRuntimeService(null),
+         "Instance runtimeServices contains a null code reference");
+
+      assertValidationSuccess((qInstance) -> qInstance.withRuntimeService(new QCodeReference(ValidRuntimeService.class)));
+      assertValidationSuccess((qInstance) -> qInstance.setRuntimeServices(null));
+   }
+
+
+
+   /*******************************************************************************
+    ** The record search provider code reference must load as a
+    ** RecordSearchProviderInterface.
+    *******************************************************************************/
+   @Test
+   void testRecordSearchProvider()
+   {
+      assertValidationFailureReasons((qInstance) -> qInstance.withRecordSearchProvider(new QCodeReference(QInstanceValidator.class)),
+         "Instance recordSearchProvider CodeReference is not of the expected type");
+
+      assertValidationFailureReasons((qInstance) -> qInstance.withRecordSearchProvider(new QCodeReference("com.kingsrook.qqq.NoSuchProvider", QCodeType.JAVA)),
+         "Instance recordSearchProvider Class for com.kingsrook.qqq.NoSuchProvider could not be found");
+
+      assertValidationSuccess((qInstance) -> qInstance.withRecordSearchProvider(new QCodeReference(TestRecordSearchProvider.class)));
+      assertValidationSuccess((qInstance) -> qInstance.withRecordSearchProvider(null));
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    @Test
@@ -195,6 +303,39 @@ public class QInstanceValidatorTest extends BaseTest
          "Instance tableCustomizer of type preDeleteRecord: CodeReference is not of the expected type");
 
       assertValidationSuccess((qInstance) -> qInstance.withTableCustomizer(TableCustomizers.POST_UPDATE_RECORD, new QCodeReference(CustomizerValid.class)));
+   }
+
+
+
+   /*******************************************************************************
+    ** Search fields: visible, non-password string or integer fields of the table,
+    ** listed once, on a table whose backend does not use variants.
+    *******************************************************************************/
+   @Test
+   void testTableSearchFields()
+   {
+      assertValidationSuccess((qInstance) -> qInstance.getTable(TestUtils.TABLE_NAME_PERSON).withSearchFields("firstName", "lastName", "email", "id"));
+
+      assertValidationFailureReasons((qInstance) -> qInstance.getTable(TestUtils.TABLE_NAME_PERSON).withSearchFields(List.of()),
+         "Table person has an empty list of search fields");
+
+      assertValidationFailureReasons((qInstance) -> qInstance.getTable(TestUtils.TABLE_NAME_PERSON).withSearchFields("firstName", "notAField", "firstName"),
+         "Table person search field notAField is not a field on this table",
+         "Table person lists search field firstName more than once");
+
+      assertValidationFailureReasons((qInstance) -> qInstance.getTable(TestUtils.TABLE_NAME_PERSON).withSearchFields("birthDate", "cost", "ssn"),
+         "Table person search field birthDate must be a string",
+         "Table person search field cost must be a string",
+         "Table person search field ssn must be a string");
+
+      assertValidationFailureReasons((qInstance) ->
+      {
+         qInstance.getTable(TestUtils.TABLE_NAME_PERSON).getField("email").setIsHidden(true);
+         qInstance.getTable(TestUtils.TABLE_NAME_PERSON).withSearchFields("email");
+      }, "Table person search field email is hidden");
+
+      assertValidationFailureReasons((qInstance) -> qInstance.getTable(TestUtils.TABLE_NAME_MEMORY_VARIANT_DATA).withSearchFields("name"),
+         "Table memoryVariantData has search fields, but its backend uses variants");
    }
 
 
@@ -1452,6 +1593,30 @@ public class QInstanceValidatorTest extends BaseTest
 
 
    /*******************************************************************************
+    ** A record picker names only fields of the source table, labels its sorts,
+    ** and keeps a sane page size.
+    *******************************************************************************/
+   @Test
+   void testPossibleValueSourcePicker()
+   {
+      assertValidationSuccess((qInstance) -> qInstance.getPossibleValueSource(TestUtils.POSSIBLE_VALUE_SOURCE_SHAPE).setPicker(new QPossibleValuePicker()
+         .withThumbnailField("type").withSubtitleFields(List.of("noOfSides")).withFilterFields(List.of("isPolygon")).withSort("Newest", "id", false)
+         .withUploadProcessName(TestUtils.PROCESS_NAME_GREET_PEOPLE).withUploadResultIdField("id")));
+
+      assertValidationFailureReasons((qInstance) -> qInstance.getPossibleValueSource(TestUtils.POSSIBLE_VALUE_SOURCE_SHAPE).setPicker(new QPossibleValuePicker()
+            .withThumbnailField("noThumb").withFilterFields(List.of("noFilter")).withSort("Bad", "noSort", true).withSort(null, "id", true).withPageSize(500).withUploadProcessName("noSuchProcess")),
+         "unrecognized field: noThumb",
+         "unrecognized field: noFilter",
+         "unrecognized sort field: noSort",
+         "sort without a label",
+         "pageSize must be between 1 and 200",
+         "unrecognized uploadProcessName: noSuchProcess",
+         "has an uploadProcessName but no uploadResultIdField");
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    @Test
@@ -2495,6 +2660,81 @@ public class QInstanceValidatorTest extends BaseTest
     **
     *******************************************************************************/
    @Test
+   void testFilePreviewAdornment()
+   {
+      Function<QInstance, QFieldMetaData> fieldExtractor = qInstance -> qInstance.getTable(TestUtils.TABLE_NAME_PERSON).getField("firstName");
+
+      ////////////////////////////////////////////////////
+      // no values at all - the field is its own source //
+      ////////////////////////////////////////////////////
+      assertValidationSuccess((qInstance -> fieldExtractor.apply(qInstance).withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment())));
+
+      //////////////////////////////////////
+      // every value, referring to fields //
+      //////////////////////////////////////
+      assertValidationSuccess((qInstance -> fieldExtractor.apply(qInstance).withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment()
+         .withValue(AdornmentType.FilePreviewValues.THUMBNAIL_URL_FIELD, "lastName")
+         .withValue(AdornmentType.FilePreviewValues.FULL_SIZE_URL_FIELD, "email")
+         .withValue(AdornmentType.FilePreviewValues.FILE_NAME_FIELD, "lastName")
+         .withValue(AdornmentType.FilePreviewValues.MIME_TYPE_FIELD, "lastName")
+         .withValue(AdornmentType.FilePreviewValues.ALT_TEXT_FIELD, "firstName")
+         .withValue(AdornmentType.FilePreviewValues.CAPTION_FIELD, "lastName")
+         .withValue(AdornmentType.FilePreviewValues.WIDTH_FIELD, "id")
+         .withValue(AdornmentType.FilePreviewValues.HEIGHT_FIELD, "id")
+         .withValue(AdornmentType.FilePreviewValues.SIZE_BYTES_FIELD, "id")
+         .withValue(AdornmentType.FilePreviewValues.DEFAULT_MIME_TYPE, "image/*")
+         .withValue(AdornmentType.FilePreviewValues.THUMBNAIL_MAX_SIZE, 64)
+         .withValue(AdornmentType.FilePreviewValues.PREVIEWABLE, false))));
+
+      ///////////////////////////////////////////
+      // each field-name key must name a field //
+      ///////////////////////////////////////////
+      for(String key : AdornmentType.FilePreviewValues.FIELD_NAME_KEYS)
+      {
+         assertValidationFailureReasons((qInstance -> fieldExtractor.apply(qInstance).withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment().withValue(key, "notAField"))), "unrecognized " + key + " [notAField]");
+      }
+      assertValidationFailureReasons((qInstance -> fieldExtractor.apply(qInstance).withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment().withValue(AdornmentType.FilePreviewValues.THUMBNAIL_URL_FIELD, 17))), "thumbnailUrlField must be a field name");
+
+      ///////////////////////////////
+      // thumbnail size boundaries //
+      ///////////////////////////////
+      assertValidationSuccess((qInstance -> fieldExtractor.apply(qInstance).withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment().withValue(AdornmentType.FilePreviewValues.THUMBNAIL_MAX_SIZE, AdornmentType.FilePreviewValues.MIN_THUMBNAIL_SIZE))));
+      assertValidationSuccess((qInstance -> fieldExtractor.apply(qInstance).withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment().withValue(AdornmentType.FilePreviewValues.THUMBNAIL_MAX_SIZE, "512"))));
+      assertValidationFailureReasons((qInstance -> fieldExtractor.apply(qInstance).withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment().withValue(AdornmentType.FilePreviewValues.THUMBNAIL_MAX_SIZE, 15))), "invalid thumbnailMaxSize [15]");
+      assertValidationFailureReasons((qInstance -> fieldExtractor.apply(qInstance).withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment().withValue(AdornmentType.FilePreviewValues.THUMBNAIL_MAX_SIZE, 513))), "invalid thumbnailMaxSize [513]");
+      assertValidationFailureReasons((qInstance -> fieldExtractor.apply(qInstance).withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment().withValue(AdornmentType.FilePreviewValues.THUMBNAIL_MAX_SIZE, "big"))), "invalid thumbnailMaxSize [big]");
+
+      /////////////////////////////////
+      // previewable and mime checks //
+      /////////////////////////////////
+      assertValidationSuccess((qInstance -> fieldExtractor.apply(qInstance).withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment().withValue(AdornmentType.FilePreviewValues.PREVIEWABLE, "true"))));
+      assertValidationFailureReasons((qInstance -> fieldExtractor.apply(qInstance).withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment().withValue(AdornmentType.FilePreviewValues.PREVIEWABLE, "yes"))), "invalid previewable value [yes]");
+      assertValidationSuccess((qInstance -> fieldExtractor.apply(qInstance).withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment().withValue(AdornmentType.FilePreviewValues.DEFAULT_MIME_TYPE, "application/pdf"))));
+      assertValidationFailureReasons((qInstance -> fieldExtractor.apply(qInstance).withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment().withValue(AdornmentType.FilePreviewValues.DEFAULT_MIME_TYPE, "jpeg"))), "invalid defaultMimeType [jpeg]");
+
+      ////////////////////////////////////////////////////////////////////
+      // a BLOB field needs a FILE_DOWNLOAD adornment (or URL fields) so //
+      // that the preview has a URL to load                             //
+      ////////////////////////////////////////////////////////////////////
+      Function<QInstance, QFieldMetaData> blobFieldAdder = qInstance ->
+      {
+         QFieldMetaData blobField = new QFieldMetaData("photo", QFieldType.BLOB).withIsHeavy(true);
+         qInstance.getTable(TestUtils.TABLE_NAME_PERSON).addField(blobField);
+         return (blobField);
+      };
+      assertValidationFailureReasons((qInstance -> blobFieldAdder.apply(qInstance).withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment())), "is on a BLOB field, so it needs a FILE_DOWNLOAD adornment");
+      assertValidationSuccess((qInstance -> blobFieldAdder.apply(qInstance)
+         .withFieldAdornment(new FieldAdornment(AdornmentType.FILE_DOWNLOAD).withValue(AdornmentType.FileDownloadValues.DEFAULT_MIME_TYPE, "image/jpeg"))
+         .withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment())));
+      assertValidationSuccess((qInstance -> blobFieldAdder.apply(qInstance).withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment().withValue(AdornmentType.FilePreviewValues.THUMBNAIL_URL_FIELD, "lastName"))));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
    void testAuthenticationCustomizer()
    {
       assertValidationSuccess((qInstance -> qInstance.getAuthentication().withCustomizer(null)));
@@ -3144,5 +3384,172 @@ public class QInstanceValidatorTest extends BaseTest
 
       }
    }
-}
 
+
+
+   /***************************************************************************
+    ** a valid (no-op) record change listener
+    ***************************************************************************/
+   public static class ValidRecordChangeListener implements RecordChangeListenerInterface
+   {
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public boolean appliesTo(String tableName, RecordChangeType type)
+      {
+         return (false);
+      }
+
+
+
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public void onRecordsChanged(RecordChangeEvent event)
+      {
+      }
+   }
+
+
+
+   /***************************************************************************
+    ** a valid (no-op) process lifecycle listener
+    ***************************************************************************/
+   public static class ValidProcessLifecycleListener implements ProcessLifecycleListenerInterface
+   {
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public boolean appliesTo(String processName)
+      {
+         return (false);
+      }
+
+
+
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public void onProcessStarted(RunProcessInput input)
+      {
+      }
+
+
+
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public void onProcessCompleted(RunProcessInput input, RunProcessOutput output)
+      {
+      }
+
+
+
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public void onProcessFailed(RunProcessInput input, Exception exception)
+      {
+      }
+   }
+
+
+
+   /***************************************************************************
+    ** a valid (no-op) runtime service
+    ***************************************************************************/
+   public static class ValidRuntimeService implements QRuntimeServiceInterface
+   {
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public String getName()
+      {
+         return ("validRuntimeService");
+      }
+
+
+
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public void start(QInstance qInstance)
+      {
+      }
+
+
+
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public void stop()
+      {
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Apps-only sections are valid and child apps need not belong to a section.
+    *******************************************************************************/
+   @Test
+   void testAppsOnlySection()
+   {
+      assertValidationSuccess(instance -> instance.addApp(new QAppMetaData().withName("navigation")
+         .withChild(new QAppMetaData().withName("sectionChild"))
+         .withChild(instance.getApp(TestUtils.APP_NAME_MISCELLANEOUS))
+         .withSection(new QAppSection().withName("group").withLabel("Group").withRole(QAppSectionRole.GROUP).withApp("sectionChild"))));
+   }
+
+
+
+   /*******************************************************************************
+    ** Section app references must refer to a child app, not a table or unrelated app.
+    *******************************************************************************/
+   @Test
+   void testSectionAppNotChild()
+   {
+      assertValidationFailureReasons(instance -> instance.addApp(new QAppMetaData().withName("navigation")
+         .withSection(new QAppSection().withName("group").withLabel("Group").withApp("missing"))),
+         "App navigation section group specifies app missing, which is not a child of this app.");
+   }
+
+
+
+   /*******************************************************************************
+    ** An app cannot occur in two sections.
+    *******************************************************************************/
+   @Test
+   void testSectionAppDuplicated()
+   {
+      assertValidationFailureReasons(instance -> instance.addApp(new QAppMetaData().withName("navigation")
+         .withChild(new QAppMetaData().withName("sectionChild"))
+         .withSection(new QAppSection().withName("one").withLabel("One").withApp("sectionChild"))
+         .withSection(new QAppSection().withName("two").withLabel("Two").withApp("sectionChild"))),
+         "has app sectionChild listed more than once in its sections.");
+   }
+
+
+
+   /*******************************************************************************
+    ** GROUP sections cannot contain tables.
+    *******************************************************************************/
+   @Test
+   void testGroupSectionWithTable()
+   {
+      assertValidationFailureReasons(instance -> instance.addApp(new QAppMetaData().withName("navigation")
+         .withChild(instance.getTable(TestUtils.TABLE_NAME_PERSON))
+         .withSection(new QAppSection().withName("group").withLabel("Group").withRole(QAppSectionRole.GROUP).withTable(TestUtils.TABLE_NAME_PERSON))),
+         "App navigation section group is a GROUP section, which may only list apps.");
+   }
+
+}

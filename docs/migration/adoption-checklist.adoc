@@ -1,0 +1,131 @@
+= Adoption checklist for an existing QQQ application
+:toc: left
+:toclevels: 2
+:icons: font
+
+This checklist is for an existing QQQ application that wants to adopt the October 2026 work: the QQQ 4.1 candidates,
+the Next dashboard, and the new QBits. Each section lists what the application changes: dependency versions,
+registration code, configuration and secrets, permissions, migrations, and what to test.
+
+The reference profile is a production application on *QQQ 0.40*. It uses the Material Dashboard served from the jar,
+`OAuth2AuthenticationModule` against Authentik, PostgreSQL with Liquibase changesets it writes itself, and
+`qbit-quick-search` 0.2.x. Skip the sections that do not apply to your application.
+
+NOTE: Everything on the 4.1 line is still a release candidate. A production release of your application should not
+resolve a release candidate (RC) artifact. Do the work on a branch or in a pre-production environment, and promote
+it once the matching final versions ship.
+
+== Version matrix
+
+[cols="3,2,3",options="header"]
+|===
+|Piece |Version to adopt |Requires
+
+|QQQ BOM `com.kingsrook.qqq:qqq-bom-pom` |`4.1.0-RC.3` |Java 21. From 0.x, first follow xref:4.0.adoc[Migrating to QQQ 4.0].
+|Next dashboard `com.kingsrook.qqq:qqq-frontend-next` |`1.0.0-RC.13` (pin it; the RC.3 BOM manages RC.11) |QQQ `4.1.0-RC.3` for `FILE_PREVIEW` and the home app
+|`com.kingsrook.qbits:qbit-quick-search` |`1.1.0-RC.1` |QQQ `4.1.0-RC.2` or later, OpenSearch 2.19 or 3.x
+|`com.kingsrook.qbits:qbit-sql-workbench` |`1.0.0-RC.1` |QQQ `4.1.0-RC.2` or later, Next `1.0.0-RC.13` or later
+|`qbit-authentik` |not published yet |Wait for a published release
+|===
+
+== 1. QQQ 0.x to 4.1
+
+* [ ] Bump `qqq-bom-pom` to `4.1.0-RC.3`. Apply every `BREAK-*` item in xref:4.0.adoc[Migrating to QQQ 4.0],
+  including the Javalin and PicoCLI package moves and the removed deprecated APIs.
+* [ ] Read the upgrade notes in xref:4.1.adoc#_upgrade_notes_from_4_0[Adopting QQQ 4.1 features]:
+** Next is served at `/` when its jar is present.
+** `metaData` gains `branding` and `homeAppName`.
+** Quartz now creates missing jobs at startup.
+* [ ] *Find any code that reaches into QQQ internals.* That means reflection on private fields such as authentication
+  module registries, subclasses of authentication modules, and copied constants. Replace it with public extension
+  points, or re-verify it against the new version. This is the most likely runtime break in a 0.x to 4.x jump.
+* [ ] Re-test known framework workarounds your application documents, such as notes on process steps, OAuth2 session
+  identity, and report wiring. Remove the ones 4.x fixes.
+* [ ] Re-align static-analysis plugin versions and any comments that pin them to a QQQ tag.
+* [ ] Optional: turn on *OAuth2 refresh tokens* (xref:4.1.adoc#_oauth2_refresh_tokens[guide]).
+** Add the `offline_access` scope on the client and in the metadata.
+** Add the `userSessionRefreshToken` table, with your own migration.
+** Set the encryption key: secret `QQQ_OAUTH2_REFRESH_TOKEN_KEY`, value from `openssl rand -base64 32`, the same key
+   on every replica.
+** Never grant the table's permission to a role.
+
+== 2. Material Dashboard to the Next dashboard
+
+Guide: https://github.com/QRun-IO/qqq-frontend-next#adopting-in-another-app
+
+* [ ] Add `qqq-frontend-next` `1.0.0-RC.13`.
+* [ ] Remove any custom route provider that serves Material from the jar, or select a dashboard explicitly:
+  `withServeFrontendNext(true)`, or `-Dqqq.javalin.frontend=next`.
+* [ ] Keep the excluded API paths (for example `/qqq/v1`, `/api`, `/oauth`, `/static-assets`) working behind the
+  new root route.
+* [ ] Map old deep links: Material uses `/<app>/<table>/<id>`, Next uses `/app/<table>/<id>`. Use `QInstance.redirects`.
+* [ ] Move branding, such as custom CSS and banner slots, to QQQ branding metadata.
+* [ ] Re-run the end-to-end UI suite. Selectors and URLs change.
+* [ ] Optional: set `qInstance.withHomeAppName(...)`, and add `FILE_PREVIEW` adornments to image and file fields.
+* [ ] Known limits: Next is served at `/` only, and Material parity is still being tracked (qqq#714).
+
+== 3. Quick Search 0.2 to 1.1
+
+Guide: https://github.com/QRun-IO/qbit-quick-search#readme (adoption section tracked in qbit-quick-search#37)
+
+* [ ] Bump to `1.1.0-RC.1`. Register it after backends, tables and the scheduler:
+  `new QuickSearchQBitProducer().withConfig(cfg).produce(qInstance)`.
+* [ ] Config: `backendName`, `opensearchUrl`, `opensearchIndexName`, the searchable tables, and `schedulerName`.
+  Pass credentials as `${env.X}` references, never literals.
+* [ ] Migrations: the QBit ships no DDL. Write a new changeset for any column added since your copy of the three
+  operational tables (`quickSearchIndex`, `quickSearchIndexRun`, `quickSearchFailedEvent`).
+  `quickSearchFailedEvent.status` must hold at least 16 characters.
+* [ ] Permissions: `quickSearchAdmin.hasAccess`, plus read and write on the three tables, for administrators only.
+* [ ] Behavior change: core `POST /qqq/v1/search` is now served from OpenSearch for the tables the QBit claims.
+  Opt out with `serveCoreRecordSearch(false)`. Tables need `searchFields`. `PASSWORD` fields are no longer indexed.
+* [ ] If you replaced the QBit's table customizers to work around a bug, re-test without the override before you
+  keep it.
+* [ ] Run a full reindex after the upgrade.
+
+== 4. SQL Workbench (new)
+
+Guide: https://github.com/QRun-IO/qbit-sql-workbench#adopting-in-another-app
+
+* [ ] Prerequisites: QQQ `4.1.0-RC.2` or later and the Next dashboard, `1.0.0-RC.13` or later. Material does not
+  render the `SQL_WORKBENCH` widget.
+* [ ] `new SqlWorkbenchQBitProducer().withQBitConfig(cfg).produce(qInstance)`.
+* [ ] Create the five tables. PostgreSQL DDL is in the QBit's `docs/ddl/postgres.sql` and fits a formatted-SQL
+  Liquibase changeset.
+* [ ] Create a SELECT-only database role. Set `readOnlyCredentials` from environment variables. Leave
+  `writeCredentials` unset unless you need write mode.
+* [ ] Permissions: `sqlWorkbench.hasAccess`, `sqlWorkbench.write`, `sqlWorkbench.share` and
+  `sqlWorkbenchAdmin.hasAccess`. Grant them to super-users only, and add them to your role or policy definitions.
+* [ ] Known limit: raw SQL bypasses QQQ record security, audits and table customizers.
+
+== 5. Authentik administration (qbit-authentik)
+
+* [ ] Not adoptable yet: the QBit is unpublished. The design spec is qqq#1065.
+* [ ] Before adopting it, reconcile it with any role or policy model your application already keeps on Authentik
+  groups. The QBit stores QQQ permissions in the group attribute `qqq.io/permissions` and is read-only in its first
+  phase.
+
+== 6. Reusable patterns from the kof22 website (copy for now)
+
+These are not packaged yet. They are proven in `KofTwentyTwo/Website-Backend` and planned for extraction.
+
+* *CMS analytics module*: privacy-preserving page analytics. Needs PostgreSQL (five prefixed tables), a Quartz
+  scheduler, and the `ANALYTICS_*` settings; `ANALYTICS_COLLECT_TOKEN` and `ANALYTICS_HASH_SECRET` are secrets.
+  Planned as `qbit-cms-analytics` (Website-Backend#98). It cannot be reused under its current license until the
+  extraction relicenses it.
+* *Readable dashboard widgets*: an HTML helper plus guard-test rules that keep widgets legible at every width. The
+  rules: at most four table columns, no fixed heights, nothing over 64px. Needs Next `1.0.0-RC.13` or later.
+* *Sequence resync*: a `runAlways` PostgreSQL changeset that raises any lagging serial sequence to `MAX(id)` and
+  never lowers one. It is useful after data loads that bypass sequences.
+
+== 7. Release and deployment tooling
+
+* [ ] *Munitor* (`kof22/munitor@0.3.3` CircleCI orb, https://github.com/KofTwentyTwo/Munitor#adopting-in-another-app)
+  releases to production on a merge to `main`. Applications already on a tag-driven release orb should treat a
+  switch as a release-process decision, not a dependency bump.
+* [ ] *Hosting on a GitOps cluster*: the tenant onboarding steps (namespace, ExternalSecrets, CNPG with backups,
+  quotas sized for rollout peak) are documented in the cluster's GitOps repository.
+
+== When the final versions ship
+
+* [ ] Replace every `-RC.N` version with the final release before tagging a production release.
+* [ ] Re-read the QBit changelogs for schema changes and add changesets for them.

@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.model.helpcontent;
@@ -36,6 +35,30 @@ public class HelpContent extends QRecordEntity
 {
    public static final String TABLE_NAME = "helpContent";
 
+   @QField(possibleValueSourceName = HelpContentSource.NAME)
+   private String source;
+
+   @QField(maxLength = 100)
+   private String bundleId;
+
+   @QField(maxLength = 50)
+   private String bundleVersion;
+
+   @QField(maxLength = 64)
+   private String lastSeededHash;
+
+   @QField(possibleValueSourceName = HelpContentUpstreamStatus.NAME)
+   private String upstreamStatus;
+
+   @QField(maxLength = 500)
+   private String upstreamSummary;
+
+   @QField()
+   private String upstreamContent;
+
+   @QField(maxLength = 100)
+   private String modifiedBy;
+
    @QField(isEditable = false)
    private Integer id;
 
@@ -47,6 +70,15 @@ public class HelpContent extends QRecordEntity
 
    @QField(isRequired = true, maxLength = 250, valueTooLongBehavior = ValueTooLongBehavior.ERROR)
    private String key;
+
+   @QField(maxLength = 500, valueTooLongBehavior = ValueTooLongBehavior.ERROR)
+   private String summary;
+
+   @QField(maxLength = 250, valueTooLongBehavior = ValueTooLongBehavior.ERROR)
+   private String permissionName;
+
+   @QField(maxLength = 100, valueTooLongBehavior = ValueTooLongBehavior.ERROR)
+   private String clientChannel;
 
    @QField()
    private String content;
@@ -293,4 +325,345 @@ public class HelpContent extends QRecordEntity
       return (this);
    }
 
+
+
+
+   /*******************************************************************************
+    ** Getter for summary
+    *******************************************************************************/
+   public String getSummary()
+   {
+      return (this.summary);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for summary
+    *******************************************************************************/
+   public void setSummary(String summary)
+   {
+      this.summary = summary;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for summary
+    *******************************************************************************/
+   public HelpContent withSummary(String summary)
+   {
+      this.summary = summary;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for permissionName
+    *******************************************************************************/
+   public String getPermissionName()
+   {
+      return (this.permissionName);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for permissionName
+    *******************************************************************************/
+   public void setPermissionName(String permissionName)
+   {
+      this.permissionName = permissionName;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for permissionName
+    *******************************************************************************/
+   public HelpContent withPermissionName(String permissionName)
+   {
+      this.permissionName = permissionName;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for clientChannel
+    *******************************************************************************/
+   public String getClientChannel()
+   {
+      return (this.clientChannel);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for clientChannel
+    *******************************************************************************/
+   public void setClientChannel(String clientChannel)
+   {
+      this.clientChannel = clientChannel;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for clientChannel
+    *******************************************************************************/
+   public HelpContent withClientChannel(String clientChannel)
+   {
+      this.clientChannel = clientChannel;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for source
+    *******************************************************************************/
+   public String getSource()
+   {
+      return (source);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for source
+    *******************************************************************************/
+   public void setSource(String source)
+   {
+      this.source = source;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for source
+    *******************************************************************************/
+   public HelpContent withSource(String source)
+   {
+      this.source = source;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for bundleId
+    *******************************************************************************/
+   public String getBundleId()
+   {
+      return (bundleId);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for bundleId
+    *******************************************************************************/
+   public void setBundleId(String bundleId)
+   {
+      this.bundleId = bundleId;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for bundleId
+    *******************************************************************************/
+   public HelpContent withBundleId(String bundleId)
+   {
+      this.bundleId = bundleId;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for bundleVersion
+    *******************************************************************************/
+   public String getBundleVersion()
+   {
+      return (bundleVersion);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for bundleVersion
+    *******************************************************************************/
+   public void setBundleVersion(String bundleVersion)
+   {
+      this.bundleVersion = bundleVersion;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for bundleVersion
+    *******************************************************************************/
+   public HelpContent withBundleVersion(String bundleVersion)
+   {
+      this.bundleVersion = bundleVersion;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for lastSeededHash
+    *******************************************************************************/
+   public String getLastSeededHash()
+   {
+      return (lastSeededHash);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for lastSeededHash
+    *******************************************************************************/
+   public void setLastSeededHash(String lastSeededHash)
+   {
+      this.lastSeededHash = lastSeededHash;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for lastSeededHash
+    *******************************************************************************/
+   public HelpContent withLastSeededHash(String lastSeededHash)
+   {
+      this.lastSeededHash = lastSeededHash;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for upstreamStatus
+    *******************************************************************************/
+   public String getUpstreamStatus()
+   {
+      return (upstreamStatus);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for upstreamStatus
+    *******************************************************************************/
+   public void setUpstreamStatus(String upstreamStatus)
+   {
+      this.upstreamStatus = upstreamStatus;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for upstreamStatus
+    *******************************************************************************/
+   public HelpContent withUpstreamStatus(String upstreamStatus)
+   {
+      this.upstreamStatus = upstreamStatus;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for upstreamSummary
+    *******************************************************************************/
+   public String getUpstreamSummary()
+   {
+      return (upstreamSummary);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for upstreamSummary
+    *******************************************************************************/
+   public void setUpstreamSummary(String upstreamSummary)
+   {
+      this.upstreamSummary = upstreamSummary;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for upstreamSummary
+    *******************************************************************************/
+   public HelpContent withUpstreamSummary(String upstreamSummary)
+   {
+      this.upstreamSummary = upstreamSummary;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for upstreamContent
+    *******************************************************************************/
+   public String getUpstreamContent()
+   {
+      return (upstreamContent);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for upstreamContent
+    *******************************************************************************/
+   public void setUpstreamContent(String upstreamContent)
+   {
+      this.upstreamContent = upstreamContent;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for upstreamContent
+    *******************************************************************************/
+   public HelpContent withUpstreamContent(String upstreamContent)
+   {
+      this.upstreamContent = upstreamContent;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for modifiedBy
+    *******************************************************************************/
+   public String getModifiedBy()
+   {
+      return (modifiedBy);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for modifiedBy
+    *******************************************************************************/
+   public void setModifiedBy(String modifiedBy)
+   {
+      this.modifiedBy = modifiedBy;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for modifiedBy
+    *******************************************************************************/
+   public HelpContent withModifiedBy(String modifiedBy)
+   {
+      this.modifiedBy = modifiedBy;
+      return (this);
+   }
 }

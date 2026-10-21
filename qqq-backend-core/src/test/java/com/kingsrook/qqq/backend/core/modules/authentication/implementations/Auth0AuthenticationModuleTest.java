@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.modules.authentication.implementations;
@@ -31,10 +30,15 @@ import java.util.List;
 import java.util.Map;
 import com.auth0.exception.Auth0Exception;
 import com.kingsrook.qqq.backend.core.BaseTest;
+import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
+import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
+import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.Auth0AuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
@@ -42,16 +46,18 @@ import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticat
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleCustomizerInterface;
+import com.kingsrook.qqq.backend.core.modules.authentication.implementations.metadata.UserSessionMetaDataProducer;
+import com.kingsrook.qqq.backend.core.modules.authentication.implementations.model.UserSession;
 import com.kingsrook.qqq.backend.core.state.InMemoryStateProvider;
 import com.kingsrook.qqq.backend.core.state.SimpleStateKey;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 import static com.kingsrook.qqq.backend.core.modules.authentication.implementations.Auth0AuthenticationModule.ACCESS_TOKEN_KEY;
 import static com.kingsrook.qqq.backend.core.modules.authentication.implementations.Auth0AuthenticationModule.BASIC_AUTH_KEY;
 import static com.kingsrook.qqq.backend.core.modules.authentication.implementations.Auth0AuthenticationModule.COULD_NOT_DECODE_ERROR;
-import static com.kingsrook.qqq.backend.core.modules.authentication.implementations.Auth0AuthenticationModule.EXPIRED_TOKEN_ERROR;
 import static com.kingsrook.qqq.backend.core.modules.authentication.implementations.Auth0AuthenticationModule.INVALID_TOKEN_ERROR;
 import static com.kingsrook.qqq.backend.core.modules.authentication.implementations.Auth0AuthenticationModule.TOKEN_NOT_PROVIDED_ERROR;
 import static com.kingsrook.qqq.backend.core.modules.authentication.implementations.Auth0AuthenticationModule.maskForLog;
@@ -73,7 +79,6 @@ import static org.mockito.Mockito.verify;
 public class Auth0AuthenticationModuleTest extends BaseTest
 {
    private static final String INVALID_TOKEN     = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IllrY2FkWTA0Q3RFVUFxQUdLNTk3ayJ9.eyJnaXZlbl9uYW1lIjoiVGltIiwiZmFtaWx5X25hbWUiOiJDaGFtYmVybGFpbiIsIm5pY2tuYW1lIjoidGltLmNoYW1iZXJsYWluIiwibmFtZSI6IlRpbSBDaGFtYmVybGFpbiIsInBpY3R1cmUiOiJodHRwczovL2xoMy5nb29nbGV1c2VyY29udGVudC5jb20vYS0vQUZkWnVjcXVSaUFvTzk1RG9URklnbUtseVA1akVBVnZmWXFnS0lHTkVubzE9czk2LWMiLCJsb2NhbGUiOiJlbiIsInVwZGF0ZWRfYXQiOiIyMDIyLTA3LTE5VDE2OjI0OjQ1LjgyMloiLCJlbWFpbCI6InRpbS5jaGFtYmVybGFpbkBraW5nc3Jvb2suY29tIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsImlzcyI6Imh0dHBzOi8va2luZ3Nyb29rLnVzLmF1dGgwLmNvbS8iLCJzdWIiOiJnb29nbGUtb2F1dGgyfDEwODk2NDEyNjE3MjY1NzAzNDg2NyIsImF1ZCI6InNwQ1NtczAzcHpVZGRYN1BocHN4ZDlUd2FLMDlZZmNxIiwiaWF0IjoxNjU4MjQ3OTAyLCJleHAiOjE2NTgyODM5MDIsIm5vbmNlIjoiZUhOdFMxbEtUR2N5ZG5KS1VVY3RkRTFVT0ZKNmJFNUxVVkEwZEdsRGVXOXZkVkl4UW41eVRrUlJlZz09In0.hib7JR8NDU2kx8Fj1bnzo3IUuabE6Hb-Z7HHZAJPQuF_Zdg3L1KDypn6SY7HAd_dsz2N8RkXfvQto-Y2g2ukuz7FxzNFgcVL99cyEO3YqmyCa6JTOTCrxdeaIE8QZpCEKvC28oeJBv0wO1Dwc--OVJMsK2vSzyxj1WNok64YYjWKLL4c0dFf-nj0KWFr1IU-tMiyWLDDiJw2Sa8M4YxXZYqdlkgNmrBPExgcm9l9SiT2l3Ts3Sgc_IyMVyMrnV8XX50EWdsm6vuCOSUcqf0XhjDQ7urZveoVwVLnYq3GcLhVBcy1Hr9RL8zPdPynOzsbX6uCww2Esrv6iwWrgQ5zBA-thismakesinvalid";
-   private static final String EXPIRED_TOKEN     = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IllrY2FkWTA0Q3RFVUFxQUdLNTk3ayJ9.eyJnaXZlbl9uYW1lIjoiVGltIiwiZmFtaWx5X25hbWUiOiJDaGFtYmVybGFpbiIsIm5pY2tuYW1lIjoidGltLmNoYW1iZXJsYWluIiwibmFtZSI6IlRpbSBDaGFtYmVybGFpbiIsInBpY3R1cmUiOiJodHRwczovL2xoMy5nb29nbGV1c2VyY29udGVudC5jb20vYS0vQUZkWnVjcXVSaUFvTzk1RG9URklnbUtseVA1akVBVnZmWXFnS0lHTkVubzE9czk2LWMiLCJsb2NhbGUiOiJlbiIsInVwZGF0ZWRfYXQiOiIyMDIyLTA3LTE4VDIxOjM4OjE1LjM4NloiLCJlbWFpbCI6InRpbS5jaGFtYmVybGFpbkBraW5nc3Jvb2suY29tIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsImlzcyI6Imh0dHBzOi8va2luZ3Nyb29rLnVzLmF1dGgwLmNvbS8iLCJzdWIiOiJnb29nbGUtb2F1dGgyfDEwODk2NDEyNjE3MjY1NzAzNDg2NyIsImF1ZCI6InNwQ1NtczAzcHpVZGRYN1BocHN4ZDlUd2FLMDlZZmNxIiwiaWF0IjoxNjU4MTgwNDc3LCJleHAiOjE2NTgyMTY0NzcsIm5vbmNlIjoiVkZkQlYzWmplR2hvY1cwMk9WZEtabHBLU0c1K1ZXbElhMEV3VkZaeFpVdEJVMDErZUZaT1RtMTNiZz09In0.fU7EwUgNrupOPz_PX_aQKON2xG1-LWD85xVo1Bn41WNEek-iMyJoch8l6NUihi7Bou14BoOfeWIG_sMqsLHqI2Pk7el7l1kigsjURx0wpiXadBt8piMxdIlxdToZEMuZCBzg7eJvXh4sM8tlV5cm0gPa6FT9Ih3VGJajNlXi5BcYS_JRpIvFvHn8-Bxj4KiAlZ5XPPkopjnDgP8kFfc4cMn_nxDkqWYlhj-5TaGW2xCLC9Qr_9UNxX0fm-CkKjYs3Z5ezbiXNkc-bxrCYvxeBeDPf8-T3EqrxCRVqCZSJ85BHdOc_E7UZC_g8bNj0umoplGwlCbzO4XIuOO-KlIaOg";
    private static final String UNDECODABLE_TOKEN = "UNDECODABLE";
 
    private static final QLogger LOG = QLogger.getLogger(Auth0AuthenticationModuleTest.class);
@@ -81,15 +86,14 @@ public class Auth0AuthenticationModuleTest extends BaseTest
 
 
    /*******************************************************************************
-    ** Test a token where last-checked is set to a time that would not require it to be
-    ** re-checked, so it'll show as valid no matter what the token is.
+    ** A recent cache timestamp cannot make an invalid credential valid.
     **
     *******************************************************************************/
    @Test
-   public void testLastTimeCheckedJustUnderThreshold()
+   public void testLastTimeCheckedUnderThresholdWithInvalidToken()
    {
       Instant underThreshold = Instant.now().minus(Auth0AuthenticationModule.ID_TOKEN_VALIDATION_INTERVAL_SECONDS - 60, ChronoUnit.SECONDS);
-      assertTrue(testLastTimeChecked(underThreshold, INVALID_TOKEN), "A session checked under threshold should be valid");
+      assertFalse(testLastTimeChecked(underThreshold, INVALID_TOKEN), "A recent cache timestamp must not accept an invalid credential");
    }
 
 
@@ -130,7 +134,8 @@ public class Auth0AuthenticationModuleTest extends BaseTest
       /////////////////////////////////////////////////////////////
       // put the input last-time-checked into the state provider //
       /////////////////////////////////////////////////////////////
-      SimpleStateKey<String> key = new SimpleStateKey<>(token);
+      QInstance instance = getQInstance(false);
+      SimpleStateKey<?> key = Auth0AuthenticationModule.tokenValidationKey(instance, token);
       InMemoryStateProvider.getInstance().put(key, lastTimeChecked);
 
       //////////////////////
@@ -140,7 +145,14 @@ public class Auth0AuthenticationModuleTest extends BaseTest
       session.setIdReference(token);
 
       Auth0AuthenticationModule auth0AuthenticationModule = new Auth0AuthenticationModule();
-      return (auth0AuthenticationModule.isSessionValid(getQInstance(false), session));
+      try
+      {
+         return (auth0AuthenticationModule.isSessionValid(instance, session));
+      }
+      finally
+      {
+         InMemoryStateProvider.getInstance().remove(key);
+      }
    }
 
 
@@ -192,34 +204,6 @@ public class Auth0AuthenticationModuleTest extends BaseTest
       catch(QAuthenticationException qae)
       {
          assertThat(qae.getMessage()).contains(COULD_NOT_DECODE_ERROR);
-      }
-   }
-
-
-
-   /*******************************************************************************
-    ** Test failure case, token is expired
-    **
-    *******************************************************************************/
-   @Test
-   public void testProperlyFormattedButExpiredToken()
-   {
-      Map<String, String> context = new HashMap<>();
-      context.put(ACCESS_TOKEN_KEY, EXPIRED_TOKEN);
-
-      try
-      {
-         Auth0AuthenticationModule auth0AuthenticationModule = new Auth0AuthenticationModule();
-         auth0AuthenticationModule.createSession(getQInstance(true), context);
-         fail("Should never get here");
-      }
-      catch(MissingEnvVarsException meve)
-      {
-         LOG.warn("Unable to execute testProperlyFormattedButExpiredToken, due to missing env vars: " + meve.getMessage());
-      }
-      catch(QAuthenticationException qae)
-      {
-         assertThat(qae.getMessage()).contains(EXPIRED_TOKEN_ERROR);
       }
    }
 
@@ -603,5 +587,29 @@ public class Auth0AuthenticationModuleTest extends BaseTest
       {
          super(message);
       }
+   }
+
+
+   /*******************************************************************************
+    ** Logout deletes the session's userSession record (and only that one), so the
+    ** logged-out session UUID cannot be resumed.
+    *******************************************************************************/
+   @Test
+   void testLogoutDeletesUserSession() throws Exception
+   {
+      QInstance qInstance = QContext.getQInstance();
+      if(qInstance.getTable(UserSession.TABLE_NAME) == null)
+      {
+         qInstance.addTable(new UserSessionMetaDataProducer(TestUtils.MEMORY_BACKEND_NAME).produce(qInstance));
+      }
+      new InsertAction().execute(new InsertInput(UserSession.TABLE_NAME).withRecords(List.of(
+         new QRecord().withValue("uuid", "logged-out-session").withValue("accessToken", "token-a").withValue("userId", "a@example.com"),
+         new QRecord().withValue("uuid", "other-session").withValue("accessToken", "token-b").withValue("userId", "b@example.com"))));
+
+      new Auth0AuthenticationModule().logout(qInstance, "logged-out-session");
+      new Auth0AuthenticationModule().logout(qInstance, null);
+
+      List<QRecord> remaining = new QueryAction().execute(new QueryInput(UserSession.TABLE_NAME).withShouldOmitHiddenFields(false).withShouldMaskPasswords(false)).getRecords();
+      assertEquals(List.of("other-session"), remaining.stream().map(record -> record.getValueString("uuid")).toList());
    }
 }

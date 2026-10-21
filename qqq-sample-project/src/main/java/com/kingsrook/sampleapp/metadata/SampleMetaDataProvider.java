@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.sampleapp.metadata;
@@ -27,13 +26,15 @@ import java.io.InputStream;
 import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import com.amazonaws.regions.Regions;
 import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.QuickSightChartRenderer;
+import com.kingsrook.qqq.backend.core.actions.preferences.UserPreferencesKeyValueStoreMetaDataProvider;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.exceptions.QValueException;
 import com.kingsrook.qqq.backend.core.instances.AbstractQQQApplication;
 import com.kingsrook.qqq.backend.core.instances.QInstanceEnricher;
@@ -57,13 +58,17 @@ import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QuickSightChartMe
 import com.kingsrook.qqq.backend.core.model.metadata.fields.DisplayFormat;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinOn;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinType;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.QJoinMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.PossibleValueEnum;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValue;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
+import com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferenceSectionMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferencesMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QBackendStepMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QComponentType;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QFrontendComponentMetaData;
@@ -94,8 +99,23 @@ import com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager;
 import com.kingsrook.qqq.backend.module.rdbms.jdbc.QueryManager;
 import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSBackendMetaData;
 import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSTableBackendDetails;
+import com.kingsrook.qqq.esb.api.EsbJavalinMetaDataProducer;
+import com.kingsrook.qqq.esb.metadata.EsbAppMetaDataProducer;
+import com.kingsrook.qqq.esb.model.EsbDestinationType;
+import com.kingsrook.qqq.esb.model.EsbInstanceMetaData;
+import com.kingsrook.qqq.esb.model.EsbProcessMetaData;
+import com.kingsrook.qqq.esb.model.EsbProviderType;
+import com.kingsrook.qqq.esb.model.EsbTableEvent;
+import com.kingsrook.qqq.esb.model.EsbTableMetaData;
+import com.kingsrook.qqq.esb.model.EsbTablePublication;
+import com.kingsrook.qqq.esb.model.EsbTrigger;
+import com.kingsrook.qqq.esb.model.QEsbDestinationMetaData;
+import com.kingsrook.qqq.esb.model.QEsbProviderMetaData;
+import com.kingsrook.qqq.esb.processes.EsbPauseQueueMetaDataProducer;
+import com.kingsrook.sampleapp.cluster.SampleClusterMode;
 import com.kingsrook.sampleapp.dashboard.widgets.PersonsByCreateDateBarChart;
 import com.kingsrook.sampleapp.processes.clonepeople.ClonePeopleTransformStep;
+import com.kingsrook.sampleapp.processes.syncperson.SyncPersonStep;
 import org.apache.commons.io.IOUtils;
 
 
@@ -116,6 +136,7 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
    public static final String PROCESS_NAME_GREET             = "greet";
    public static final String PROCESS_NAME_GREET_INTERACTIVE = "greetInteractive";
    public static final String PROCESS_NAME_CLONE_PEOPLE      = "clonePeople";
+   public static final String PROCESS_NAME_SYNC_PERSON       = "syncPerson";
    public static final String PROCESS_NAME_SIMPLE_SLEEP      = "simpleSleep";
    public static final String PROCESS_NAME_SIMPLE_THROW      = "simpleThrow";
    public static final String PROCESS_NAME_SLEEP_INTERACTIVE = "sleepInteractive";
@@ -195,6 +216,7 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
       qInstance.addBackend(new QBackendMetaData().withName(ENUMERATION_BACKEND_NAME).withBackendType(EnumerationBackendModule.class));
       qInstance.addBackend(defineFilesystemBackend());
       qInstance.addTable(defineTableCarrier());
+      ContingentPlaceMetaData.addTo(qInstance);
       qInstance.addTable(defineTablePerson());
       qInstance.addPossibleValueSource(QPossibleValueSource.newForTable(TABLE_NAME_PERSON));
       qInstance.addPossibleValueSource(QPossibleValueSource.newForEnum(PetSpecies.NAME, PetSpecies.values()));
@@ -213,6 +235,7 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
       qInstance.addProcess(defineProcessGreetPeople());
       qInstance.addProcess(defineProcessGreetPeopleInteractive());
       qInstance.addProcess(defineProcessClonePeople());
+      qInstance.addProcess(defineProcessSyncPerson());
       qInstance.addProcess(defineProcessSimpleSleep());
       qInstance.addProcess(defineProcessScreenThenSleep());
       qInstance.addProcess(defineProcessSimpleThrow());
@@ -220,11 +243,54 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
       qInstance.addTable(setTableBackendNamesForRdbms(new UserSessionMetaDataProducer(RDBMS_BACKEND_NAME).produce(qInstance)));
       qInstance.addTable(setTableBackendNamesForRdbms(new RedirectStateMetaDataProducer(RDBMS_BACKEND_NAME).produce(qInstance)));
 
+      new UserPreferencesKeyValueStoreMetaDataProvider().defineAll(qInstance, RDBMS_BACKEND_NAME, null);
+      setTableBackendNamesForRdbms(qInstance.getTable(UserPreferencesMetaData.DEFAULT_TABLE_NAME));
+      qInstance.getTable(UserPreferencesMetaData.DEFAULT_TABLE_NAME).getField("value").setBackendName("preference_value");
+      qInstance.addPossibleValueSource(new QPossibleValueSource().withName("sample_date_format")
+         .withEnumValues(List.of(new QPossibleValue<>("ISO", "2026-10-13"), new QPossibleValue<>("US", "10/13/2026"), new QPossibleValue<>("EU", "13/10/2026"))));
+      qInstance.addPossibleValueSource(new QPossibleValueSource().withName("sample_week_start")
+         .withEnumValues(List.of(new QPossibleValue<>("SUNDAY", "Sunday"), new QPossibleValue<>("MONDAY", "Monday"))));
+      UserPreferencesMetaData.ofOrWithNew(qInstance).withSection(new UserPreferenceSectionMetaData()
+         .withName("regional").withLabel("Regional settings").withIcon(new QIcon("public"))
+         .withDescription("How dates and times appear to you.").withOrder(10)
+         .withField(new QFieldMetaData("timeZone", QFieldType.STRING).withLabel("Time zone").withMaxLength(64)
+            .withHelpContent(new QHelpContent("An IANA time zone such as America/Chicago")).withDefaultValue("America/Chicago"))
+         .withField(new QFieldMetaData("dateFormat", QFieldType.STRING).withLabel("Date format")
+            .withPossibleValueSourceName("sample_date_format").withDefaultValue("ISO"))
+         .withField(new QFieldMetaData("weekStartsOn", QFieldType.STRING).withLabel("Week starts on")
+            .withPossibleValueSourceName("sample_week_start").withDefaultValue("SUNDAY")));
+
       MetaDataProducerHelper.processAllMetaDataProducersInPackage(qInstance, SampleMetaDataProvider.class.getPackageName());
+
+      EsbInstanceMetaData.of(qInstance)
+         .withInstanceName("qqq-sample")
+         .withProvider(new QEsbProviderMetaData().withName("sampleArtemis")
+            .withType(EsbProviderType.ACTIVEMQ_ARTEMIS)
+            .withUrl("tcp://127.0.0.1:" + Integer.getInteger("qqq.sample.esb.port", 61616)))
+         .withDestination(new QEsbDestinationMetaData().withName("personEvents")
+            .withType(EsbDestinationType.TOPIC).withProviderName("sampleArtemis"));
+      EsbTableMetaData.ofOrWithNew(qInstance.getTable(TABLE_NAME_PERSON))
+         .withPublication(new EsbTablePublication().withDestinationName("personEvents")
+            .withEvents(List.of(EsbTableEvent.INSERT, EsbTableEvent.UPDATE, EsbTableEvent.DELETE)));
+      EsbProcessMetaData.ofOrWithNew(qInstance.getProcess(PROCESS_NAME_SYNC_PERSON))
+         .withTrigger(new EsbTrigger().withDestinationName("personEvents"));
 
       defineWidgets(qInstance);
       defineBranding(qInstance);
       defineApps(qInstance);
+      MetaDataProducerHelper.processAllMetaDataProducersInPackage(qInstance, EsbAppMetaDataProducer.class.getPackageName());
+      MetaDataProducerHelper.processAllMetaDataProducersInPackage(qInstance, EsbPauseQueueMetaDataProducer.class.getPackageName());
+      MetaDataProducerHelper.processAllMetaDataProducersInPackage(qInstance, EsbJavalinMetaDataProducer.class.getPackageName());
+
+      ///////////////////////////////////////////////////////////////////
+      // opt-in multi-node mode (SAMPLE_CLUSTER_MODE): shared state, the //
+      // ESB cluster bus and probes. Off by default; see                  //
+      // docs/DEPLOYMENT-MODES.md                                         //
+      ///////////////////////////////////////////////////////////////////
+      if(SampleClusterMode.isEnabled())
+      {
+         SampleClusterMode.apply(qInstance);
+      }
 
       return (qInstance);
    }
@@ -282,7 +348,11 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
          // Connection providers are cached by backend name; refuse a reused external provider //
          // before any fixture SQL can reset data outside the sample's in-memory database.     //
          //////////////////////////////////////////////////////////////////////////////////////
-         if(!"jdbc:h2:mem:test_database".equals(connection.getMetaData().getURL()))
+         String sharedJdbcUrl = SampleClusterMode.getSharedJdbcUrl();
+         String url           = connection.getMetaData().getURL();
+         boolean ownedDatabase = "jdbc:h2:mem:test_database".equals(url)
+            || (sharedJdbcUrl != null && sharedJdbcUrl.startsWith("jdbc:h2:") && url != null && url.startsWith(sharedJdbcUrl.split(";")[0]));
+         if(!ownedDatabase)
          {
             throw new IllegalStateException("Sample reset requires the owned in-memory H2 database.");
          }
@@ -336,7 +406,7 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
          .withSecretKey(secretKey)
          .withUserArn(userArn)
          .withDashboardId("9e452e78-8509-4c81-bb7f-967abfc356da")
-         .withRegion(Regions.US_EAST_2.getName())
+         .withRegion("us-east-2")
          .withName(QuickSightChartRenderer.class.getSimpleName())
          .withLabel("Example Quicksight Chart")
          .withCodeReference(new QCodeReference(QuickSightChartRenderer.class));
@@ -400,13 +470,24 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
     *******************************************************************************/
    public static RDBMSBackendMetaData defineRdbmsBackend()
    {
-      return new RDBMSBackendMetaData()
+      RDBMSBackendMetaData backend = new RDBMSBackendMetaData()
          .withName(RDBMS_BACKEND_NAME)
          .withVendor("h2")
          .withHostName("mem")
          .withDatabaseName("test_database")
          .withQueriesForNewConnections(List.of("SET TIME ZONE 'UTC'"))
          .withUsername("sa");
+
+      ////////////////////////////////////////////////////////////////
+      // in cluster mode, every node uses one shared database (H2 in //
+      // server mode for the acceptance test)                        //
+      ////////////////////////////////////////////////////////////////
+      String sharedJdbcUrl = SampleClusterMode.getSharedJdbcUrl();
+      if(sharedJdbcUrl != null)
+      {
+         backend.withJdbcUrl(sharedJdbcUrl);
+      }
+      return backend;
    }
 
 
@@ -600,6 +681,23 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
 
 
    /*******************************************************************************
+    ** Example subscriber for changes to the person table.
+    *******************************************************************************/
+   private static QProcessMetaData defineProcessSyncPerson()
+   {
+      return new QProcessMetaData()
+         .withName(PROCESS_NAME_SYNC_PERSON)
+         .withLabel("Sync Person")
+         .withTableName(TABLE_NAME_PERSON)
+         .withIsHidden(true)
+         .withStep(new QBackendStepMetaData()
+            .withName("sync")
+            .withCode(new QCodeReference(SyncPersonStep.class)));
+   }
+
+
+
+   /*******************************************************************************
     ** Define an interactive version of the 'greet people' process
     *******************************************************************************/
    private static QProcessMetaData defineProcessGreetPeopleInteractive()
@@ -702,7 +800,12 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
          .withName(PROCESS_NAME_SLEEP_INTERACTIVE)
          .withStep(new QFrontendStepMetaData()
             .withName(SCREEN_0)
-            .withComponent(new QFrontendComponentMetaData().withType(QComponentType.VIEW_FORM))
+            .withComponent(new QFrontendComponentMetaData().withType(QComponentType.EDIT_FORM)
+               .withValue("includeFieldNames", new ArrayList<>(List.of(SleeperStep.FIELD_SLEEP_MILLIS))))
+            .withComponent(new QFrontendComponentMetaData().withType(QComponentType.VIEW_FORM)
+               .withValue("includeFieldNames", new ArrayList<>(List.of("outputMessage"))))
+            .withFormField(new QFieldMetaData(SleeperStep.FIELD_SLEEP_MILLIS, QFieldType.INTEGER)
+               .withLabel("Sleep duration (milliseconds)").withIsRequired(true).withDefaultValue(1000))
             .withFormField(new QFieldMetaData("outputMessage", QFieldType.STRING)))
          .withStep(SleeperStep.getMetaData())
          .withStep(new QFrontendStepMetaData()
@@ -727,7 +830,7 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
 
    /*******************************************************************************
     ** Testing backend step - just sleeps however long you ask it to (or, throws if
-    ** you don't provide a number of seconds to sleep).
+    ** you do not provide a non-negative number of milliseconds to sleep).
     *******************************************************************************/
    public static class SleeperStep implements BackendStep
    {
@@ -742,13 +845,20 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
       @Override
       public void run(RunBackendStepInput runBackendStepInput, RunBackendStepOutput runBackendStepOutput) throws QException
       {
+         Integer sleepMillis = runBackendStepInput.getValueInteger(FIELD_SLEEP_MILLIS);
+         if(sleepMillis == null || sleepMillis < 0)
+         {
+            throw new QUserFacingException("Enter a sleep duration of zero or more milliseconds.");
+         }
          try
          {
-            Thread.sleep(runBackendStepInput.getValueInteger(FIELD_SLEEP_MILLIS));
+            Thread.sleep(sleepMillis);
+            runBackendStepOutput.addValue("outputMessage", "Slept for " + sleepMillis + " milliseconds.");
          }
          catch(InterruptedException e)
          {
-            throw (new QException("Interrupted while sleeping..."));
+            Thread.currentThread().interrupt();
+            throw new QException("Interrupted while sleeping...", e);
          }
       }
 

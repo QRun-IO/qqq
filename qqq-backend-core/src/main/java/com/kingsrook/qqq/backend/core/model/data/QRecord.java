@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.model.data;
@@ -39,6 +38,7 @@ import java.util.Objects;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
@@ -183,13 +183,13 @@ public class QRecord implements Serializable
       validateIdentityTable(table, field);
       try
       {
-         Serializable typedKey = ValueUtils.getValueAsFieldType(field.getType(), primaryKey);
+         Serializable typedKey = ValueUtils.getValueAsFieldType(table, field, primaryKey);
          if(typedKey == null || (primaryKeyIdentity != null && !identityValuesEqual(primaryKeyIdentity.primaryKey(), typedKey)))
          {
             throw new QException("Invalid primary key identity");
          }
          boolean present = values != null && values.containsKey(table.getPrimaryKeyField());
-         Serializable presentationValue = present ? ValueUtils.getValueAsFieldType(field.getType(), values.get(table.getPrimaryKeyField())) : null;
+         Serializable presentationValue = present ? ValueUtils.getValueAsFieldType(table, field, values.get(table.getPrimaryKeyField())) : null;
          primaryKeyIdentity = new PrimaryKeyIdentity(table.getName(), table.getPrimaryKeyField(), field.getType(),
             snapshotIdentityValue(typedKey), present, snapshotIdentityValue(presentationValue));
       }
@@ -212,7 +212,7 @@ public class QRecord implements Serializable
       try
       {
          boolean present = values != null && values.containsKey(table.getPrimaryKeyField());
-         Serializable value = present ? ValueUtils.getValueAsFieldType(field.getType(), values.get(table.getPrimaryKeyField())) : null;
+         Serializable value = present ? ValueUtils.getValueAsFieldType(table, field, values.get(table.getPrimaryKeyField())) : null;
          if(primaryKeyIdentity == null)
          {
             return snapshotIdentityValue(value);
@@ -637,12 +637,31 @@ public class QRecord implements Serializable
 
 
    /*******************************************************************************
+    ** Typed getters retain field context when the record identifies its table.
+    *******************************************************************************/
+   private Serializable getTypedValue(String fieldName, QFieldType type)
+   {
+      String owner = tableName;
+      String localName = fieldName;
+      if(fieldName.contains("."))
+      {
+         owner = fieldName.substring(0, fieldName.indexOf('.'));
+         localName = fieldName.substring(fieldName.indexOf('.') + 1);
+      }
+      QTableMetaData table = QContext.getQInstance() == null || owner == null ? null : QContext.getQInstance().getTable(owner);
+      QFieldMetaData field = table == null ? null : table.getFields().get(localName);
+      return ValueUtils.withFieldConversionContext(table, field, () -> ValueUtils.getValueAsFieldType(type, getValue(fieldName)));
+   }
+
+
+
+   /*******************************************************************************
     ** Getter for a single field's value
     **
     *******************************************************************************/
    public Integer getValueInteger(String fieldName)
    {
-      return (ValueUtils.getValueAsInteger(getValue(fieldName)));
+      return ((Integer) getTypedValue(fieldName, QFieldType.INTEGER));
    }
 
 
@@ -653,7 +672,7 @@ public class QRecord implements Serializable
     *******************************************************************************/
    public Long getValueLong(String fieldName)
    {
-      return (ValueUtils.getValueAsLong(getValue(fieldName)));
+      return ((Long) getTypedValue(fieldName, QFieldType.LONG));
    }
 
 
@@ -663,7 +682,7 @@ public class QRecord implements Serializable
     *******************************************************************************/
    public BigDecimal getValueBigDecimal(String fieldName)
    {
-      return (ValueUtils.getValueAsBigDecimal(getValue(fieldName)));
+      return ((BigDecimal) getTypedValue(fieldName, QFieldType.DECIMAL));
    }
 
 
@@ -673,7 +692,7 @@ public class QRecord implements Serializable
     *******************************************************************************/
    public Boolean getValueBoolean(String fieldName)
    {
-      return (ValueUtils.getValueAsBoolean(getValue(fieldName)));
+      return ((Boolean) getTypedValue(fieldName, QFieldType.BOOLEAN));
    }
 
 
@@ -683,7 +702,7 @@ public class QRecord implements Serializable
     *******************************************************************************/
    public LocalTime getValueLocalTime(String fieldName)
    {
-      return (ValueUtils.getValueAsLocalTime(getValue(fieldName)));
+      return ((LocalTime) getTypedValue(fieldName, QFieldType.TIME));
    }
 
 
@@ -693,7 +712,7 @@ public class QRecord implements Serializable
     *******************************************************************************/
    public LocalDate getValueLocalDate(String fieldName)
    {
-      return (ValueUtils.getValueAsLocalDate(getValue(fieldName)));
+      return ((LocalDate) getTypedValue(fieldName, QFieldType.DATE));
    }
 
 
@@ -703,7 +722,7 @@ public class QRecord implements Serializable
     *******************************************************************************/
    public byte[] getValueByteArray(String fieldName)
    {
-      return (ValueUtils.getValueAsByteArray(getValue(fieldName)));
+      return ((byte[]) getTypedValue(fieldName, QFieldType.BLOB));
    }
 
 
@@ -713,7 +732,7 @@ public class QRecord implements Serializable
     *******************************************************************************/
    public Instant getValueInstant(String fieldName)
    {
-      return (ValueUtils.getValueAsInstant(getValue(fieldName)));
+      return ((Instant) getTypedValue(fieldName, QFieldType.DATE_TIME));
    }
 
 

@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.modules.authentication.implementations;
@@ -34,6 +33,8 @@ import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.session.QUser;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleCustomizerInterface;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
+import com.kingsrook.qqq.backend.core.serviceidentity.LocalServiceIdentityProvider;
+import com.kingsrook.qqq.backend.core.serviceidentity.QServiceIdentityProviderInterface;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 
 
@@ -64,14 +65,22 @@ public class MockAuthenticationModule implements QAuthenticationModuleInterface
          throw (new QAuthenticationException("Access denied (per accessToken requesting as such)"));
       }
 
+      ////////////////////////////////////////////////////////////////////////////////
+      // resume the session the caller names - by the sessionId cookie, or by the   //
+      // sessionUUID cookie (which manageSession sets, and which the in-process UI  //
+      // API invoker forwards) - so a session keeps its uuid and user across calls. //
+      ////////////////////////////////////////////////////////////////////////////////
+      String sessionUuid = StringUtils.hasContent(context.get("sessionId")) ? context.get("sessionId") : context.get("sessionUUID");
+
       QUser qUser = new QUser();
-      qUser.setIdReference("User:" + (System.currentTimeMillis() % USER_ID_MODULO));
+      long  userNumber = StringUtils.hasContent(sessionUuid) ? Math.floorMod(sessionUuid.hashCode(), USER_ID_MODULO) : (System.currentTimeMillis() % USER_ID_MODULO);
+      qUser.setIdReference("User:" + userNumber);
       qUser.setFullName("John Smith");
 
       QSession qSession = new QSession();
-      if(StringUtils.hasContent(context.get("sessionId")))
+      if(StringUtils.hasContent(sessionUuid))
       {
-         qSession.setUuid(context.get("sessionId"));
+         qSession.setUuid(sessionUuid);
       }
       qSession.setIdReference(qSession.getUuid());
       qSession.setUser(qUser);
@@ -109,6 +118,18 @@ public class MockAuthenticationModule implements QAuthenticationModuleInterface
    public boolean usesSessionIdCookie()
    {
       return true;
+   }
+
+
+
+   /*******************************************************************************
+    ** Local service principals: exactly their declared local permissions and
+    ** keys (docs/SERVICE-IDENTITY.md section 4.4).
+    *******************************************************************************/
+   @Override
+   public QServiceIdentityProviderInterface getServiceIdentityProvider()
+   {
+      return (new LocalServiceIdentityProvider());
    }
 
 

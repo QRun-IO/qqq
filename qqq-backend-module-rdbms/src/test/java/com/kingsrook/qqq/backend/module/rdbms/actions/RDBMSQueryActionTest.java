@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.module.rdbms.actions;
@@ -44,6 +43,7 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.CriteriaOption;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
@@ -52,6 +52,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.expressions.Now;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.expressions.NowWithOffset;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.expressions.StartOfPeriod;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.expressions.ThisOrLastPeriod;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -307,6 +308,38 @@ public class RDBMSQueryActionTest extends RDBMSActionTest
       QueryOutput queryOutput = new RDBMSQueryAction().execute(queryInput);
       assertEquals(1, queryOutput.getRecords().size(), "Expected # of rows");
       assertTrue(queryOutput.getRecords().stream().allMatch(r -> r.getValueString("email").matches(".*kelkhoff.*")), "Should find matching email address");
+   }
+
+
+
+   /*******************************************************************************
+    ** CASE_INSENSITIVE compares lower-cased values (H2 LIKE is case-sensitive).
+    *******************************************************************************/
+   @Test
+   public void testCaseInsensitiveOption() throws QException
+   {
+      QueryInput queryInput = initQueryRequest();
+      queryInput.setFilter(new QQueryFilter().withCriteria(new QFilterCriteria("lastName", QCriteriaOperator.CONTAINS, "KELK")));
+      assertEquals(0, new RDBMSQueryAction().execute(queryInput).getRecords().size(), "Without the option, case must match");
+
+      queryInput = initQueryRequest();
+      queryInput.setFilter(new QQueryFilter().withCriteria(new QFilterCriteria("lastName", QCriteriaOperator.CONTAINS, "KELK").withOption(CriteriaOption.CASE_INSENSITIVE)));
+      assertThat(new RDBMSQueryAction().execute(queryInput).getRecords()).extracting(r -> r.getValueString("lastName")).containsExactly("Kelkhoff");
+
+      queryInput = initQueryRequest();
+      queryInput.setFilter(new QQueryFilter().withCriteria(new QFilterCriteria("firstName", QCriteriaOperator.STARTS_WITH, "ti").withOption(CriteriaOption.CASE_INSENSITIVE)));
+      assertThat(new RDBMSQueryAction().execute(queryInput).getRecords()).extracting(r -> r.getValueString("firstName")).containsExactly("Tim");
+
+      queryInput = initQueryRequest();
+      queryInput.setFilter(new QQueryFilter().withCriteria(new QFilterCriteria("email", QCriteriaOperator.EQUALS, "DARIN.KELKHOFF@GMAIL.COM").withOption(CriteriaOption.CASE_INSENSITIVE)));
+      assertThat(new RDBMSQueryAction().execute(queryInput).getRecords()).extracting(r -> r.getValueInteger("id")).containsExactly(1);
+
+      //////////////////////////////////////////////////////////////
+      // the option has no effect on a non-string (integer) field //
+      //////////////////////////////////////////////////////////////
+      queryInput = initQueryRequest();
+      queryInput.setFilter(new QQueryFilter().withCriteria(new QFilterCriteria("id", QCriteriaOperator.EQUALS, 2).withOption(CriteriaOption.CASE_INSENSITIVE)));
+      assertThat(new RDBMSQueryAction().execute(queryInput).getRecords()).extracting(r -> r.getValueInteger("id")).containsExactly(2);
    }
 
 
@@ -695,6 +728,18 @@ public class RDBMSQueryActionTest extends RDBMSActionTest
          .hasRootCauseMessage("Unsupported unit: Hours");
       assertThatThrownBy(() -> testFunction.apply(filter -> filter.withCriteria(new QFilterCriteria("birthDate", QCriteriaOperator.LESS_THAN, ThisOrLastPeriod.last(ChronoUnit.MINUTES)))))
          .hasRootCauseMessage("Unsupported unit: Minutes");
+
+      /////////////////////////////////////////////////////////////////////////////////////
+      // StartOfPeriod: a half-open range of whole days, as a pair of >= and < criteria  //
+      /////////////////////////////////////////////////////////////////////////////////////
+      assertOneRecordWithFirstName("today", testFunction.apply(filter -> filter.withCriteria(new QFilterCriteria("birthDate", QCriteriaOperator.EQUALS, StartOfPeriod.of(StartOfPeriod.Unit.DAYS, 0)))));
+      assertOneRecordWithFirstName("yesterday", testFunction.apply(filter -> filter.withCriteria(new QFilterCriteria("birthDate", QCriteriaOperator.EQUALS, StartOfPeriod.of(StartOfPeriod.Unit.DAYS, -1)))));
+      assertTwoRecordsWithFirstNames("yesterday", "today", testFunction.apply(filter -> filter
+         .withCriteria(new QFilterCriteria("birthDate", QCriteriaOperator.GREATER_THAN_OR_EQUALS, StartOfPeriod.of(StartOfPeriod.Unit.DAYS, -1)))
+         .withCriteria(new QFilterCriteria("birthDate", QCriteriaOperator.LESS_THAN, StartOfPeriod.of(StartOfPeriod.Unit.DAYS, 1)))));
+      assertOneRecordWithFirstName("tomorrow", testFunction.apply(filter -> filter
+         .withCriteria(new QFilterCriteria("birthDate", QCriteriaOperator.GREATER_THAN_OR_EQUALS, StartOfPeriod.of(StartOfPeriod.Unit.DAYS, 1)))
+         .withCriteria(new QFilterCriteria("birthDate", QCriteriaOperator.LESS_THAN, StartOfPeriod.of(StartOfPeriod.Unit.DAYS, 2)))));
    }
 
 

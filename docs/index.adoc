@@ -28,11 +28,20 @@ include::metaData/SecurtiyKeyTypes.adoc[leveloffset=+1]
 include::metaData/Reports.adoc[leveloffset=+1]
 include::metaData/Icons.adoc[leveloffset=+1]
 include::metaData/PermissionRules.adoc[leveloffset=+1]
+include::misc/CorePermissionEnforcement.adoc[leveloffset=+1]
+include::misc/ClassifiedValueTokens.adoc[leveloffset=+1]
+include::misc/RecordPicker.adoc[leveloffset=+1]
+include::misc/Alerts.adoc[leveloffset=+1]
+include::misc/RecordFeatures.adoc[leveloffset=+1]
+include::misc/Realtime.adoc[leveloffset=+1]
 
 == Services
 
 include::misc/Javalin.adoc[leveloffset=+1]
 include::misc/ScheduledJobs.adoc[leveloffset=+1]
+include::misc/OAuth2RefreshTokens.adoc[leveloffset=+1]
+
+include::esb/index.adoc[leveloffset=+1]
 
 === API server (OpenAPI)
 
@@ -41,6 +50,7 @@ See the {qqq-tree-url}/qqq-middleware-javalin/src/main/java/com/kingsrook/qqq/mi
 == Custom Application Code
 include::misc/QContext.adoc[leveloffset=+1]
 include::misc/QRecords.adoc[leveloffset=+1]
+include::misc/CustomFields.adoc[leveloffset=+1]
 include::misc/QRecordEntities.adoc[leveloffset=+1]
 include::misc/ProcessBackendSteps.adoc[leveloffset=+1]
 include::misc/RenderingWidgets.adoc[leveloffset=+1]
@@ -76,7 +86,14 @@ include::actions/RenderTemplateAction.adoc[leveloffset=+1]
 
 == QQQ Utility Classes
 include::utilities/RecordLookupHelper.adoc[leveloffset=+1]
+include::utilities/WebhookSigningAndSafeHttp.adoc[leveloffset=+1]
 
 == Migration Guides
 
 * xref:migration/4.0.adoc[Migrating to QQQ 4.0] — step-by-step guide for consumers upgrading from 0.x to 4.0
+* xref:migration/4.1.adoc[Adopting QQQ 4.1 features] — versions, configuration and secrets for record search providers, OAuth2 refresh tokens, `FILE_PREVIEW` and the instance home app, plus upgrade notes from 4.0
+* xref:migration/adoption-checklist.adoc[Adoption checklist for an existing QQQ application] — per-feature checklist for a 0.x app adopting 4.1, Next and the new QBits
+
+== Release Operations
+
+* xref:release/4.1.adoc[QQQ 4.1 release, rollback and hotfix procedure]

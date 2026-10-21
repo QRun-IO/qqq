@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.scheduler;
@@ -30,6 +29,7 @@ import java.util.function.Supplier;
 import com.kingsrook.qqq.backend.core.actions.automation.polling.PollingAutomationPerTableRunner;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
+import com.kingsrook.qqq.backend.core.cluster.QNodeRoles;
 import com.kingsrook.qqq.backend.core.context.CapturedContext;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -78,6 +78,7 @@ public class QScheduleManager
    private final  Supplier<QSession> systemUserSessionSupplier;
 
    private Map<String, QSchedulerInterface> schedulers = new HashMap<>();
+   private volatile boolean started;
 
 
 
@@ -151,9 +152,14 @@ public class QScheduleManager
       //////////////////////////////////////////////////////////////////////////
       // exit w/o starting schedulers, if schedule manager isn't enabled here //
       //////////////////////////////////////////////////////////////////////////
-      if(!new QMetaDataVariableInterpreter().getBooleanFromPropertyOrEnvironment("qqq.scheduleManager.enabled", "QQQ_SCHEDULE_MANAGER_ENABLED", true))
+      ////////////////////////////////////////////////////////////////////////
+      // the explicit flag wins; otherwise this node's roles decide - a node //
+      // without the scheduler role keeps its schedulers in standby          //
+      // (QNodeRoles, spec 2026-10-15-cluster-ha-design section A)           //
+      ////////////////////////////////////////////////////////////////////////
+      if(!isEnabledOnThisNode())
       {
-         LOG.info("Not starting ScheduleManager per settings.");
+         LOG.info("Not starting ScheduleManager per settings (standby on this node).");
          schedulers.values().forEach(s -> s.doNotStart());
          return;
       }
@@ -161,12 +167,29 @@ public class QScheduleManager
       /////////////////////////////////////////////////////////////////////////////////////////////////
       // ensure that everything which should be scheduled is scheduled, in the appropriate scheduler //
       /////////////////////////////////////////////////////////////////////////////////////////////////
-      QContext.withTemporaryContext(new CapturedContext(qInstance, systemUserSessionSupplier.get()), () -> setupAllSchedules());
+      QContext.withTemporaryContext(new CapturedContext(qInstance, QContext.getQSession()), () ->
+      {
+         QContext.setQSession(systemUserSessionSupplier.get());
+         setupAllSchedules();
+      });
 
       //////////////////////////
       // start each scheduler //
       //////////////////////////
       schedulers.values().forEach(s -> s.start());
+      started = true;
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether schedulers start on this node: qqq.scheduleManager.enabled /
+    ** QQQ_SCHEDULE_MANAGER_ENABLED when set, else whether this node has the
+    ** scheduler role (every node does by default).
+    *******************************************************************************/
+   public static boolean isEnabledOnThisNode()
+   {
+      return (new QMetaDataVariableInterpreter().getBooleanFromPropertyOrEnvironment("qqq.scheduleManager.enabled", "QQQ_SCHEDULE_MANAGER_ENABLED", QNodeRoles.has(QNodeRoles.Role.SCHEDULER)));
    }
 
 
@@ -174,8 +197,19 @@ public class QScheduleManager
    /*******************************************************************************
     **
     *******************************************************************************/
+   public boolean isStarted()
+   {
+      return (started);
+   }
+
+
+
+   /*******************************************************************************
+    ** Stop all schedulers and expose the stopped state to health probes.
+    *******************************************************************************/
    public void stop()
    {
+      started = false;
       schedulers.values().forEach(s -> s.stop());
    }
 
@@ -186,6 +220,7 @@ public class QScheduleManager
     *******************************************************************************/
    public void stopAsync()
    {
+      started = false;
       schedulers.values().forEach(s -> s.stopAsync());
    }
 
@@ -541,6 +576,7 @@ public class QScheduleManager
     *******************************************************************************/
    public void unInit()
    {
+      started = false;
       qScheduleManager = null;
       schedulers.values().forEach(s -> s.unInit());
       schedulers.clear();

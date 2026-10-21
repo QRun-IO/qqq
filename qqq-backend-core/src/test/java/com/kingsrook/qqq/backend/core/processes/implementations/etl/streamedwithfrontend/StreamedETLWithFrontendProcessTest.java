@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwithfrontend;
@@ -46,8 +45,10 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
+import com.kingsrook.qqq.backend.core.model.secrets.OneTimeSecret;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryRecordStore;
 import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamed.StreamedETLProcess;
+import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -723,6 +724,69 @@ public class StreamedETLWithFrontendProcessTest extends BaseTest
       int          previewIdx = stepList.indexOf(StreamedETLWithFrontendProcess.STEP_NAME_PREVIEW);
       int          reviewIdx  = stepList.indexOf(StreamedETLWithFrontendProcess.STEP_NAME_REVIEW);
       assertEquals(previewIdx + 1, reviewIdx, "review step should still immediately follow preview");
+   }
+
+
+
+   /*******************************************************************************
+    ** Per-page load secrets must reach the outer execute output without state leakage.
+    *******************************************************************************/
+   @Test
+   void testPageOneTimeSecrets() throws QException
+   {
+      QInstance instance = QContext.getQInstance();
+      QProcessMetaData process = StreamedETLWithFrontendProcess.defineProcessMetaData(
+         TestUtils.TABLE_NAME_SHAPE, TestUtils.TABLE_NAME_PERSON_MEMORY,
+         ExtractViaQueryStep.class, SecretTransformStep.class, SecretLoadStep.class);
+      process.setName("secretLoad");
+      process.setTableName(TestUtils.TABLE_NAME_SHAPE);
+      instance.addProcess(process);
+      TestUtils.insertDefaultShapes(instance);
+
+      RunProcessOutput output = runProcess(instance, process);
+      assertThat(output.getOneTimeSecrets()).extracting(OneTimeSecret::getValue).containsExactly("transform-access-token", "load-access-token");
+      assertThat(output.getValues().get(RunProcessAction.ONE_TIME_SECRETS_MASKED)).isEqualTo(List.of("****transform", "****token"));
+      assertThat(com.kingsrook.qqq.backend.core.actions.processes.RunProcessActionOneTimeSecretsTest.json(RunProcessAction.getState(output.getProcessUUID()).orElseThrow()))
+         .doesNotContain("transform-access-token", "load-access-token");
+   }
+
+
+
+   /*******************************************************************************
+    ** A load step representing an API which creates an access token.
+    *******************************************************************************/
+   public static class SecretLoadStep extends LoadViaInsertStep
+   {
+      /***************************************************************************
+       ** Produce a one-time token while loading a page.
+       ***************************************************************************/
+      @Override
+      public void runOnePage(RunBackendStepInput input, RunBackendStepOutput output) throws QException
+      {
+         super.runOnePage(input, output);
+         output.addOneTimeSecret(new OneTimeSecret().withLabel("Access token").withValue("load-access-token").withMasked("****token"));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A transform can also return a secret during execution, before the load runs.
+    *******************************************************************************/
+   public static class SecretTransformStep extends TestTransformShapeToPersonStep
+   {
+      /***************************************************************************
+       ** Preview must not create tokens; emit one during actual execution only.
+       ***************************************************************************/
+      @Override
+      public void runOnePage(RunBackendStepInput input, RunBackendStepOutput output) throws QException
+      {
+         super.runOnePage(input, output);
+         if(StreamedETLWithFrontendProcess.STEP_NAME_EXECUTE.equals(input.getStepName()))
+         {
+            output.addOneTimeSecret(new OneTimeSecret().withLabel("Transform token").withValue("transform-access-token").withMasked("****transform"));
+         }
+      }
    }
 
 }

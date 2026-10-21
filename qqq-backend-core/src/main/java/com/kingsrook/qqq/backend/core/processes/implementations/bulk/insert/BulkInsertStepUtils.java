@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert;
@@ -47,7 +46,6 @@ import org.json.JSONObject;
  *******************************************************************************/
 public class BulkInsertStepUtils
 {
-
    /***************************************************************************
     **
     ***************************************************************************/
@@ -125,13 +123,18 @@ public class BulkInsertStepUtils
             BulkLoadProfileField bulkLoadProfileField = new BulkLoadProfileField();
             fieldList.add(bulkLoadProfileField);
             bulkLoadProfileField.setFieldName(jsonObject.optString("fieldName"));
-            bulkLoadProfileField.setHeaderName(jsonObject.has("headerName") ? jsonObject.getString("headerName") : null);
-            bulkLoadProfileField.setColumnIndex(jsonObject.has("columnIndex") ? jsonObject.getInt("columnIndex") : null);
-            bulkLoadProfileField.setDefaultValue((Serializable) jsonObject.opt("defaultValue"));
+
+            /////////////////////////////////////////////////////////////////////////
+            // optional values may be sent as JSON null (e.g., headerName for a    //
+            // file without a header row - QRun-IO/qqq#660) - treat that as absent //
+            /////////////////////////////////////////////////////////////////////////
+            bulkLoadProfileField.setHeaderName(jsonObject.isNull("headerName") ? null : jsonObject.getString("headerName"));
+            bulkLoadProfileField.setColumnIndex(jsonObject.isNull("columnIndex") ? null : jsonObject.getInt("columnIndex"));
+            bulkLoadProfileField.setDefaultValue(jsonObject.isNull("defaultValue") ? null : (Serializable) jsonObject.get("defaultValue"));
             bulkLoadProfileField.setDoValueMapping(jsonObject.optBoolean("doValueMapping"));
             bulkLoadProfileField.setClearIfEmpty(jsonObject.optBoolean("clearIfEmpty"));
 
-            if(BooleanUtils.isTrue(bulkLoadProfileField.getDoValueMapping()) && jsonObject.has("valueMappings"))
+            if(BooleanUtils.isTrue(bulkLoadProfileField.getDoValueMapping()) && !jsonObject.isNull("valueMappings"))
             {
                bulkLoadProfileField.setValueMappings(new HashMap<>());
                JSONObject valueMappingsJsonObject = jsonObject.getJSONObject("valueMappings");

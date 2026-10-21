@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin.executors;
@@ -30,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
+import com.kingsrook.qqq.backend.core.cluster.ClusterCaches;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -44,6 +44,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2Authen
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.QSessionStoreRegistry;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.OAuth2AuthenticationModule;
+import com.kingsrook.qqq.backend.core.realtime.RealtimeBus;
+import com.kingsrook.qqq.backend.core.realtime.RealtimeMessage;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.memoization.Memoization;
 import com.kingsrook.qqq.middleware.javalin.executors.io.BackChannelLogoutInput;
@@ -66,8 +68,8 @@ import com.nimbusds.openid.connect.sdk.validators.LogoutTokenValidator;
 public class BackChannelLogoutExecutor extends AbstractMiddlewareExecutor<BackChannelLogoutInput, BackChannelLogoutOutputInterface>
 {
    private static final Duration MAX_TOKEN_AGE = Duration.ofMinutes(5);
-   private static final Memoization<List<String>, LogoutTokenValidator> VALIDATORS = new Memoization<List<String>, LogoutTokenValidator>()
-      .withTimeout(Duration.ofMinutes(10)).withMaxSize(100);
+   private static final Memoization<List<String>, LogoutTokenValidator> VALIDATORS = ClusterCaches.nodeLocal(new Memoization<List<String>, LogoutTokenValidator>()
+      .withTimeout(Duration.ofMinutes(10)).withMaxSize(100), "provider key validators, the same on every node");
    private static final Map<List<Object>, Instant> PROCESSED_TOKENS = new HashMap<>();
 
 
@@ -194,6 +196,12 @@ public class BackChannelLogoutExecutor extends AbstractMiddlewareExecutor<BackCh
             }
             try
             {
+               ///////////////////////////////////////////////////////////////////
+               // drop stored refresh tokens first, so a session whose row       //
+               // deletion fails can't be renewed; the provider already ended it //
+               ///////////////////////////////////////////////////////////////////
+               OAuth2AuthenticationModule.deleteStoredRefreshTokens(QContext.getQInstance(), sessionUuids);
+
                var deleted = new DeleteAction().execute(new DeleteInput().withTableName(tableName)
                   .withQueryFilter(new QQueryFilter(new QFilterCriteria("uuid", QCriteriaOperator.IN, sessionUuids))));
                if(deleted.getRecordsWithErrors() != null && !deleted.getRecordsWithErrors().isEmpty())
@@ -204,6 +212,8 @@ public class BackChannelLogoutExecutor extends AbstractMiddlewareExecutor<BackCh
             finally
             {
                sessionUuids.forEach(OAuth2AuthenticationModule::clearAccessTokenCache);
+               sessionUuids.forEach(uuid -> RealtimeBus.get(QContext.getQInstance())
+                  .publish(new RealtimeMessage().withChannel("session:" + uuid).withEvent("session-ended")));
             }
          }
       }

@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.model.actions.processes;
@@ -27,6 +26,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QRuntimeException;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionOutput;
@@ -36,6 +36,7 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.data.QRecordEntity;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QFrontendStepMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
+import com.kingsrook.qqq.backend.core.model.secrets.OneTimeSecret;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 
 
@@ -45,6 +46,8 @@ import com.kingsrook.qqq.backend.core.utils.ValueUtils;
  *******************************************************************************/
 public class RunBackendStepOutput extends AbstractActionOutput implements Serializable
 {
+   private transient List<OneTimeSecret> oneTimeSecrets = new ArrayList<>();
+
    private String processName;
 
    private ProcessState processState;
@@ -455,4 +458,32 @@ public class RunBackendStepOutput extends AbstractActionOutput implements Serial
    {
       processPayload.toProcessState(getProcessState());
    }
+
+
+   /*******************************************************************************
+    ** Secrets for the producing invocation only, excluded from state and serialization.
+    ** Async jobs cannot deliver these: status polling returns only stored state.
+    *******************************************************************************/
+   @JsonIgnore
+   public List<OneTimeSecret> getOneTimeSecrets()
+   {
+      if(oneTimeSecrets == null)
+      {
+         oneTimeSecrets = new ArrayList<>();
+      }
+      return (oneTimeSecrets);
+   }
+
+
+
+   /*******************************************************************************
+    ** Return a secret only in this invocation's synchronous HTTP response.
+    ** Never put the secret in values or records. Async status cannot recover it.
+    *******************************************************************************/
+   public RunBackendStepOutput addOneTimeSecret(OneTimeSecret secret)
+   {
+      getOneTimeSecrets().add(secret);
+      return (this);
+   }
+
 }

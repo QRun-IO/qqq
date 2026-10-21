@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.module.postgres.strategy;
@@ -536,5 +535,73 @@ public class PostgreSQLRDBMSActionStrategyTest extends BaseTest
 
       UpdateOutput updateOutput = new UpdateAction().execute(updateInput);
       assertEquals(3, updateOutput.getRecords().size(), "Should update 3 records");
+   }
+
+
+
+   /*******************************************************************************
+    ** the fetch size is only applied inside a transaction (autocommit off); outside
+    ** of one, pgjdbc ignores it, so we leave the statement alone.
+    *******************************************************************************/
+   @Test
+   void testConfigureStatementForLargeResults() throws Exception
+   {
+      try(Connection connection = ConnectionManager.getConnection(TestUtils.defineBackend()))
+      {
+         PostgreSQLRDBMSActionStrategy strategy = new PostgreSQLRDBMSActionStrategy();
+
+         connection.setAutoCommit(true);
+         try(PreparedStatement ps = connection.prepareStatement("SELECT 1"))
+         {
+            strategy.configureStatementForLargeResults(connection, ps);
+            assertEquals(0, ps.getFetchSize(), "autocommit on: fetch size is not set");
+         }
+
+         connection.setAutoCommit(false);
+         try(PreparedStatement ps = connection.prepareStatement("SELECT 1"))
+         {
+            strategy.configureStatementForLargeResults(connection, ps);
+            assertEquals(PostgreSQLRDBMSActionStrategy.DEFAULT_LARGE_RESULT_FETCH_SIZE, ps.getFetchSize());
+         }
+
+         strategy.setLargeResultFetchSize(0);
+         try(PreparedStatement ps = connection.prepareStatement("SELECT 1"))
+         {
+            strategy.configureStatementForLargeResults(connection, ps);
+            assertEquals(0, ps.getFetchSize(), "disabled: fetch size is not set");
+         }
+         connection.rollback();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** a hinted query inside a transaction (cursor-based fetching, with a tiny fetch
+    ** size so that many round trips happen) returns exactly the same rows as an
+    ** un-hinted query.
+    *******************************************************************************/
+   @Test
+   void testLargeResultHintedQueryInTransactionReturnsAllRows() throws Exception
+   {
+      PostgreSQLRDBMSActionStrategy strategy = new PostgreSQLRDBMSActionStrategy();
+      strategy.setLargeResultFetchSize(1);
+
+      QueryInput plain = new QueryInput(TestUtils.TABLE_NAME_PERSON);
+      int        expected = new QueryAction().execute(plain).getRecords().size();
+      assertTrue(expected > 1);
+
+      var transaction = com.kingsrook.qqq.backend.core.actions.QBackendTransaction.openFor(new QueryInput(TestUtils.TABLE_NAME_PERSON));
+      try
+      {
+         QueryInput hinted = new QueryInput(TestUtils.TABLE_NAME_PERSON);
+         hinted.setTransaction(transaction);
+         hinted.withQueryHint(com.kingsrook.qqq.backend.core.model.actions.tables.QueryHint.POTENTIALLY_LARGE_NUMBER_OF_RESULTS);
+         assertEquals(expected, new QueryAction().execute(hinted).getRecords().size());
+      }
+      finally
+      {
+         transaction.close();
+      }
    }
 }

@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.modules.backend.implementations.utils;
@@ -56,6 +55,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.functions.FieldFunct
 import com.kingsrook.qqq.backend.core.model.metadata.fields.functions.FieldFunctionTypeRegistry;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
+import com.kingsrook.qqq.backend.core.utils.JsonFieldUtils;
 import com.kingsrook.qqq.backend.core.utils.ObjectUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
@@ -142,7 +142,12 @@ public class BackendQueryFilterUtils
          /////////////////////////////////////////////////////////////////////////////////////
          if(criterionMatches == null)
          {
-            criterionMatches = doesCriteriaMatch(criterion, criterion.getFieldName(), getValue(criterion, null, qRecord, joinsContext));
+            QTableMetaData table = tableForCriteria(criterion, qRecord, null);
+            String fieldName = criterion.getFieldName();
+            String localName = fieldName.substring(fieldName.lastIndexOf('.') + 1);
+            QFieldMetaData field = table == null ? null : table.getFields().get(localName);
+            criterionMatches = field == null ? doesCriteriaMatch(criterion, fieldName, getValue(criterion, null, qRecord, joinsContext))
+               : ValueUtils.withFieldConversionContext(table, field, () -> doesCriteriaMatchValue(criterion, field, getValue(criterion, field, qRecord, joinsContext)));
          }
 
          ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -221,8 +226,29 @@ public class BackendQueryFilterUtils
     *******************************************************************************/
    private static boolean doesCriteriaMatch(QFilterCriteria criterion, QFieldMetaData field, QRecord qRecord, JoinsContext joinsContext)
    {
-      Serializable value = getValue(criterion, field, qRecord, joinsContext);
-      return doesCriteriaMatchValue(criterion, field, value);
+      QTableMetaData table = tableForCriteria(criterion, qRecord, joinsContext);
+      return ValueUtils.withFieldConversionContext(table, field, () ->
+      {
+         Serializable value = getValue(criterion, field, qRecord, joinsContext);
+         return doesCriteriaMatchValue(criterion, field, value);
+      });
+   }
+
+
+
+   /*******************************************************************************
+    ** Retain classification for table-backed records even without a query context.
+    *******************************************************************************/
+   private static QTableMetaData tableForCriteria(QFilterCriteria criterion, QRecord record, JoinsContext joinsContext)
+   {
+      if(joinsContext != null)
+      {
+         return joinsContext.getTable(joinsContext.resolveTableNameOrAliasToTableName(
+            joinsContext.getFieldAndTableNameOrAlias(criterion.getFieldName(), true).tableNameOrAlias()));
+      }
+      String fieldName = criterion.getFieldName();
+      String tableName = fieldName.contains(".") ? fieldName.substring(0, fieldName.indexOf('.')) : record.getTableName();
+      return QContext.getQInstance() == null || tableName == null ? null : QContext.getQInstance().getTable(tableName);
    }
 
 
@@ -261,6 +287,7 @@ public class BackendQueryFilterUtils
 
       boolean criterionMatches = switch(criterion.getOperator())
       {
+         case CONTAINS_ALL -> throw new IllegalArgumentException("CONTAINS_ALL must be expanded before backend execution.");
          case EQUALS -> testEquals(criterion, value);
          case NOT_EQUALS -> !testEquals(criterion, value);
          case NOT_EQUALS_OR_IS_NULL -> !testEquals(criterion, value) || testBlank(criterion, value);
@@ -310,7 +337,8 @@ public class BackendQueryFilterUtils
    private static Serializable getValue(QFilterCriteria criterion, QFieldMetaData field, QRecord qRecord, JoinsContext joinsContext)
    {
       String       fieldName = criterion.getFieldName();
-      Serializable value     = qRecord.getValue(fieldName);
+      String prefix = fieldName.contains(".") ? fieldName.substring(0, fieldName.lastIndexOf('.') + 1) : "";
+      Serializable value = field == null ? qRecord.getValue(fieldName) : JsonFieldUtils.read(qRecord, field, prefix);
 
       if(value == null)
       {
@@ -325,7 +353,7 @@ public class BackendQueryFilterUtils
             Map<String, Serializable> values = qRecord.getValues();
             if(values.keySet().stream().noneMatch(n -> n.contains(".")) || parts[0].equals(qRecord.getTableName()))
             {
-               value = qRecord.getValue(parts[1]);
+               value = field == null ? qRecord.getValue(parts[1]) : JsonFieldUtils.read(qRecord, field, "");
             }
          }
       }
@@ -799,6 +827,7 @@ public class BackendQueryFilterUtils
       ////////////////////////////////////////////////////////////////////////////////////////////////////
       // figure out if any order-bys need to have a field-function used to apply to valuels for sorting //
       ////////////////////////////////////////////////////////////////////////////////////////////////////
+      Map<String, QFieldMetaData> sortFields = new HashMap<>();
       Map<String, FieldFunctionType> fieldFunctionTypes = new HashMap<>();
       Map<String, FieldFunction>     fieldFunctions     = new HashMap<>();
       if(joinsContext != null)
@@ -811,6 +840,7 @@ public class BackendQueryFilterUtils
             }
 
             JoinsContext.FieldAndTableNameOrAlias fieldAndTableNameOrAlias = joinsContext.getFieldAndTableNameOrAlias(orderBy.getFieldName(), true);
+            sortFields.put(orderBy.getFieldName(), fieldAndTableNameOrAlias.field());
             if(fieldAndTableNameOrAlias.field() instanceof QVirtualFieldMetaData virtualField)
             {
                FieldFunction fieldFunction = virtualField.getFieldFunction();
@@ -836,6 +866,13 @@ public class BackendQueryFilterUtils
 
             Serializable valueA = a.getValue(orderBy.getFieldName());
             Serializable valueB = b.getValue(orderBy.getFieldName());
+            QFieldMetaData sortField = sortFields.get(orderBy.getFieldName());
+            if(sortField != null && sortField.getBackendStorage() != null)
+            {
+               QFilterCriteria readCriteria = new QFilterCriteria().withFieldName(orderBy.getFieldName());
+               valueA = getValue(readCriteria, sortField, a, joinsContext);
+               valueB = getValue(readCriteria, sortField, b, joinsContext);
+            }
 
             //////////////////////////////////////
             // apply a field function if needed //

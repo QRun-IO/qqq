@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.module.filesystem.local.actions;
@@ -39,6 +38,7 @@ import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
@@ -142,7 +142,9 @@ public class AbstractFilesystemAction extends AbstractBaseFilesystemAction<File>
 
             if(isMatch)
             {
-               rs.add(new File(fullPath + File.separatorChar + matchedFile));
+               String filePath = fullPath + File.separatorChar + matchedFile;
+               validateTableFilePath(backendBase, table, filePath);
+               rs.add(new File(filePath));
             }
          }
 
@@ -207,7 +209,23 @@ public class AbstractFilesystemAction extends AbstractBaseFilesystemAction<File>
    @Override
    public void writeFile(QBackendMetaData backend, QTableMetaData table, QRecord record, String path, byte[] contents) throws IOException
    {
+      validateTableFilePath(backend, table, path);
       FileUtils.writeByteArrayToFile(new File(path), contents);
+   }
+
+
+
+   /*******************************************************************************
+    ** Apply the storage API's table confinement to local record operations too.
+    *******************************************************************************/
+   private void validateTableFilePath(QBackendMetaData backend, QTableMetaData table, String filePath) throws IOException
+   {
+      Path base = new File(getFullBasePath(table, backend)).getCanonicalFile().toPath();
+      Path file = new File(filePath).getCanonicalFile().toPath();
+      if(file.equals(base) || !file.startsWith(base))
+      {
+         throw new IOException("File path must remain inside its table directory");
+      }
    }
 
 
@@ -242,6 +260,15 @@ public class AbstractFilesystemAction extends AbstractBaseFilesystemAction<File>
          //////////////////////////////////////////////////////////////////////////////////////////////
          LOG.debug("Not deleting file, because it does not exist.", logPair("file", file));
          return;
+      }
+
+      try
+      {
+         validateTableFilePath(QContext.getQInstance().getBackend(table.getBackendName()), table, fileReference);
+      }
+      catch(IOException e)
+      {
+         throw new FilesystemException("Invalid path for deleting file", e);
       }
 
       if(!file.delete())

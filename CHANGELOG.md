@@ -7,6 +7,432 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **System table permission hardening.** QQQ's own system tables now need an explicit permission to read directly, through every API (UI API table query/get/count/export, the model API, the legacy routes, saved reports and standalone possible values), even in an instance whose default rules leave its tables unprotected:
+  - the audit tables (`audit`, `auditDetail`, `auditTable`, `auditUser`) need `audit.read`, and the query statistics tables (`queryStat`, `queryStatJoinTable`, `queryStatCriteriaField`, `queryStatOrderByField`) need `queryStat.read` (one permission per group; an instance whose default rules are protected keeps its level, e.g. `audit.hasAccess` under `HAS_ACCESS_PERMISSION`). Holders see them as ordinary tables. Apps that granted the per-table names (`auditDetail.read`, ...) grant `audit.read` instead;
+  - `userSession` and `redirectState` are hidden and locked to every role, admins included, like `userSessionRefreshToken` already was (`UserSessionMetaDataProducer`, `RedirectStateMetaDataProducer`; the enricher locks an OAuth2 instance's own session and state tables that have no rules). The authentication modules keep reading and writing them as the system user (Auth0's session bookkeeping marks its inputs as a permission bypass);
+  - record history is unchanged for users: `GetAuditsForRecord` is no longer protected by a permission of its own. It checks that the caller may read the record (table READ; on a table with record security locks, the record itself) and then reads that record's audit rows past the audit tables' rules, so apps that never declared audit permissions keep record history. `setProcessPermissionToBeBasedOnAuditTableReadPermission` remains as an opt-in to the stricter rule;
+  - writing audits (`AuditAction`) and query statistics never needs these permissions, even with core permission enforcement on;
+  - rendering a saved report now needs READ on its table and joined tables (the report's queries run trusted);
+  - the assistant's `get_record_history` tool keeps its stricter rule (READ on the audit table, plus the host's assistant audit opt-in), so it now needs `audit.read`.
+
+  The rules are set by the tables' meta-data providers (`SystemTablePermissions`); an application that sets its own permission rules on one of these tables after defining it replaces them.
+- `QMetaDataVariableInterpreter` has an explicit trusted/untrusted input mode (`setTrustedInput`). An interpreter that handles user-supplied values (one with value maps, such as the ones for query filter criteria and report formulas, which now set it explicitly) does not resolve `${env.X}`, `${prop.X}` or `${file.PATH}` references; they stay literal text. Metadata-time interpretation is unchanged, and `${input.X}` and the other value-map references behave as before. Applications that relied on env or prop references in filter or report values must resolve them in trusted code instead.
+- Durable jobs can no longer be launched (or auto-diverted) from an access-token session: a scoped credential (`QCredentialScope`, e.g. a PAT) or a bearer request. A worker could not hold the job to the token's scope, expiry or revocation, so a scoped token could otherwise start work that ran with the user's full permissions and outlived the token (review finding N1). Launch from an interactive sign-in instead; that path uses job grants.
+
+### Added
+- **Memory-pressure probes and `/live`** (`docs/DEPLOYMENT-MODES.md#memory-pressure`). Two core checks watch this JVM's heap after GC and GC pause time (`JvmMemoryPressure`): `core.jvm.memory_pressure` (READINESS, on `/ready`) is DEGRADED while pressured, and DOWN after 15 s when the host sets `QQQ_HEALTH_MEMORY_READINESS_ACTION=down` (multi-replica only; the single-node default never leaves the load balancer); `core.jvm.memory_pressure_sustained` (LIVENESS) is DOWN after 120 s of pressure. The new `GET /live` route runs only checks flagged `includeInLivenessProbe`, so pointing a Kubernetes liveness probe at it restarts a JVM stuck in GC thrash (a kof22 web pod served 4-6 s responses for about a minute before OutOfMemoryError on 2026-10-16) without ever restarting for a database or provider outage. Thresholds: `QQQ_HEALTH_HEAP_AFTER_GC_PERCENT` (85), `QQQ_HEALTH_HEAP_RECOVER_PERCENT` (75), `QQQ_HEALTH_GC_TIME_PERCENT` (30), `QQQ_HEALTH_MEMORY_WINDOW_SECONDS` (30), `QQQ_HEALTH_MEMORY_READINESS_AFTER_SECONDS` (15), `QQQ_HEALTH_MEMORY_LIVENESS_AFTER_SECONDS` (120); `QQQ_HEALTH_MEMORY_PRESSURE_ENABLED=false` removes both. `HealthCheckMetaData` gains `includeInLivenessProbe` and `probeCache` (false: `/ready` runs the check live instead of using the runner's last result).
+- **Pod restarts on System Health** (opt-in): with `QQQ_HEALTH_POD_RESTARTS_SELECTOR` set and a mounted service account token that may list pods, `core.kubernetes.pod_restarts` (DEPENDENCY, 60 s) reads the app's pods from the Kubernetes API and is DEGRADED when a container restarted in the last hour, naming the cause (JVM out of memory = exit 3, OOMKilled), and DOWN in CrashLoopBackOff, so crashes raise the standard `health.check.*` alerts.
+- **Service identities, owner decision 2026-10-16 (D2 amended):** work a principal does on behalf of a user now has exactly that user's current access by default: every permission (processes, writes and deletes included) and every record-lock key. `QServicePrincipalMetaData.DelegatedAccess.INTERSECT_WITH_PRINCIPAL` keeps the narrower behavior. User-owned durable jobs without a grant run on the user's behalf through the declared `scheduler` principal, instead of a token-less automated session.
+- **Service identities** (`docs/SERVICE-IDENTITY.md`): background work can run as a named service principal instead of the system user or a token-less session. Declare one with `ServiceIdentitiesMetaData.declare(qInstance, new QServicePrincipalMetaData().withName("scheduler"))`, then call `ServiceIdentities.run("scheduler", ...)`, or `runOnBehalfOf("scheduler", userId, ...)` for work done for a user.
+  - **OAuth2:** the principal's service account (`QQQ_SERVICE_{NAME}_USERNAME` / `_SECRET`, from the environment only) gets a real access token with `client_credentials` (Authentik: username + app-password token). The session is built through the existing bearer path, so issuer, signature, audience, lifetime and the customizer's policy all apply, and OAuth2 gains no new way to accept a session. The instance needs `bearerTokensEnabled`; validation fails without it.
+  - **Token cache:** tokens are cached per node in memory for at most 5 minutes and never handed out with less than 60 s left. A key-only `ClusterCaches` invalidate (`serviceIdentity.tokens`) drops a principal's token on every node. Refusals back off (30 s doubling to 5 min) and raise the `service_identity.unavailable` alert; there is never a fallback to the system user.
+  - **Local modules (TABLE_BASED, MOCK, fully anonymous):** a `QServiceSession` carries exactly the principal's declared local permissions and keys. It is valid only when this JVM minted it, and OAuth2 and Auth0 never accept it.
+  - **On behalf of a user:** the user's current access (from `createAutomatedSessionForUser`) intersected with the principal's permissions, with all-access keys the principal lacks dropped. The session is valid only while the principal's own session is.
+  - **Audit:** rows record `service:{name}`, or `{user} via service:{name}`.
+  - Nothing changes until a principal is declared.
+  - **Core call sites:** when a principal named `scheduler` is declared, scheduled reports and output deliveries (`DeliverySessions.forOwner`) run on behalf of their owner through it (deliveries made by another principal go through that principal). `DurableJobsMetaData.withScheduledJobsServicePrincipal("scheduler")` makes the principal own scheduled durable jobs (job owner `service:scheduler`). Workers re-mint its session at every claim, and service sessions are not treated as token sessions for job launches. Unfinished scheduler jobs still owned by the old `scheduledJobsUserId` move to the principal once per node. An unavailable principal fails the tick instead of falling back.
+  - **Health and guardrail:** each declared principal gets a `service_identity.{name}` health check (category IDENTITY, every 5 min, through the same token cache). It is UP while the principal can authenticate and DOWN otherwise, and never echoes the error. An ArchUnit rule (`SystemSessionAllowListArchitectureTest`) holds core's `QSystemUserSession` construction to an allow-list of plumbing classes, each with its reason (design section 6.3, D6).
+- **User profile and avatars** (UI API 1.8.0, QQQ 4.1.0-RC.17, `docs/USER-PROFILE-AVATARS.md`): `new UserProfileMetaDataProvider().defineAll(qInstance, backendName, avatarStorageTableName)` installs the `user_profile` table and a core **Profile** preferences section (photo, display name, and a per-user Gravatar choice when the app sets `withGravatarOptIn(true)`; off by default, so no third-party request is made). Photos are uploaded with `POST /uploads`; the type is detected from magic bytes (PNG, JPEG, GIF, WebP; SVG and everything else refused), the size (5 MB) and dimensions (40 MP) are bounded before decoding, and the image is centre-cropped, turned upright (EXIF orientation) and re-encoded as PNG at 32/64/128/256 px, which strips EXIF/GPS and all other metadata. Images live in the app's storage table at `avatars/{key}/{size}.png` (content-keyed; replaced or removed photos and the consumed upload are deleted; no temporary files). `GET /qqq/v1/avatars/{avatarId}` (opaque id) serves them to signed-in users and `POST /qqq/v1/avatars/lookup` maps user ids to avatar URLs; a chosen Gravatar is fetched and re-encoded by the server; `manageSession` adds `values.user.avatarUrl` and `displayName`. The table is protected (table permissions plus an owner record lock, key type `user_profile_user`; `user_profile_admin` sees all): hosts call `UserProfiles.applyToSession(session)` at sign-in. Decodes are limited to 2 at once per node and 10 photo changes a minute per user. New dependency: `com.twelvemonkeys.imageio:imageio-webp` (WebP decoding).
+
+  Migration (PostgreSQL; applications own the DDL):
+  ```sql
+  CREATE TABLE user_profile (
+     id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+     user_id VARCHAR(255) NOT NULL,
+     avatar_id VARCHAR(32),
+     display_name VARCHAR(100),
+     avatar_key VARCHAR(64),
+     avatar_updated_at TIMESTAMPTZ,
+     use_gravatar BOOLEAN,
+     gravatar_hash VARCHAR(64),
+     create_date TIMESTAMPTZ,
+     modify_date TIMESTAMPTZ
+  );
+  CREATE UNIQUE INDEX uq_user_profile_user_id ON user_profile (user_id);
+  CREATE UNIQUE INDEX uq_user_profile_avatar_id ON user_profile (avatar_id);
+  -- rows written before avatar_id existed (pre-release builds): give each an opaque id
+  UPDATE user_profile SET avatar_id = md5(random()::text || clock_timestamp()::text || id::text) WHERE avatar_id IS NULL;
+  ```
+  Sessions get the profile lock keys centrally: every UI API and legacy request (`ExecutorSessionUtils`, `QJavalinImplementation.setupSession`) and every automated session (jobs, scheduled jobs, deliveries, scheduled reports) through `UserProfiles.applyIfInstalled`. A chosen Gravatar is converted once per version and kept in the avatar storage table (`gravatars/{avatarId}/{version}/{size}.png`) with its own decode permit; a missing one is remembered for ten minutes.
+- **Deployment modes, documented and tested** (`docs/DEPLOYMENT-MODES.md`): the exact configuration for a single node (the default, nothing to set), a single node with ESB, and HA on several nodes, plus how to go back to one node. CI job `sample_multinode_acceptance` runs `SampleSingleNodeDefaultsTest`, which checks the single-node defaults end to end with no environment set, and `SampleMultiNodeIT`, which runs packaged sample JVMs on a shared H2 TCP database and broker. That test covers a wizard continuing on another node, cross-node status polls and cancels, one-time secrets, ClusterCaches invalidation over `EsbClusterBus`, a killed node reported as stopped, `/ready` 503 while draining, and a worker node without the web role. The sample adds an opt-in `SAMPLE_CLUSTER_MODE` (off by default). `qqq-middleware-health` becomes a compile dependency of the sample.
+- **S3 session credentials** (#1165): `S3BackendMetaData` gains `sessionToken`, so `S3ClientFactory` builds clients that sign with temporary (STS) credentials (`AwsSessionCredentials`), and `credentialsProviderCode`, a `QCodeReference` to an application `AwsCredentialsProvider` for credentials that refresh themselves. Precedence: provider, then keys with a session token, then plain keys, then the SDK default chain. A session token without both keys fails fast. The token and the provider are part of the client cache key. `S3ClientFactory.buildCredentialsProvider` is now public, so callers such as presigners can sign with the same credentials.
+- **`${file.PATH}` secret references** (#1165): `QMetaDataVariableInterpreter` reads the trimmed contents of an orchestrator-mounted secret file (Kubernetes secret volume, Docker secret), read-only and re-read on each interpretation. The path must be absolute and, after symbolic links resolve, inside an allowed root: `/var/run/secrets` and `/run/secrets` by default, or `qqq.fileReference.roots` / `QQQ_FILE_REFERENCE_ROOTS` (comma-separated). Files over 1 MiB are refused, and contents are never logged. An interpreter with value maps (user-supplied `${input.X}` values in filters and report formulas) does not read files unless `setFileReferencesEnabled(true)` is called. `S3BackendMetaData.sessionToken` is interpreted like the keys. See `docs/metaData/Backends.adoc`.
+- **ESB transactional outbox (qqq-esb)**: with `EsbInstanceMetaData.withOutbox(new EsbOutboxConfig().withEnabled(true))`, table record-change events are written to an outbox table in the same backend transaction as the record write. A failed outbox write fails the write. A relay on every node claims rows with a lease (`FOR UPDATE SKIP LOCKED` on PostgreSQL) and publishes them in order per destination, with backoff retries. A row goes `DEAD` after `maxAttempts`; broker outages don't count as attempts. `SENT` rows are purged after `retentionDays`. Messages carry the row uuid as the `qqq_message_id` JMS property (at-least-once delivery). The `core.esb.outbox` health check reports DEAD and stale PENDING rows. Off by default. See `docs/esb/index.adoc`.
+- **ESB idempotent triggers (qqq-esb)**: with `EsbInstanceMetaData.withDedupe(new EsbDedupeConfig().withEnabled(true))`, triggers record processed message ids (`qqq_message_id`, else `ce_id`) in a processed-message table. They skip redelivered messages from failovers, lost commits and outbox re-sends. Off by default.
+- **ESB single-broker or HA through config (qqq-esb)**: an Artemis failover url such as `(tcp://a:61616,tcp://b:61616)?ha=true&reconnectAttempts=-1&retryInterval=1000` passes through untouched, and `callFailoverTimeout` defaults to 30 s. A client failover (`FAILOVER`) no longer tears down the connection: the manager keeps it and fires its listeners so triggers rebuild their consumers. A direct publish whose commit a failover rolled back or left in doubt, or whose session went stale, is retried once on a fresh session.
+- `RecordChangeEvent.getNotificationsSuppressed()`: true when a write omitted record change events, so a required listener can skip its notification part.
+- **Several nodes as one application** (spec `docs/specs/2026-10-15-cluster-ha-design.md`). All of it is opt-in; a single node behaves as before.
+  - Shared process and async-job state: `StateProviderMetaData` plus the built-in `TableStateProvider` (any backend, gzip, AES-GCM with `QQQ_STATE_ENCRYPTION_KEY`, which is required once state is shared, TTL plus a sweeper). Any node can serve any process step, status poll, records page or cancel, so sticky sessions are optional. Progress writes are throttled. A cancel made on any node reaches the running job. A job whose node died reports "server stopped" instead of hanging. One-time secrets hand off across nodes only through the encrypted store.
+  - Node roles: `QQQ_NODE_ROLES` = web, worker, scheduler, esb, or all (the default), with per-feature flags `QQQ_HTTP_ENABLED`, `QQQ_SCHEDULE_MANAGER_ENABLED`, `QQQ_ESB_TRIGGERS_ENABLED` and `QQQ_JOBS_WORKER_THREADS`. Health reports standby, not down.
+  - Graceful drain: `/ready` answers 503 while draining. On SIGTERM, in-flight async steps and requests finish first (`QQQ_DRAIN_DELAY_SECONDS`, `QQQ_ASYNC_DRAIN_SECONDS`, `QQQ_HTTP_DRAIN_SECONDS`), using Jetty `GracefulHandler`.
+  - `ClusterBus` control events (session-ended, metadata-overlay-changed, setting-changed, memo-invalidate) over a pluggable transport. qqq-esb adds `EsbClusterBus` (topic `qqq.cluster.control`). `ClusterCaches` registers every static cache, and `ClusterCacheAudit` fails a test when one is not registered. Logout clears token caches and session-store entries on every node.
+  - Job grants: with `QQQ_JOB_GRANT_KEY`, a durable job launched from a user sign-in runs on a worker as that user, from the same sign-in and with current permissions intersected with the launch scope, audited on channel `job`. A signed-out or revoked sign-in fails the job and never escalates.
+  - Test mode `qqq.state.roundTrip` / `QQQ_STATE_ROUND_TRIP` serializes in-memory state, to catch values a shared store could not hold.
+- C3P0 connection pool hardening (`C3P0PooledConnectionProvider`): pool gauges (`connectionsTotal`, `connectionsBusy`, `connectionsIdle`, `threadsAwaitingCheckout`, `maxPoolSize`, `checkoutTimeouts`, `suspectedLeaks`) on the RDBMS backend health check (DEGRADED while threads wait for a checkout or a connection looks leaked) and as `qqq_health_check_metric{...,metric="pool_*"}` on the Prometheus `/metrics` route. New `ConnectionPoolSettings.leakDetectionThresholdSeconds` (log a connection held longer than this, with its checkout stack trace, without reclaiming it) and `unreturnedConnectionTimeoutSeconds` (C3P0 hard reclaim, off by default). `ConnectionManager.closeConnectionProviders()` closes every pool at the end of an application's shutdown, and `ConnectionProviderInterface` gains default `getPoolMetrics()` and `close()`.
+- Statement execution listeners (`com.kingsrook.qqq.backend.core.instrumentation`): an opt-in SPI that every RDBMS action (query, count, aggregate, insert, update, delete, conditional update) reports to, with backend, table, operation, parameterized SQL (never parameter values), elapsed nanoseconds, row count and success. Core opens units of work for HTTP requests (named by route template), scheduled jobs and processes, so listeners can attribute database time and find N+1 patterns (`onUnitOfWorkEnd`). With no listener registered the hooks cost one volatile read; listener errors are caught and rate-limited. Used by qbit-db-performance.
+- Insert, update and delete inputs now offer `omitRecordChangeEvents` (default false) for trusted system writes of derived values. Optional event listeners are suppressed while required integrity listeners and normal security and validation still run.
+- Classpath help bundles with CORE/QBIT/HOST precedence, audited three-way synchronization, user-edit provenance, upstream review actions and background startup sync. Live metadata references render at the server boundary, and `HelpBundleAssertions` gates coverage without JUnit. Core ships `help/qqq-core.yaml`. See `docs/HELP-CONTENT.md` section 5.
+- Data-driven in-app help now supports summaries, permission/client-channel targeting, process/report/possible-value-source slots, author coverage, ranked search, and typed `/qqq/v1` help payloads. The AI `search_help` tool shares candidate collection and retains its exposure restrictions.
+- Help edits on other nodes are detected using count/max-modifyDate, at most once per 30 seconds per instance (`QInstanceHelpContentManager.setReloadIntervalMillis`). Explicit reloads preserve code-declared help, including declarations overridden by a data row. Help tables enable field audit when the audit, auditDetail, auditTable, and auditUser tables are already registered.
+- Optional rich core messaging input (templates, variables, idempotency, category, linked record, audit sender and locale), delivery statuses, provider capability discovery and required-feature guards. Qbits can send through `SendMessageAction` by provider name without importing another qbit. Existing EMAIL and SES sending is unchanged and now returns `SENT`. See `docs/MESSAGING.md`.
+- Per-user Preferences: validated supplemental sections, a provider SPI with fixed row lists, an audited key-value store, and typed `/qqq/v1/preferences` list, get and partial-update operations. See `docs/USER-PREFERENCES.md`.
+- Optional AI table/field `DataClassification` (`PUBLIC`, `CONFIDENTIAL`, `PII`, `PHI`) and null-safe `AiDataClassifications` lookup/aggregation helpers. Existing exposure defaults and frontend metadata are unchanged.
+- Core aggregate analysis extensions: variance/deviation, percentiles, correlation, null/blank counts, string lengths, date/numeric buckets, dialect capabilities, opt-in paged fallback with row limits, and main-table sampling. SQL pushdown supports H2/MySQL and PostgreSQL according to advertised capabilities; existing aggregate callers retain their defaults.
+
+### Migration
+- ESB outbox and dedupe tables are needed only when enabled. Add them with `EsbOutboxTable.defineTable(name, backend)` and `EsbProcessedMessageTable.defineTable(name, backend)`, and create `esb_outbox` / `esb_processed_message` in your migrations. The PostgreSQL Liquibase DDL is in `docs/esb/index.adoc`. Put the outbox on the same backend as the publishing tables.
+- Shared state needs a table (only when `StateProviderMetaData` names one): `qqq_state(state_key varchar(100) primary key, state_type varchar(40), payload text, node_id varchar(250), create_date timestamp, modify_date timestamp, expires_at timestamp)`, plus an index on `expires_at`. `TableStateProvider.defineTable(name, backend)` defines the meta data.
+- `ProcessState` no longer holds `Optional` fields (the getters are unchanged). `ProcessState.stateAccess` and `AsyncJobStatus.stateAccess` are now serialized. `FieldAdornment`, `FieldSecurityLock`, `FieldBehavior`, `OneTimeSecret`, `ProcessMetaDataAdjustment`, `BulkLoadProfileField` and `AiFieldMetaData` are now `Serializable`. Supplemental field meta data that is not serializable is left out when a `QFieldMetaData` is Java-serialized.
+- Help provenance adds nullable `source` (varchar 20), `bundleId` (varchar 100), `bundleVersion` (varchar 50), `lastSeededHash` (varchar 64), `upstreamStatus` (varchar 30), `upstreamSummary` (varchar 500), `upstreamContent` (text), and `modifiedBy` (varchar 100). Existing installations may use `withProvenanceFields(false)` until migrated. This is separate from targeting opt-out. No `/qqq/v1` payload schema changed.
+- Existing physical `helpContent` tables need nullable `summary` (varchar 500), `permissionName` (varchar 250), and `clientChannel` (varchar 100) columns. Until migrated, use `new HelpContentMetaDataProvider().withTargetingFields(false)`; this omits all three fields and the targeting section. Summary values over 500 characters are rejected. Channel targeting uses the session channel name (for example `web`, without `/detail`).
+- Markdown help escapes raw HTML and sanitizes unsafe links. Explicit HTML help remains unchanged for clients to sanitize. The content editor now uses Markdown mode.
+
+### Changed
+- **Behaviour change:** `C3P0PooledConnectionProvider` now bounds checkout waits at 30 seconds (`DEFAULT_CHECKOUT_TIMEOUT_SECONDS`) when `checkoutTimeoutSeconds` is not set; C3P0's own default waited forever. A timed-out checkout throws an `SQLException` that names the backend and the pool state (max, busy, idle, waiting). Set `checkoutTimeoutSeconds` to keep a different bound.
+- Removed the per-RC Next waiver owner-approval gate by owner decision on 2026-10-13; releases no longer require a comment on #798. The seven Next-owned successor features report missing/pending acceptance evidence without blocking releases. Failed tests and invalid supplied receipts still block strict coverage; non-Next requirements are unchanged.
+
+### Fixed
+- Application API requests now authenticate against their own instance when the legacy unversioned middleware API is disabled (#1268). Existing legacy session helper overloads retain their behavior.
+- **ESB listeners no longer publish from the JMS listener thread (qqq-esb)**: `EsbClusterBus`, `EsbRealtimeBus` and the ESB control channel now only parse a message on the JMS client thread and run subscribers on their own ordered worker (`EsbListenerDispatcher`), with the instance in `QContext`. Before, a cluster event handler that published (for example a realtime hint after another node changed the runtime metadata overlay) closed its JMS session on the listener thread, which Artemis refuses (AMQ139006): the message went out but each one leaked a broker session and logged a warning. Pausing or restarting an ESB trigger from a control message had the same problem. Cluster event handlers, `TableStateProvider`, the ESB outbox relay and `JobLogWriter` now build their system session with the instance, so it has its all-access keys on threads without a `QContext`. `SampleMultiNodeIT` checks that realtime hints cross nodes (directly, and from a cluster event handler on another node) with neither error logged; the sample's cluster mode now uses `EsbRealtimeBus`.
+- The cluster bus, the table state provider and the server's SIGTERM drain hook no longer hold a `QInstance` (or the server) strongly. Dropped instances were kept alive for the life of the JVM, which grew test suites that build many instances.
+- **Cluster:** with shared state, a one-time secret is handed out only once. The producing node used to keep a local copy and could hand the secret out again after another node's status poll had taken it from the shared store.
+- **Cluster:** a cancel requested on another node is no longer lost. The node running an async step re-read the stored cancel flag and then rewrote the status row, so a cancel stored between that read and the write was overwritten. Cancels now also write a separate marker that only cancels write.
+- **ESB outbox:** a row whose destination is no longer configured now counts attempts and goes `DEAD` after `maxAttempts`. Before, it was treated as a broker outage: it stayed `PENDING` forever, blocked its destination and logged a warning on every pass.
+- Help bundle sync no longer rewrites (and audits) rows that did not change. A new bundle version with the same text is not a write (`bundleVersion` now records the version that last seeded the row's text), and decisions are made again from freshly read rows just before each batch is written, so replicas that sync at startup together no longer each update every changed row. On kof22 production, deploys that bumped qbit versions were writing about 5,000 audited `helpContent` edits per deploy, about 1,800 of them twice.
+- **Qbit configs no longer leak into JSON.** `SourceQBitAware.getSourceQBit()` and `getSourceQBitConfig()` are now `@JsonIgnore`. Before, any serialized table or process meta-data, such as `ChildRecordListData.childTableMetaData`, carried the qbit's server-side config. A config whose runtime pointed back at it (qbit-alerts) made every child list for that qbit fail with "Error in JSON Serialization" at Jackson's 1000-level nesting limit.
+- **JsonUtils names reference cycles.** When serialization exceeds the nesting limit, the `IllegalArgumentException` message now names the repeating reference chain, for example `reference cycle in ChildRecordListData: ... -> AlertsQBitConfig.runtime -> AlertsRuntime.config -> AlertsQBitConfig.runtime (repeats)`. It used to be the bare "Error in JSON Serialization".
+
+## [4.1.0-RC.6] — candidate (2026-10-13)
+
+Same Next pairing as RC.4/RC.5 (`1.0.0-RC.14`, BOM-managed). Core hooks for the backups qbit
+([design #1091](https://github.com/QRun-IO/qqq/pull/1091)); every hook is opt-in and existing behavior is unchanged.
+
+### Added
+- **Consistent read transactions ([#1116](https://github.com/QRun-IO/qqq/pull/1116))** — `QBackendModuleInterface.openConsistentReadTransaction(ConsistentReadInput)`
+  (default `Optional.empty()`) opens a read-only transaction in which every read reflects one instant, reporting its
+  `ConsistencyGuarantee` (`ONE_INSTANT`, `PER_TABLE`, `BEST_EFFORT`) and, on PostgreSQL, an exportable snapshot id that
+  other transactions can import. Implemented for PostgreSQL, MySQL/MariaDB, SQLite, H2, MongoDB and the memory backend.
+- **`KeysetPager` and raw reads ([#1114](https://github.com/QRun-IO/qqq/pull/1114))** — resumable keyset paging
+  (`pk > lastKey ORDER BY pk LIMIT n`) with a supplied transaction; `QueryInput.withRawRead(RawReadReason)` reads hidden,
+  password and heavy fields without display values, always permission-checked (`requiringPermission` or `checkedBy`)
+  and audited. Record and field security locks still apply.
+- **Restore-mode writes ([#1111](https://github.com/QRun-IO/qqq/pull/1111))** — `RestoreWriteFlag` on insert, update and
+  replace keeps supplied create/modify dates and can suppress automations, customizers, per-record audits and event
+  publication. It requires `RestoreWriteFlag.REQUIRED_PERMISSION`; record and field security, unique keys and required
+  fields still apply.
+- **Sequence resync ([#1112](https://github.com/QRun-IO/qqq/pull/1112))** — `QBackendModuleInterface.resyncKeySequences(backend, tables)`
+  advances generated-key sequences past the largest key after explicit-ID inserts (PostgreSQL `setval`, H2
+  `RESTART WITH`; MySQL, MariaDB and SQLite need nothing), returning a `SequenceResyncResult` per table.
+- **Table schema fingerprints ([#1113](https://github.com/QRun-IO/qqq/pull/1113))** — `TableSchemaFingerprint` (stable SHA-256 over a
+  canonical descriptor, ignoring cosmetic metadata) and `SchemaDiff` (added, removed and changed fields and table properties).
+- **Key provider SPI and streaming artifact encryption ([#1107](https://github.com/QRun-IO/qqq/pull/1107))** — a key provider SPI and a
+  Tink-based streaming cipher for large artifacts (backups). Adds `com.google.crypto.tink:tink` 1.23.0; `protobuf-java`
+  moves 4.33.3 → 4.33.6 (patch; the security override for the mysql-connector-j transitive stays in place).
+
+### Changed
+- **PostgreSQL large-result streaming ([#1106](https://github.com/QRun-IO/qqq/pull/1106))** — queries hinted as potentially large set a
+  cursor fetch size (default 1000; settable, 0 disables) when run inside a transaction, so pgjdbc streams instead of
+  buffering every row. MySQL is unchanged.
+
+## [4.1.0-RC.5] — candidate (2026-10-12)
+
+Same Next pairing as RC.4 (`1.0.0-RC.14`, BOM-managed). **Breaking for code that touches AWS SDK types:** the S3 backend
+moves to AWS SDK for Java v2 (see Changed and [Adopting QQQ 4.1 features](docs/migration/4.1.adoc)).
+
+### Security
+- **System sessions no longer lose their all-access keys ([#1101](https://github.com/QRun-IO/qqq/pull/1101))** — `QSystemUserSession`
+  cached the all-access key names JVM-wide on first use; a system session created against a keyless example instance at
+  Javalin startup could prime it empty, after which system writes to record-locked tables failed. Keys are now computed
+  from the intended instance per session; new `QSystemUserSession(QInstance)` constructor; schedulers install the
+  instance before creating sessions.
+- Upgrade jsoup from 1.23.1 to 1.23.2 for GHSA-65r4-943x-97jj, and manage RabbitMQ AMQP client at 5.37.0
+  (previously 5.35.0 via RabbitMQ JMS 3.9.0) for GHSA-7822-rcf6-97fx and GHSA-cqgh-8p3p-mx4m.
+
+### Changed
+- **Create/Modify Date fields are non-editable by default ([#1103](https://github.com/QRun-IO/qqq/pull/1103))** — `QInstanceEnricher` marks table
+  fields with the `CREATE_DATE`/`MODIFY_DATE` dynamic default behavior `isEditable=false`;
+  `withConfigMakeSystemDateFieldsNonEditable(false)` restores the old behavior. Server-side writes are unaffected.
+- **S3 backend moves to AWS SDK for Java v2 (breaking for code that touches SDK types)** — AWS SDK for Java v1 reached
+  end of support on 2025-12-31, so `qqq-backend-module-filesystem` now uses `software.amazon.awssdk:s3` (v2, via the
+  same `2.41.10` BOM as core) and no longer depends on `com.amazonaws:aws-java-sdk-s3`. Public type changes:
+  `S3Utils.getAmazonS3()`/`setAmazonS3(AmazonS3)` are replaced by `getS3Client()`/`setS3Client(S3Client)`;
+  `AbstractS3Action.buildAmazonS3ClientFromBackendMetaData` is now `buildS3ClientFromBackendMetaData` (returns a shared,
+  cached `S3Client` — do not close it); the S3 "file" type (`AbstractBaseFilesystemAction<FILE>`, `listFiles`,
+  `listObjectsInBucketMatchingGlob`, `getObjectAsInputStream`) is now QQQ's own
+  `com.kingsrook.qqq.backend.module.filesystem.s3.model.S3ObjectSummary` (same getters, but `getLastModified()` returns
+  an `Instant`); `S3UploadOutputStream` takes an `S3Client`; SDK exceptions surface as v2 types (`S3Exception`,
+  `SdkClientException`) instead of `AmazonS3Exception` / `AmazonClientException`. Apps that only declare
+  `S3BackendMetaData` and use QQQ actions need no code change; apps that relied on the v1 SDK arriving transitively
+  must now declare it themselves.
+- **S3-compatible stores** — `S3BackendMetaData` gains `endpoint`, `pathStyleAccess`, `checksumMode`, `tlsVerify`,
+  `caCertificatesPem`, `connectTimeoutMillis`, `socketTimeoutMillis` and `maxListedObjects`, so the backend works with
+  MinIO, Garage, Cloudflare R2, Backblaze B2, Wasabi, DigitalOcean Spaces, Ceph RGW and others, not only AWS. With an
+  `endpoint` set, `checksumMode` defaults to `WHEN_REQUIRED`, because the SDK v2 2.30+ default (`WHEN_SUPPORTED`,
+  trailing CRC32 checksums) breaks several S3-compatible stores. Clients are built and cached per distinct settings by
+  the new `S3ClientFactory`. Timeouts default to 10 s connect / 50 s socket (the v1 defaults).
+- **Capped S3 listings** — a listing that matches more than `maxListedObjects` objects (default 100,000) now fails with
+  a clear `FilesystemException` instead of loading the whole result into memory. Raise the value on the backend, or set
+  zero or a negative number to disable the cap.
+- **`S3StorageAction.makePublic`** still uses an object ACL, but its error now says to use a bucket policy where the
+  bucket or store does not support object ACLs (new AWS buckets, R2, Garage).
+- **Tests** — the S3 module's tests run against MinIO (Testcontainers) instead of LocalStack.
+
+### Added
+- **API virtual fields ([#1092](https://github.com/QRun-IO/qqq/pull/1092))** — a virtual (computed) field with explicit api field meta data
+  (and an `initialVersion`) is now emitted in API record output and as a `readOnly` property in the OpenAPI schema. It
+  never appears in request bodies, filters, `orderBy` or counts. Opt in per lookup with
+  `GetTableApiFieldsInput.withIncludeVirtualFields(true)`; existing callers are unchanged.
+- **Record picker for large possible value sources ([#1099](https://github.com/QRun-IO/qqq/pull/1099))** — `QPossibleValuePicker` on a
+  table-type `QPossibleValueSource` declares a searchable, filterable, paged picker; `SearchPossibleValueSourceAction`
+  serves picker requests; the v1 possible-values body accepts a `picker` object and the response adds `values`,
+  `displayValues` and `hasMore`; v1 field metadata carries `picker` and `pickerTableName`. See
+  [Record Picker](docs/misc/RecordPicker.adoc). Next UI renders it from the RC.16 line.
+- **Too-long behavior and rejecting value ranges for frontends ([#1100](https://github.com/QRun-IO/qqq/pull/1100))** — `ValueTooLongBehavior`
+  is listed in a field's frontend `behaviors`, and frontend/v1 field metadata gain `minValue`/`maxValue` from a
+  `ValueRangeBehavior` whose bound rejects (`ERROR`) and is inclusive.
+- **Audit record screens, opt-in ([#1103](https://github.com/QRun-IO/qqq/pull/1103))** — `AuditsMetaDataProvider.withDefineRecordScreens(true)`
+  (or `defineStandardAuditScreens` after `defineAll`) gives audit records named sections, Table/User labels and a Field
+  Changes child list.
+- **AI tool registry ([#1096](https://github.com/QRun-IO/qqq/pull/1096))** — `AiToolRegistry` supplemental meta-data lets qbits register
+  `READ` and `NAVIGATION` `AbstractAiTool`s that every `AiToolKernel` over the instance offers next to the built-ins, on
+  the same permission-checked path. `WRITE_PROPOSAL` tools and names shadowing built-ins are refused.
+- **`StartOfPeriod` filter expression ([#1115](https://github.com/QRun-IO/qqq/pull/1115))** — the start of the current period (day, week,
+  month, quarter, year) in the session's time zone, for date filters and presets.
+- **Public-internet APIs (`qqq-middleware-api`)** — `ApiInstanceMetaData.httpPolicy` (`ApiHttpPolicy`): anonymous
+  `GET`/`HEAD` 200s get shared-cache headers (`Cache-Control` with `s-maxage`, `stale-while-revalidate`,
+  `stale-if-error`; RFC 9213 `CDN-Cache-Control`), a weak `ETag` and `304` on `If-None-Match`; everything else is
+  `private, no-store`. CORS: public reads `Access-Control-Allow-Origin: *` without credentials or `Vary`, other requests
+  only for the allowed origins; preflights answer 204. `publicPath` (spec paths, docs page and its assets when a proxy
+  maps the mount path), `semanticVersions` (spec `info.version`, `versions.json`), `allowsAnonymousAccess` (optional
+  security in the spec). Instances without a policy behave as before.
+- **Scoped authentication modules** — `QAuthenticationMetaData.moduleCodeReference` names the module class for a
+  provider (new type `CUSTOM` requires one), so an API scope can use an application's module;
+  `QAuthenticationModuleInterface.createSession(instance, metaData, context)` receives the resolved provider.
+- **API processes** — `HttpApiResponse.headers`; request metadata (`ApiProcessUtils.REQUEST_REMOTE_ADDRESS`,
+  `REQUEST_FORWARDED_FOR`, `REQUEST_USER_AGENT`) in every API process run's values.
+- **Alerts producer SPI ([#1108](https://github.com/QRun-IO/qqq/pull/1108); design #1090)** — `QAlerts.raise` / `resolve` /
+  `heartbeat` let any qbit or app report "a person should do something" with no dependency beyond core.
+  `QAlertTypeMetaData` declares alert types (validated, stored in the supplemental `AlertsInstanceMetaData`), and
+  `AlertProcessMetaData` gives any process "alert when this fails" and "alert when this didn't run" by meta-data. Calls
+  never throw into the caller, are deferred until the transaction commits (dropped on rollback), and go to a
+  rate-limited `LoggingAlertSink` unless an alerts implementation (such as `qbit-alerts`) registers its sink. See
+  [Alerts](docs/misc/Alerts.adoc).
+- **Webhook signing and an SSRF-safe HTTP client ([#1109](https://github.com/QRun-IO/qqq/pull/1109))** — `utils.webhooks`
+  signs and verifies in the Standard Webhooks format (`webhook-id`/`-timestamp`/`-signature`, HMAC-SHA256, multi-secret
+  rotation, 5-minute tolerance, constant-time compare). `utils.http.SafeHttpClient` sends to user-entered URLs: HTTPS
+  only by default, private/loopback/link-local/metadata and other reserved ranges refused (every DNS answer checked and
+  the connection pinned to them), redirects never followed, TLS 1.2+, timeouts and a response size cap, with an
+  admin-only allowlist. Shared by qbit-webhooks, alerts and CDN (qbit-webhooks design D2). See
+  [Webhook Signing and Safe HTTP](docs/utilities/WebhookSigningAndSafeHttp.adoc). httpclient 4.5.14 / httpcore 4.4.16
+  are declared explicitly.
+
+### Fixed
+- **Table sync ([#1097](https://github.com/QRun-IO/qqq/pull/1097))** — overriding `SYNC_TABLE_PERFORM_UPDATES_KEY` no longer replaces
+  `performInserts`, and records skipped because inserts or updates are disabled are counted on the right summary line.
+- **`ThisOrLastPeriod` across DST ([#1115](https://github.com/QRun-IO/qqq/pull/1115))** — period boundaries no longer shift by an hour
+  when the range crosses a daylight-saving change.
+- OpenAPI: insert/update operation flags were swapped; field-security-locked fields were dropped from the published
+  model; processes without an output threw; the schema closure never ended when an association child had its own API
+  table name (the spec request hung). Required fields are noted in descriptions.
+- API: an empty association array (`"lines": []`) on update now clears the child list; process input values were lost
+  for fields with a `backendName`; an empty process body is no values and a non-object body a `400`; JSON responses
+  carry `Content-Type: application/json`; the `POST_RUN` process customizer declared the wrong interface.
+
+## [4.1.0-RC.4] — candidate (2026-10-12)
+
+
+The BOM and sample move the Next dashboard (`qqq-frontend-next`) from `1.0.0-RC.11` to `1.0.0-RC.14`; the 4.1.0-RC.4
+Next acceptance-receipt waiver is bound to that exact artifact. See the [release procedure](docs/release/4.1.adoc).
+
+### Security
+- **Permission enforcement in core actions ([#1061](https://github.com/QRun-IO/qqq/issues/1061),
+  [#1062](https://github.com/QRun-IO/qqq/issues/1062))** — `QueryAction`, `GetAction`, `CountAction`, `AggregateAction`,
+  `InsertAction`, `UpdateAction`, `DeleteAction`, `ReplaceAction`, `ExportAction`, `RunProcessAction`,
+  `RenderWidgetAction` and `GenerateReportAction` can now check the session's table/process/widget/report permissions
+  themselves (previously only the middlewares did, so MCP servers, assistants, custom routes and scripts skipped them),
+  and `FieldSecurityLock` is now enforced: denied fields are removed from read output and table meta data, and
+  filtering, sorting, grouping on or writing to them is a permission error. Per call, `PermissionEnforcement.ENFORCE`
+  always checks and `withPermissionBypass(reason)` never does; otherwise outermost calls are checked when
+  `QInstance.enforcePermissionsInCoreActions` (or `-Dqqq.enforcePermissionsInCoreActions` /
+  `QQQ_ENFORCE_PERMISSIONS_IN_CORE_ACTIONS`) is true. Calls nested inside an action (process steps, customizers, widget
+  renderers, possible-value lookups, async children) stay trusted, and `QSystemUserSession` passes as before; the
+  scheduler, polling automations and SQS poller mark their runs as system bypasses. **Off by default in 4.1.x** (no
+  behavior change unless enabled); planned to default on in 4.2. See
+  [Permission Enforcement in Core Actions](docs/misc/CorePermissionEnforcement.adoc).
+
+### Added
+- **Consistent read transactions** — `QBackendModuleInterface.openConsistentReadTransaction(ConsistentReadInput)`
+  (default: unsupported) returns a read-only transaction through which every table read reflects one instant, for
+  exports, backups and migrations. `QBackendTransaction.openConsistentReadFor(input)` is the convenience entry;
+  `getConsistencyGuarantee()` says what you actually got (`ONE_INSTANT`, `PER_TABLE`, `BEST_EFFORT`) and
+  `getExportedSnapshotId()` is the id other connections can attach to via `ConsistentReadInput.withImportSnapshotId`.
+  PostgreSQL uses `REPEATABLE READ, READ ONLY` plus `pg_export_snapshot()` / `SET TRANSACTION SNAPSHOT`; MySQL/MariaDB
+  `START TRANSACTION WITH CONSISTENT SNAPSHOT` (non-InnoDB tables report `BEST_EFFORT`); SQLite and H2 snapshot reads;
+  MongoDB a snapshot-read-concern session (replica set, best effort, falls back to `PER_TABLE`); the memory backend a
+  copy-on-read snapshot. Opt-in; nothing existing changes.
+- **`dryRun` on `InsertInput` / `UpdateInput` / `DeleteInput`** — runs pre-customizers (as a preview) and all
+  validations, returns would-be records (or `DeleteOutput.dryRunPrimaryKeys`), and stores nothing.
+- **`QFieldMetaData.isSensitive`** — marks PII/secret fields; `ExportAction` leaves them out unless
+  `ExportInput.withIncludeSensitiveFields(true)`, frontend field meta data carries the flag, and AI/MCP integrations must
+  not send their values to a model.
+
+## [4.1.0-RC.3] — candidate (2026-10-12)
+
+Same Next `1.0.0-RC.11` pairing and retained limitations as RC.1/RC.2; see the [release procedure](docs/release/4.1.adoc).
+Next `1.0.0-RC.13` or later renders the two features below. Adoption guide: [Adopting QQQ 4.1 features](docs/migration/4.1.adoc).
+
+### Added
+- **Record developer panels** — a generic contract for modules and qbits to contribute panels to a record's developer
+  view: implement `DeveloperPanelProviderInterface` (id, title, order, icon, `isAvailable`, `build`) and register it in
+  the new `DeveloperPanelsMetaData` supplemental instance meta-data.  Panels are lists of generic blocks (key/values,
+  text, code, table, links, process actions), served by the new `GET /qqq/v1/table/{table}/{pk}/developer/panels`
+  (table read permission; record security applies; a failing provider yields an error panel, not a failed request).
+  Built in: **Record Security** (each lock, and why the current user can see the record).  `qqq-esb` adds **ESB
+  Events** (CloudEvents type/source/subject, destinations, subscribed triggers with dead letters, a sample event for
+  the record).  See [Record Developer Panels](docs/misc/DeveloperPanels.adoc).
+- **Record search details: highlights, paging, sort, per-table status (`POST /qqq/v1/search`)** — additive and
+  backward compatible. Requests may send `offset` (per table, for paging one table; at most 1000) and `sort`
+  (`RELEVANCE`, the default, or `RECENT`: most recently modified first, by the table's `MODIFY_DATE` field). Each result
+  may now carry `score` (from a record search provider), `updatedAt` (ISO-8601, from the `MODIFY_DATE` field when the
+  user may see it), `highlights` (plain-text snippets of the matching non-label search fields with `matches` as
+  `{start, end}` character offsets - never markup) and `details` (other search field values). The response adds
+  `tables` (`tableName`, `tableLabel`, `resultCount`, `hasMore`, `totalCount`, and `source`: `PROVIDER`, `DEFAULT` or
+  `FALLBACK`) and `provider` (`status` `OK`/`FAILED`/`NONE`, `failureClass` - the simple class name of the root cause -
+  and, for user-facing errors only, `message`), so clients can say when a failed search index left the default search
+  to answer. Highlights, details and dates use only fields the user can see. `RecordSearchProviderInterface` providers
+  receive `offset` and `sort`, and may return `score`, `highlights` (validated, used only for visible fields core found
+  no match in) and `RecordSearchOutput.totalCountByTable`.
+- **`FILE_PREVIEW` field adornment** — `AdornmentType.FILE_PREVIEW`, with value keys in
+  `AdornmentType.FilePreviewValues`, asks frontends to show a field as a thumbnail (images) or a file-type icon (other
+  files) that opens a preview: the full-size image with zoom, a PDF, a video or audio player, or open/download links,
+  with the file's name, type, size and dimensions and arrow-key navigation across the values on screen. Optional values
+  name fields of the same record holding the thumbnail URL (`thumbnailUrlField`), the full-size URL
+  (`fullSizeUrlField`), the file name, MIME type, alt text, caption, width, height and size, plus `defaultMimeType`,
+  `thumbnailMaxSize` (16-512 px, default 40) and `previewable` (default `true`). `QInstanceValidator` checks the field
+  names and values; the adornment is included in v1 table meta-data and the v1 OpenAPI `FieldAdornment.type` enum.
+  Existing adornments are unchanged. See [Field Adornments](docs/metaData/Fields.adoc).
+- **Instance home app ([#1059](https://github.com/QRun-IO/qqq/issues/1059))** — `QInstance.withHomeAppName("home")`
+  designates the app whose dashboard a frontend shows as the instance's home page (Next UI renders it at `/app/` and
+  links its logo and breadcrumb root there). Validation requires the name to be an app in the instance. Metadata
+  (`MetaDataOutput.homeAppName`, v1 `metaData` response `homeAppName`) publishes it only to users who may access that
+  app; otherwise it is omitted and frontends keep their default home page.
+
+## [4.1.0-RC.2] — candidate (2026-10-11)
+
+Same Next `1.0.0-RC.11` pairing and retained limitations as RC.1; see the [release procedure](docs/release/4.1.adoc).
+Adoption guide: [Adopting QQQ 4.1 features](docs/migration/4.1.adoc).
+
+### Security
+- **OAuth2 refresh tokens encrypted at rest ([#1048](https://github.com/QRun-IO/qqq/issues/1048))** — refresh tokens
+  in the `userSessionRefreshToken` table (#1041) are now encrypted with AES-256-GCM, using a random nonce per value
+  and the session's uuid and `userId` as associated data, so a copied database, replica or backup no longer holds
+  usable tokens. The key comes from the new `OAuth2AuthenticationMetaData.refreshTokenEncryptionKey`, a base64
+  32-byte key from `openssl rand -base64 32` (`${env.X}` references are resolved). `refreshTokenEncryptionKeyId` and
+  `previousRefreshTokenEncryptionKeys` support rotation: values under a previous key are re-encrypted on their next
+  write. Instance validation fails when the table is defined and refresh is enabled but no valid key is set;
+  `allowPlaintextRefreshTokens` (default `false`) is a local-development escape hatch and logs a warning. A value
+  that can't be decrypted ends its session with the usual 401. The table now requires a dedicated permission that no
+  role is granted, so the v1 table API, export, reports and the UI deny it to every user. **Upgrade:** apps that
+  enabled the table from `develop` must set a key, and their existing plaintext rows end at the next refresh. See
+  [OAuth2 refresh tokens](docs/misc/OAuth2RefreshTokens.adoc).
+
+### Added
+- **OAuth2 refresh tokens ([#1041](https://github.com/QRun-IO/qqq/issues/1041))** — `OAuth2AuthenticationModule`
+  stores the refresh token from the code exchange (e.g., with the `offline_access` scope) server-side, in the new
+  opt-in `userSessionRefreshToken` table (`UserSessionRefreshToken`, `UserSessionRefreshTokenMetaDataProducer`).
+  Session resume and `isSessionValid` then renew an expired or nearly expired access token with
+  `grant_type=refresh_token` and save rotated tokens. Concurrent requests for one session cause a single refresh.
+  `invalid_grant` ends the session; logout revokes (when a `revocation_endpoint` is advertised) and deletes the token,
+  and back-channel logout deletes it. New `OAuth2AuthenticationMetaData` options: `refreshTokensEnabled` (default
+  `true`), `refreshTokenSkewSeconds` (default 60), `maxSessionLifetimeSeconds` and `refreshTokenTableName`. Refresh
+  tokens are never sent to clients or logged. Apps without the table are unchanged; see
+  [OAuth2 refresh tokens](docs/misc/OAuth2RefreshTokens.adoc).
+- **Record search providers** — `QInstance.withRecordSearchProvider(QCodeReference)` registers a
+  `RecordSearchProviderInterface` (`claimsTable(QTableMetaData)`, `search(RecordSearchInput)`) that
+  `RecordSearchAction`, and so `POST /qqq/v1/search`, uses for the tables it claims, such as a
+  search-index module ([qbit-quick-search](https://github.com/QRun-IO/qbit-quick-search)). Unclaimed
+  tables keep the default search over `searchFields`; results are merged in the existing response shape.
+  Provider hits are read again through `QueryAction`, so table permissions and record security locks
+  still apply; if the provider fails, its tables fall back to the default search with a warning.
+  `QInstanceValidator` checks the code reference. Without a provider, search is unchanged.
+
+### Fixed
+- **Partial updates under joined record-security locks ([#1073](https://github.com/QRun-IO/qqq/issues/1073))** — an
+  update that did not send the foreign key a joined write lock walks through (for example, editing only a line item's
+  `sku` when the line item is locked through its order) was always denied with "the referenced ... was not found".
+  `UpdateAction` now validates the write locks against each record as it will be after the update: its stored values
+  overlaid with the values being written. Fields that are sent, including nulls, are still validated as written, and
+  rows whose stored values fail the write locks are denied generically, so an error never names a stored lock value.
+- **Quartz schedules on a fresh persistent job store ([#1044](https://github.com/QRun-IO/qqq/issues/1044))** —
+  `QScheduleManager.start()` now creates the jobs for every schedulable (processes, queues, table automations,
+  scheduled-job records) when Quartz uses a persistent store such as a clustered `JobStoreTX` on PostgreSQL.
+  Before, `QuartzScheduler` skipped startup setup for persistent stores, so a fresh `qrtz_*` schema stayed empty
+  until someone ran **Reschedule All Jobs**. Startup still only adds jobs that are missing and never replaces
+  existing ones, so restarts and other cluster nodes booting leave stored jobs and triggers unchanged; a node
+  that loses the race to add a job keeps the other node's copy. RAM job stores and `SimpleScheduler` are
+  unchanged. Apps that called `setupAllSchedules()` again after `start()` as a workaround no longer need to.
+
+## [4.1.0-RC.1] — candidate
+
+Pairs QQQ 4.1 with Next `1.0.0-RC.11`. Publication and verification are tracked in
+[#798](https://github.com/QRun-IO/qqq/issues/798) and
+[#921](https://github.com/QRun-IO/qqq/issues/921); this source entry is not a claim of public availability.
+The candidate retains the approved browser/tablet, report/query and input parity, sub-path hosting,
+real-provider and visual limitations documented in the [release procedure](docs/release/4.1.adoc).
+The seven affected Next contracts remain pending. Stable `4.0.0` remains available.
+
+### Added
+- **Enterprise Service Bus ([#739](https://github.com/QRun-IO/qqq/issues/739))** — `qqq-esb` publishes
+  committed table changes and process lifecycle events as CloudEvents directly to ActiveMQ Artemis or
+  RabbitMQ. Queue and shared durable topic triggers run QQQ processes with concurrency, retries and
+  dead-letter handling. Consumers use at-least-once delivery; no new production tables or database outbox are added.
+- **ESB administration in Next ([PR #19](https://github.com/QRun-IO/qqq-frontend-next/pull/19),
+  [#986](https://github.com/QRun-IO/qqq/issues/986), originally Next #10)** — permission-scoped Developer
+  views, status, subscription browsing, trigger controls and confirmed dead-letter replay; queue actions
+  respect broker capabilities. Frontend and framework versions remain independent.
+- **Next dashboard by default ([#649](https://github.com/QRun-IO/qqq/issues/649))** — `QApplicationJavalinServer`
+  serves the `com.kingsrook.qqq:qqq-frontend-next` dashboard at `/` when its jar is on the classpath
+  (`NextDashboardRouteProvider`; API routes and their own 404 responses are never shadowed). `qqq-bom-pom`
+  manages `qqq-frontend-next`. New `withServeFrontendNext(boolean)` and JVM property
+  `qqq.javalin.frontend` (`next`, `material` or `none`).
+- **v1 branding ([#539](https://github.com/QRun-IO/qqq/issues/539))** — `GET /qqq/v1/metaData` includes the
+  instance `branding` (names, logo, icon, accent colors, banners). The published v1 OpenAPI document was
+  regenerated, which also brings in previously unpublished schema additions (associations, OAuth2
+  authentication values, back-channel logout).
+- **Fail-fast meta-data producers ([#763](https://github.com/QRun-IO/qqq/issues/763))** — with
+  `QInstance.withFailOnMetaDataProducerError(true)` or JVM property `qqq.metaData.failOnProducerError=true`,
+  `MetaDataProducerHelper` throws a `QException` wherever it would log a warning and drop a producer: a class
+  it can't use as a producer (no no-arg constructor, a constructor that throws, or wrong producer annotations),
+  or a producer that fails to run. `QBitMetaDataProducer` honors the instance flag for its
+  own producers. The default (warn and skip) is unchanged.
+- **Application launcher ([#762](https://github.com/QRun-IO/qqq/issues/762))** — `QApplicationLauncher.run(application,
+  config)` starts the application's `QApplicationJavalinServer`, then the `QScheduleManager` when anything is
+  scheduled, then each runtime service registered with `QInstance.withRuntimeService` (new `QRuntimeServiceInterface`),
+  all on the one instance the server builds; a JVM shutdown hook stops them in reverse order, and a failed start
+  stops the ones already started. `QApplicationJavalinServer.getQInstance()` exposes that instance, and
+  `AbstractMetaDataProducerBasedQQQApplication.withFailOnMetaDataProducerError` (also on `QApplicationLauncherConfig`)
+  makes the instance it defines fail-fast.
+
+### Changed
+- The sample application and quickstart serve the Next dashboard from the sample itself on port 8000;
+  the quickstart no longer needs Docker. `QQQ_FRONTEND=material bash quickstart.sh` opens the Material
+  Dashboard. The sample's branding icon now lives in its overlay folder.
+
+### Fixed
+- **ESB sample/API integration ([#980](https://github.com/QRun-IO/qqq/pull/980))** — register the stock
+  sample's ESB app, widget, management processes and routes ([#976](https://github.com/QRun-IO/qqq/issues/976));
+  prevent application API documentation routes from intercepting ESB endpoints
+  ([#977](https://github.com/QRun-IO/qqq/issues/977)); expose nullable subscription and dead-letter queue
+  paused state so Next can show supported pause/resume controls ([#975](https://github.com/QRun-IO/qqq/issues/975)).
+
+### Compatibility
+- Applications that depend only on `qqq-frontend-material-dashboard` keep serving it at its configured
+  path, unchanged. With both dashboard jars present, Next is served unless Material is selected
+  explicitly; `withServeFrontendMaterialDashboard(true)` alone keeps Material (Next is then not served
+  at the same root). Hosting both requires Material at another path. Deep links differ: Material uses
+  `/<app>/<table>/<id>`, Next uses `/app/<table>/<id>`.
+
 ## [4.0.0] - 2026-09-24
 
 ### Breaking Changes

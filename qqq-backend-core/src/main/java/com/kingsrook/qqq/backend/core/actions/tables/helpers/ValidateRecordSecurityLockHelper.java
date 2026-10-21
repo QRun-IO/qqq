@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.actions.tables.helpers;
@@ -32,6 +31,7 @@ import java.util.Map;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.ClassifiedValues;
 import com.kingsrook.qqq.backend.core.actions.values.ValueBehaviorApplier;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -335,8 +335,8 @@ public class ValidateRecordSecurityLockHelper
                boolean updatingAnyLockJoinFields = false;
                for(JoinOn joinOn : rightMostJoin.getJoinOns())
                {
-                  QFieldType   type             = rightMostJoinTable.getField(joinOn.getRightField()).getType();
-                  Serializable inputRecordValue = ValueUtils.getValueAsFieldType(type, inputRecord.getValue(joinOn.getRightField()));
+                  QFieldMetaData field          = rightMostJoinTable.getField(joinOn.getRightField());
+                  Serializable inputRecordValue = ValueUtils.getValueAsFieldType(rightMostJoinTable, field, inputRecord.getValue(joinOn.getRightField()));
                   inputRecordJoinValues.add(inputRecordValue);
 
                   // if we have a value in this field (and it's not the primary key), then it means we're updating part of the lock
@@ -602,7 +602,7 @@ public class ValidateRecordSecurityLockHelper
             else
             {
                QFieldMetaData field = table.getField(recordSecurityLock.getFieldName());
-               String valueDescription = "with a value of " + recordSecurityValue;
+               String valueDescription = "with a value of " + ClassifiedValues.diagnostic(table, field.getName(), recordSecurityValue);
                if(recordSecurityValue == null || "".equals(recordSecurityValue))
                {
                   valueDescription = "with an empty value";

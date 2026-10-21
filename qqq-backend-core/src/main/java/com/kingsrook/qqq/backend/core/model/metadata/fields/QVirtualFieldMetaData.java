@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.model.metadata.fields;
@@ -28,8 +27,10 @@ import java.util.Map;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.functions.FieldFunction;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.PossibleValueDependencyBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.model.metadata.security.FieldSecurityLock;
 
@@ -46,13 +47,14 @@ import com.kingsrook.qqq.backend.core.model.metadata.security.FieldSecurityLock;
  * the virtual field may be used as a filter criterion and if it is included in query
  * output, respectively.</p>
  *
- * <p>For a field to be {@code isQueryCriteria}, it MUST use a {@code fieldFunction}.
+ * <p>For a field to be {@code isQueryCriteria}, it must use a {@code fieldFunction} or criteria expander.
  * However, to be {@code isQuerySelectable}, it MAY either use a  {@code fieldFunction},
  * or alternatively, its table can have a {@link TableCustomizers#POST_QUERY_RECORD}.</p>
  *******************************************************************************/
 public class QVirtualFieldMetaData extends QFieldMetaData implements Cloneable
 {
    private FieldFunction fieldFunction;
+   private QCodeReference criteriaExpander;
 
    private boolean isQueryCriteria   = false;
    private boolean isQuerySelectable = false;
@@ -297,6 +299,18 @@ public class QVirtualFieldMetaData extends QFieldMetaData implements Cloneable
     **
     *******************************************************************************/
    @Override
+   public QVirtualFieldMetaData withIsSensitive(boolean isSensitive)
+   {
+      super.withIsSensitive(isSensitive);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Override
    public QVirtualFieldMetaData withPossibleValueSourceFilter(QQueryFilter possibleValueSourceFilter)
    {
       super.withPossibleValueSourceFilter(possibleValueSourceFilter);
@@ -433,7 +447,7 @@ public class QVirtualFieldMetaData extends QFieldMetaData implements Cloneable
     *******************************************************************************/
    public boolean getIsQueryCriteria()
    {
-      return (this.isQueryCriteria);
+      return (this.isQueryCriteria || criteriaExpander != null);
    }
 
 
@@ -502,4 +516,71 @@ public class QVirtualFieldMetaData extends QFieldMetaData implements Cloneable
    }
 
 
+   /*******************************************************************************
+    ** Getter for criteriaExpander.
+    *******************************************************************************/
+   public QCodeReference getCriteriaExpander()
+   {
+      return (criteriaExpander);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for criteriaExpander.
+    *******************************************************************************/
+   public void setCriteriaExpander(QCodeReference criteriaExpander)
+   {
+      this.criteriaExpander = criteriaExpander;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for criteriaExpander.
+    *******************************************************************************/
+   public QVirtualFieldMetaData withCriteriaExpander(QCodeReference criteriaExpander)
+   {
+      this.criteriaExpander = criteriaExpander;
+      return (this);
+   }
+
+
+
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for possibleValueSourceDependsOn
+    *******************************************************************************/
+   @Override
+   public QVirtualFieldMetaData withPossibleValueSourceDependsOn(List<String> possibleValueSourceDependsOn)
+   {
+      super.withPossibleValueSourceDependsOn(possibleValueSourceDependsOn);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for possibleValueSourceDependencyBehavior
+    *******************************************************************************/
+   @Override
+   public QVirtualFieldMetaData withPossibleValueSourceDependencyBehavior(PossibleValueDependencyBehavior possibleValueSourceDependencyBehavior)
+   {
+      super.withPossibleValueSourceDependencyBehavior(possibleValueSourceDependencyBehavior);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for validatePossibleValueSourceOnWrite
+    *******************************************************************************/
+   @Override
+   public QVirtualFieldMetaData withValidatePossibleValueSourceOnWrite(Boolean validatePossibleValueSourceOnWrite)
+   {
+      super.withValidatePossibleValueSourceOnWrite(validatePossibleValueSourceOnWrite);
+      return (this);
+   }
 }

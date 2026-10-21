@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.module.sqlite.strategy;
@@ -27,18 +26,23 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Function;
+import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistencyGuarantee;
+import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistentReadInput;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import com.kingsrook.qqq.backend.module.rdbms.jdbc.QueryManager;
 import com.kingsrook.qqq.backend.module.rdbms.strategy.BaseRDBMSActionStrategy;
+import com.kingsrook.qqq.backend.module.rdbms.strategy.ConsistentReadStart;
 
 
 /*******************************************************************************
@@ -160,6 +164,29 @@ public class SQLiteRDBMSActionStrategy extends BaseRDBMSActionStrategy
          }
          return (rs);
       }
+   }
+
+   /*******************************************************************************
+    ** SQLite: with autocommit off, the driver issues BEGIN (deferred), and the
+    ** first read - which we do here, so the snapshot is taken now rather than at
+    ** the caller's first query - takes the read lock/snapshot.  In WAL mode,
+    ** writers then proceed without being seen; in rollback-journal mode, they
+    ** are blocked until this transaction ends.  Either way, one instant.
+    *******************************************************************************/
+   @Override
+   public ConsistentReadStart beginConsistentRead(Connection connection, ConsistentReadInput input) throws SQLException
+   {
+      if(input.getImportSnapshotId().isPresent())
+      {
+         throw (new SQLException("Importing a snapshot is not supported by SQLite"));
+      }
+
+      try(Statement statement = connection.createStatement(); ResultSet resultSet = statement.executeQuery("SELECT COUNT(*) FROM sqlite_master"))
+      {
+         resultSet.next();
+      }
+
+      return (new ConsistentReadStart(Optional.empty(), ConsistencyGuarantee.ONE_INSTANT));
    }
 
 }

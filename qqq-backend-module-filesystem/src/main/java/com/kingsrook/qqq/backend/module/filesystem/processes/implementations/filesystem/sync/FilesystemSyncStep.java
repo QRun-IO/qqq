@@ -21,7 +21,6 @@
 package com.kingsrook.qqq.backend.module.filesystem.processes.implementations.filesystem.sync;
 
 
-import java.io.File;
 import java.io.InputStream;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -110,10 +109,10 @@ public class FilesystemSyncStep implements BackendStep
                   byte[] bytes = inputStream.readAllBytes();
 
                   String archivePath = archiveActionBase.getFullBasePath(archiveTable, archiveBackend);
-                  archiveActionBase.writeFile(archiveBackend, archiveTable, null, archivePath + File.separator + sourceFileName, bytes);
+                  archiveActionBase.writeFile(archiveBackend, archiveTable, null, archivePath + sourceFileName, bytes);
 
                   String processingPath = processingActionBase.getFullBasePath(processingTable, processingBackend);
-                  processingActionBase.writeFile(processingBackend, processingTable, null, processingPath + File.separator + sourceFileName, bytes);
+                  processingActionBase.writeFile(processingBackend, processingTable, null, processingPath + sourceFileName, bytes);
                   syncedFileCount++;
 
                   if(maxFilesToSync != null && syncedFileCount >= maxFilesToSync)

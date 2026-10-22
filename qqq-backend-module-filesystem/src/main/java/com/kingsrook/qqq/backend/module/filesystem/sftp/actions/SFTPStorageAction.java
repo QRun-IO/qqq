@@ -21,7 +21,6 @@
 package com.kingsrook.qqq.backend.module.filesystem.sftp.actions;
 
 
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -103,7 +102,7 @@ public class SFTPStorageAction extends AbstractSFTPAction implements QStorageInt
    {
       QTableMetaData   table    = storageInput.getTable();
       QBackendMetaData backend  = storageInput.getBackend();
-      String           fullPath = stripDuplicatedSlashes(getFullBasePath(table, backend) + File.separator + storageInput.getReference());
+      String           fullPath = stripDuplicatedSlashes(getFullBasePath(table, backend) + getPathSeparator() + storageInput.getReference());
 
       /////////////////////////////////////////////////////////////
       // s3 seems to do better w/o leading slashes, so, strip... //

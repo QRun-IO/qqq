@@ -53,6 +53,17 @@ public class AbstractS3Action extends AbstractBaseFilesystemAction<S3ObjectSumma
 {
    private static final QLogger LOG = QLogger.getLogger(AbstractS3Action.class);
 
+
+   /*******************************************************************************
+    ** Remote paths use forward slashes independently of the client operating system.
+    *******************************************************************************/
+   @Override
+   protected char getPathSeparator()
+   {
+      return ('/');
+   }
+
+
    private S3Utils s3Utils;
 
 

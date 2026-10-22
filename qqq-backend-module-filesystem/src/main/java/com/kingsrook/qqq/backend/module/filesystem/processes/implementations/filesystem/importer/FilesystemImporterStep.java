@@ -362,7 +362,7 @@ public class FilesystemImporterStep implements BackendStep
          + File.separator + now.getYear()
          + File.separator + now.getMonth()
          + File.separator + UUID.randomUUID()
-         + "-" + sourceFileName.replaceAll(".*" + File.separator, "");
+         + "-" + new File(sourceFileName).getName();
       path = AbstractBaseFilesystemAction.stripDuplicatedSlashes(path);
 
       LOG.info("Archiving file", logPair("path", path), logPair("archiveBackendName", archiveBackend.getName()), logPair("archiveTableName", archiveTable.getName()));

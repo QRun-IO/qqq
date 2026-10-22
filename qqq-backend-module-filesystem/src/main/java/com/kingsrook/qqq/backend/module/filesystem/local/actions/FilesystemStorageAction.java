@@ -98,18 +98,18 @@ public class FilesystemStorageAction extends AbstractFilesystemAction implements
    {
       QTableMetaData table = storageInput.getTable();
       QBackendMetaData backend = storageInput.getBackend();
-      File base = new File(getFullBasePath(table, backend)).getCanonicalFile();
+      Path base = resolveLocalPath(Path.of(getFullBasePath(table, backend)));
       String reference = storageInput.getReference();
       if(reference == null || reference.isBlank() || new File(reference).isAbsolute())
       {
          throw new QBadRequestException("Storage reference must be a relative file path");
       }
-      File file = new File(base, reference).getCanonicalFile();
-      if(file.equals(base) || !file.toPath().startsWith(base.toPath()))
+      Path file = resolveLocalPath(base.resolve(reference));
+      if(file.equals(base) || !file.startsWith(base))
       {
          throw new QBadRequestException("Storage reference must remain inside its table directory");
       }
-      return file.getPath();
+      return (file.toString());
    }
 
 

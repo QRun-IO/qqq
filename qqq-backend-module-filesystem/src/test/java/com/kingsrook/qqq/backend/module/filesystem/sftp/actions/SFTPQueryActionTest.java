@@ -135,6 +135,8 @@ class SFTPQueryActionTest extends BaseSFTPTest
          Assertions.assertEquals(number == 1 ? 1 : 0, new QueryAction().execute(new QueryInput(TestUtils.TABLE_NAME_SFTP_FILE).withFilter(filter)).getRecords().size());
          Assertions.assertEquals(number == 1 ? 1 : 0, CountAction.execute(TestUtils.TABLE_NAME_SFTP_FILE, filter));
       }
+      details.setGlob("*.TXT");
+      Assertions.assertEquals(0, CountAction.execute(TestUtils.TABLE_NAME_SFTP_FILE, null));
       details.setGlob("*.absent");
       Assertions.assertEquals(0, CountAction.execute(TestUtils.TABLE_NAME_SFTP_FILE, null));
       Assertions.assertEquals(0, sftpContainer.execInContainer("test", "-f", REMOTE_DIR + "/testfile-3.txt").getExitCode());

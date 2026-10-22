@@ -81,4 +81,17 @@ public class S3UtilsTest extends BaseS3Test
       assertEquals(getCSVData1(), csvFromS3, "File from S3 should match expected content");
    }
 
+
+
+   /*******************************************************************************
+    ** Remote object keys remain case-sensitive on Windows hosts too.
+    *******************************************************************************/
+   @Test
+   void testGlobCaseIsIndependentOfHost() throws Exception
+   {
+      putObject(BUCKET_NAME, TEST_FOLDER + "/upper.CSV", "upper");
+      assertEquals(2, getS3Utils().listObjectsInBucketMatchingGlob(BUCKET_NAME, TEST_FOLDER, "/*.csv").size());
+      assertEquals(1, getS3Utils().listObjectsInBucketMatchingGlob(BUCKET_NAME, TEST_FOLDER, "/*.CSV").size());
+   }
+
 }

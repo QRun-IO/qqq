@@ -57,7 +57,7 @@ public class FilesystemQueryActionTest extends FilesystemActionTest
       QueryOutput queryOutput = new FilesystemQueryAction().execute(queryInput);
       assertEquals(3, queryOutput.getRecords().size(), "Unfiltered query should find all rows");
       assertTrue(queryOutput.getRecords().stream()
-            .allMatch(record -> record.getBackendDetailString(FilesystemRecordBackendDetailFields.FULL_PATH).contains(TestUtils.BASE_PATH)),
+            .allMatch(record -> record.getBackendDetailString(FilesystemRecordBackendDetailFields.FULL_PATH).contains(java.nio.file.Path.of(TestUtils.BASE_PATH).toString())),
          "All records should have a full-path in their backend details, matching the test folder name");
    }
 

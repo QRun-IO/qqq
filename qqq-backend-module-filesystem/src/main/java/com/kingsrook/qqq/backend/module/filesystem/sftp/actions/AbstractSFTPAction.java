@@ -22,10 +22,8 @@ package com.kingsrook.qqq.backend.module.filesystem.sftp.actions;
 
 
 import java.io.ByteArrayInputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.FileSystems;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.security.KeyFactory;
@@ -57,6 +55,7 @@ import com.kingsrook.qqq.backend.core.utils.ExceptionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.module.filesystem.base.actions.AbstractBaseFilesystemAction;
 import com.kingsrook.qqq.backend.module.filesystem.base.model.metadata.AbstractFilesystemTableBackendDetails;
+import com.kingsrook.qqq.backend.module.filesystem.base.utils.RemotePathUtils;
 import com.kingsrook.qqq.backend.module.filesystem.exceptions.FilesystemException;
 import com.kingsrook.qqq.backend.module.filesystem.sftp.model.SFTPDirEntryWithPath;
 import com.kingsrook.qqq.backend.module.filesystem.sftp.model.metadata.SFTPBackendMetaData;
@@ -77,6 +76,17 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 public class AbstractSFTPAction extends AbstractBaseFilesystemAction<SFTPDirEntryWithPath>
 {
    private static final QLogger LOG = QLogger.getLogger(AbstractSFTPAction.class);
+
+
+   /*******************************************************************************
+    ** Remote paths use forward slashes independently of the client operating system.
+    *******************************************************************************/
+   @Override
+   protected char getPathSeparator()
+   {
+      return ('/');
+   }
+
 
 
 
@@ -317,7 +327,7 @@ public class AbstractSFTPAction extends AbstractBaseFilesystemAction<SFTPDirEntr
          fullPath = getFullBasePath(table, backendBase);
          if(StringUtils.hasContent(requestedPath))
          {
-            fullPath = stripDuplicatedSlashes(fullPath + File.separatorChar + requestedPath + File.separatorChar);
+            fullPath = stripDuplicatedSlashes(fullPath + getPathSeparator() + requestedPath + getPathSeparator());
          }
 
          List<SFTPDirEntryWithPath> rs = new ArrayList<>();
@@ -387,10 +397,10 @@ public class AbstractSFTPAction extends AbstractBaseFilesystemAction<SFTPDirEntr
 
          AbstractFilesystemTableBackendDetails details = getTableBackendDetails(AbstractFilesystemTableBackendDetails.class, table);
          String pattern = StringUtils.hasContent(details.getGlob()) ? "glob:" + details.getGlob() : "regex:.*";
-         PathMatcher matcher = FileSystems.getDefault().getPathMatcher(pattern);
+         PathMatcher matcher = RemotePathUtils.getPathMatcher(pattern);
          String basePath = getFullBasePath(table, backendBase);
-         Path relativeBase = Path.of(basePath.startsWith("/") ? "." + basePath : basePath).normalize();
-         rs.removeIf(entry -> !matcher.matches(relativeBase.relativize(Path.of(getFullPathForFile(entry)).normalize())));
+         Path relativeBase = RemotePathUtils.getPath(basePath.startsWith("/") ? "." + basePath : basePath).normalize();
+         rs.removeIf(entry -> !matcher.matches(relativeBase.relativize(RemotePathUtils.getPath(getFullPathForFile(entry)).normalize())));
          for(SFTPDirEntryWithPath entry : rs)
          {
             validateTableFilePath(tableRoot, getFullPathForFile(entry), false, false);

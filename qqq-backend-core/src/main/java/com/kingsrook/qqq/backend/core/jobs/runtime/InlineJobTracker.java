@@ -192,7 +192,7 @@ public class InlineJobTracker
          .withValue("sourceType", "INLINE").withValue("status", "RUNNING").withValue("userId", owner)
          .withValue("leaseOwner", podId).withValue("startedAt", now).withValue("queuedAt", now)
          .withValue("createDate", now).withValue("lastProgressAt", now).withValue("mode", "EXECUTE")
-         .withValue("paramsJson", JsonUtils.toJson(values))
+         .withValue("paramsJson", JsonUtils.toJson(values)).withValue("notifyOnSuccess", false)
          .withValue("sourceJson", JsonUtils.toJson(Map.of("processName", processName, "processUUID", processUUID, "jobUUID", jobUUID))), null);
       tracking.put(jobUUID, entry);
       mirror(jobUUID, entry, status);
@@ -206,6 +206,17 @@ public class InlineJobTracker
     ** owned by this pod, failed by the reaper if this pod goes away.
     *******************************************************************************/
    public synchronized Integer startTracked(String processName, String label, String owner, String clientChannel, String tableName, Serializable recordId) throws QException
+   {
+      return (startTracked(processName, label, owner, clientChannel, tableName, recordId, false));
+   }
+
+
+
+   /*******************************************************************************
+    ** Start a tracking job, choosing whether a clean completion notifies the
+    ** owner (failures always do).
+    *******************************************************************************/
+   public synchronized Integer startTracked(String processName, String label, String owner, String clientChannel, String tableName, Serializable recordId, boolean notifyOnSuccess) throws QException
    {
       if(owner == null)
       {
@@ -226,6 +237,7 @@ public class InlineJobTracker
          .withValue("sourceType", "INLINE").withValue("status", "RUNNING").withValue("userId", owner)
          .withValue("leaseOwner", podId).withValue("startedAt", now).withValue("queuedAt", now)
          .withValue("createDate", now).withValue("lastProgressAt", now).withValue("mode", "EXECUTE")
+         .withValue("notifyOnSuccess", notifyOnSuccess)
          .withValue("sourceJson", JsonUtils.toJson(source)), null);
       tracked.put(jobId, new Tracked());
       return (jobId);

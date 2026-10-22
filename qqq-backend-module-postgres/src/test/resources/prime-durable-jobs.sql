@@ -72,6 +72,7 @@ CREATE TABLE jobs_job
    parent_job_id             INTEGER,
    saved_bulk_load_profile_id INTEGER,
    notify_email              BOOLEAN DEFAULT FALSE,
+   notify_on_success         BOOLEAN,
    queued_at                 TIMESTAMPTZ,
    started_at                TIMESTAMPTZ,
    finished_at               TIMESTAMPTZ,

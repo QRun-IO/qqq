@@ -3552,4 +3552,41 @@ public class QInstanceValidatorTest extends BaseTest
          "App navigation section group is a GROUP section, which may only list apps.");
    }
 
+
+   /*******************************************************************************
+    ** A field provider supplies selectable values without claiming query criteria.
+    *******************************************************************************/
+   @Test
+   void testVirtualFieldValueProviderValidation()
+   {
+      assertValidationSuccess((instance) -> instance.getTable(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withVirtualField(new QVirtualFieldMetaData("provided", QFieldType.STRING).withIsQuerySelectable(true)
+            .withValueProvider(new QCodeReference(ValidVirtualValueProvider.class))));
+      assertValidationFailureReasonsAllowingExtraReasons((instance) -> instance.getTable(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withVirtualField(new QVirtualFieldMetaData("provided", QFieldType.STRING).withIsQuerySelectable(true)
+            .withValueProvider(new QCodeReference(String.class))), "value provider");
+      assertValidationFailureReasonsAllowingExtraReasons((instance) -> instance.getTable(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withVirtualField(new QVirtualFieldMetaData("provided", QFieldType.STRING).withIsQueryCriteria(true)
+            .withValueProvider(new QCodeReference(ValidVirtualValueProvider.class))),
+         "To be a queryCriteria this virtual field must have a field function defined");
+   }
+
+
+
+   /*******************************************************************************
+    ** Valid provider type used only to exercise metadata validation.
+    *******************************************************************************/
+   public static class ValidVirtualValueProvider implements com.kingsrook.qqq.backend.core.actions.tables.query.VirtualFieldValueProviderInterface
+   {
+      /***************************************************************************
+       ** Metadata validation must not execute data lookups.
+       ***************************************************************************/
+      @Override
+      public void fill(QTableMetaData table, String fieldName, List<QRecord> records,
+         com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput input)
+      {
+         throw (new AssertionError("Validation must not invoke the provider"));
+      }
+   }
+
 }

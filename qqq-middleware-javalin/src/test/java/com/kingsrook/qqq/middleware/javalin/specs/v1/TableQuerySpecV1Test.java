@@ -23,15 +23,22 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
+import com.kingsrook.qqq.backend.core.actions.tables.query.VirtualFieldValueProviderInterface;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.collections.MapBuilder;
@@ -57,6 +64,61 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *******************************************************************************/
 class TableQuerySpecV1Test extends SpecTestBase
 {
+
+   /*******************************************************************************
+    ** Provider values survive HTTP serialization, while hidden providers never run.
+    *******************************************************************************/
+   @Test
+   void returnsProviderValues()
+   {
+      HttpValueProvider.calls.set(0);
+      QVirtualFieldMetaData field = new QVirtualFieldMetaData("provided", QFieldType.STRING).withLabel("Provided")
+         .withIsQuerySelectable(true).withValueProvider(new QCodeReference(HttpValueProvider.class));
+      serverQInstance.getTable("person").withVirtualField(field);
+      HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/table/person/query")
+         .contentType(ContentType.APPLICATION_JSON.getMimeType())
+         .body(JsonUtils.toJson(Map.of("filter", new QQueryFilter(new QFilterCriteria("id", QCriteriaOperator.EQUALS, 1)))))
+         .asString();
+      assertEquals(200, response.getStatus());
+      JSONObject record = JsonUtils.toJSONObject(response.getBody()).getJSONArray("records").getJSONObject(0);
+      assertEquals("record-1", record.getJSONObject("values").getString("provided"));
+      assertEquals("record-1", record.getJSONObject("displayValues").getString("provided"));
+      // The second query resolves the partner-person possible-value label.
+      assertEquals(2, HttpValueProvider.calls.get());
+
+      field.setIsHidden(true);
+      response = Unirest.post(getBaseUrlAndPath() + "/table/person/query")
+         .contentType(ContentType.APPLICATION_JSON.getMimeType())
+         .body(JsonUtils.toJson(Map.of("filter", new QQueryFilter(new QFilterCriteria("id", QCriteriaOperator.EQUALS, 1)))))
+         .asString();
+      assertEquals(200, response.getStatus());
+      record = JsonUtils.toJSONObject(response.getBody()).getJSONArray("records").getJSONObject(0);
+      assertFalse(record.getJSONObject("values").has("provided"));
+      assertFalse(record.getJSONObject("displayValues").has("provided"));
+      assertEquals(2, HttpValueProvider.calls.get());
+   }
+
+
+
+   /*******************************************************************************
+    ** Count provider execution on the HTTP request thread.
+    *******************************************************************************/
+   public static class HttpValueProvider implements VirtualFieldValueProviderInterface
+   {
+      private static final AtomicInteger calls = new AtomicInteger();
+
+      @Override
+      public void fill(QTableMetaData table, String fieldName, List<QRecord> records, QueryInput input)
+      {
+         calls.incrementAndGet();
+         for(QRecord record : records)
+         {
+            record.setValue(fieldName, "record-" + record.getValue(table.getPrimaryKeyField()));
+         }
+      }
+   }
+
+
 
    /***************************************************************************
     **

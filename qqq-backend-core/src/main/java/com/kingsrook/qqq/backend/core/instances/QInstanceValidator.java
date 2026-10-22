@@ -56,6 +56,7 @@ import com.kingsrook.qqq.backend.core.actions.tables.RecordSearchProviderInterfa
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeListenerInterface;
 import com.kingsrook.qqq.backend.core.actions.tables.picker.RelatedRecordPickerAction;
 import com.kingsrook.qqq.backend.core.actions.tables.query.VirtualFieldCriteriaExpanderInterface;
+import com.kingsrook.qqq.backend.core.actions.tables.query.VirtualFieldValueProviderInterface;
 import com.kingsrook.qqq.backend.core.actions.values.QCustomPossibleValueProvider;
 import com.kingsrook.qqq.backend.core.exceptions.QInstanceValidationException;
 import com.kingsrook.qqq.backend.core.instances.validation.plugins.QInstanceValidatorPluginInterface;
@@ -1199,6 +1200,11 @@ public class QInstanceValidator
          validateSimpleCodeReference(prefix + "criteria expander ", virtualFieldMetaData.getCriteriaExpander(), VirtualFieldCriteriaExpanderInterface.class);
       }
 
+      if(virtualFieldMetaData.getValueProvider() != null)
+      {
+         validateSimpleCodeReference(prefix + "value provider ", virtualFieldMetaData.getValueProvider(), VirtualFieldValueProviderInterface.class);
+      }
+
       boolean requireFieldFunction = false;
       String requireFieldFunctionReason = null;
       if(virtualFieldMetaData.getIsQueryCriteria() && virtualFieldMetaData.getCriteriaExpander() == null)
@@ -1208,7 +1214,7 @@ public class QInstanceValidator
       }
       else if(virtualFieldMetaData.getIsQuerySelectable())
       {
-         if(table.getCustomizer(TableCustomizers.POST_QUERY_RECORD.getRole()).isEmpty())
+         if(virtualFieldMetaData.getValueProvider() == null && table.getCustomizer(TableCustomizers.POST_QUERY_RECORD.getRole()).isEmpty())
          {
             requireFieldFunction = true;
             requireFieldFunctionReason = "To be querySelectable (since its table does not have a POST_QUERY_RECORD customizer)";

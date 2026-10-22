@@ -1232,4 +1232,67 @@ public class RDBMSQueryActionJoinsTest extends RDBMSActionTest
       assertEquals(0, emptySessionRecords.size(), "Empty session should see no lineItemExtrinsic rows");
    }
 
+
+   /*******************************************************************************
+    ** Two aliases of one joined table retain independent output and private identity.
+    *******************************************************************************/
+   @Test
+   void testJoinedProviderProjection() throws Exception
+   {
+      JoinedValueProvider.calls = 0;
+      JoinedValueProvider.rows = 0;
+      var table = QContext.getQInstance().getTable(TestUtils.TABLE_NAME_PERSONAL_ID_CARD);
+      table.withVirtualField(new com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData("provided",
+         com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType.STRING).withIsQuerySelectable(true)
+         .withValueProvider(new com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference(JoinedValueProvider.class)));
+      try(var connection = new com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager().getConnection(
+         (com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSBackendMetaData) QContext.getQInstance().getBackend(TestUtils.DEFAULT_BACKEND_NAME)))
+      {
+         com.kingsrook.qqq.backend.module.rdbms.jdbc.QueryManager.executeUpdate(connection, "UPDATE personal_id_card SET id = id + 100");
+      }
+      var input = new QueryInput(TestUtils.TABLE_NAME_PERSON).withFieldNamesToInclude(Set.of("one.provided", "two.provided"))
+         .withQueryJoin(new com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin(table.getName())
+            .withAlias("one").withSelect(true).withType(com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin.Type.LEFT))
+         .withQueryJoin(new com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin(table.getName())
+            .withAlias("two").withSelect(true).withType(com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin.Type.LEFT));
+      var records = new QueryAction().execute(input).getRecords();
+      assertEquals(5, records.size());
+      assertEquals(2, JoinedValueProvider.calls);
+      assertEquals(6, JoinedValueProvider.rows);
+      assertEquals(Set.of("one.provided", "two.provided"), input.getFieldNamesToInclude());
+      for(QRecord record : records)
+      {
+         assertEquals(Set.of("one.provided", "two.provided"), record.getValues().keySet());
+         assertEquals(record.getValue("one.provided"), record.getValue("two.provided"));
+      }
+      assertThat(records).extracting(record -> record.getValueString("one.provided"))
+         .containsExactlyInAnyOrder("record-101", "record-102", "record-103", null, null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Count provider batches and derive values from child rather than parent keys.
+    *******************************************************************************/
+   public static class JoinedValueProvider implements com.kingsrook.qqq.backend.core.actions.tables.query.VirtualFieldValueProviderInterface
+   {
+      private static int calls;
+      private static int rows;
+
+      /***************************************************************************
+       ** Missing outer-join rows must not be passed to the provider.
+       ***************************************************************************/
+      @Override
+      public void fill(QTableMetaData table, String fieldName, List<QRecord> records, QueryInput input)
+      {
+         calls++;
+         rows += records.size();
+         for(QRecord record : records)
+         {
+            org.junit.jupiter.api.Assertions.assertNotNull(record.getValue(table.getPrimaryKeyField()));
+            record.setValue(fieldName, "record-" + record.getValue(table.getPrimaryKeyField()));
+         }
+      }
+   }
+
 }

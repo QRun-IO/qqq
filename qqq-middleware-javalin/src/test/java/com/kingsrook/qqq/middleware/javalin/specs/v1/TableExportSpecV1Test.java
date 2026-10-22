@@ -23,15 +23,26 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import com.kingsrook.qqq.backend.core.actions.tables.query.VirtualFieldValueProviderInterface;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
+import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
 import com.kingsrook.qqq.middleware.javalin.specs.SpecTestBase;
 import io.javalin.http.ContentType;
 import kong.unirest.HttpResponse;
 import kong.unirest.Unirest;
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVParser;
+import org.apache.commons.csv.CSVRecord;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -42,6 +53,61 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  *******************************************************************************/
 class TableExportSpecV1Test extends SpecTestBase
 {
+
+   /*******************************************************************************
+    ** HTTP downloads execute selected providers and omit unrequested provider work.
+    *******************************************************************************/
+   @Test
+   void exportsSelectedProvider() throws Exception
+   {
+      HttpExportValueProvider.calls.set(0);
+      serverQInstance.getTable("person").withVirtualField(new QVirtualFieldMetaData("provided", QFieldType.STRING).withLabel("Provided")
+         .withIsQuerySelectable(true).withValueProvider(new QCodeReference(HttpExportValueProvider.class)));
+      HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/table/person/export")
+         .contentType(ContentType.APPLICATION_JSON.getMimeType())
+         .body(JsonUtils.toJson(Map.of("format", "csv", "fieldNames", List.of("provided"))))
+         .asString();
+      assertEquals(200, response.getStatus());
+      try(CSVParser csv = CSVParser.parse(response.getBody(), CSVFormat.DEFAULT.withFirstRecordAsHeader()))
+      {
+         assertEquals(List.of("Provided"), csv.getHeaderNames());
+         List<CSVRecord> records = csv.getRecords();
+         assertThat(records).isNotEmpty();
+         assertThat(records).allMatch(record -> record.get("Provided").matches("record-[0-9]+"));
+      }
+      int calls = HttpExportValueProvider.calls.get();
+      assertThat(calls).isPositive();
+
+      HttpResponse<String> omitted = Unirest.post(getBaseUrlAndPath() + "/table/person/export")
+         .contentType(ContentType.APPLICATION_JSON.getMimeType())
+         .body(JsonUtils.toJson(Map.of("format", "csv", "fieldNames", List.of("firstName"))))
+         .asString();
+      assertEquals(200, omitted.getStatus());
+      assertThat(omitted.getBody()).doesNotContain("Provided", "record-");
+      assertEquals(calls, HttpExportValueProvider.calls.get());
+   }
+
+
+
+   /*******************************************************************************
+    ** Execute in the HTTP request's query context.
+    *******************************************************************************/
+   public static class HttpExportValueProvider implements VirtualFieldValueProviderInterface
+   {
+      private static final AtomicInteger calls = new AtomicInteger();
+
+      @Override
+      public void fill(QTableMetaData table, String fieldName, List<QRecord> records, QueryInput input)
+      {
+         calls.incrementAndGet();
+         for(QRecord record : records)
+         {
+            record.setValue(fieldName, "record-" + record.getValue(table.getPrimaryKeyField()));
+         }
+      }
+   }
+
+
 
    /***************************************************************************
     **

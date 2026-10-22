@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.model.actions.tables.delete;
@@ -46,6 +45,15 @@ public class DeleteInput extends AbstractTableActionInput
    private List<Serializable>  primaryKeys;
    private QQueryFilter        queryFilter;
    private InputSource         inputSource = QInputSource.SYSTEM;
+
+   private boolean dryRun = false;
+
+   /*******************************************************************************
+    ** For trusted system writes of derived values (counters, denormalized totals)
+    ** that are not business events. Required integrity listeners still run.
+    ** Record locks, field security, validation and permissions are unchanged.
+    *******************************************************************************/
+   private boolean omitRecordChangeEvents = false;
 
    private boolean omitDmlAudit = false;
    private String  auditContext = null;
@@ -241,6 +249,37 @@ public class DeleteInput extends AbstractTableActionInput
 
 
    /*******************************************************************************
+    ** Getter for omitRecordChangeEvents
+    *******************************************************************************/
+   public boolean getOmitRecordChangeEvents()
+   {
+      return (this.omitRecordChangeEvents);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for omitRecordChangeEvents
+    *******************************************************************************/
+   public void setOmitRecordChangeEvents(boolean omitRecordChangeEvents)
+   {
+      this.omitRecordChangeEvents = omitRecordChangeEvents;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for omitRecordChangeEvents
+    *******************************************************************************/
+   public DeleteInput withOmitRecordChangeEvents(boolean omitRecordChangeEvents)
+   {
+      this.omitRecordChangeEvents = omitRecordChangeEvents;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
     ** Getter for omitDmlAudit
     *******************************************************************************/
    public boolean getOmitDmlAudit()
@@ -359,6 +398,42 @@ public class DeleteInput extends AbstractTableActionInput
       }
 
       return (this.flags.contains(flag));
+   }
+
+
+   /*******************************************************************************
+    ** Getter for dryRun - if true, resolve the records to delete (a filter is always resolved to primary
+    ** keys), run the pre-delete customizers (with isPreview=true) and all validations,
+    ** but do NOT delete anything: no backend delete, no association cascades, audits,
+    ** record change listeners or post-delete customizers.  The output's
+    ** dryRunPrimaryKeys are the keys that would be deleted (deletedRecordCount stays
+    ** 0); recordsWithErrors/Warnings are as for a real delete.  Note that a dry run
+    ** does not validate the cascading delete of associated child records.
+    *******************************************************************************/
+   public boolean getDryRun()
+   {
+      return (this.dryRun);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for dryRun - see getDryRun.
+    *******************************************************************************/
+   public void setDryRun(boolean dryRun)
+   {
+      this.dryRun = dryRun;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for dryRun - see getDryRun.
+    *******************************************************************************/
+   public DeleteInput withDryRun(boolean dryRun)
+   {
+      this.dryRun = dryRun;
+      return (this);
    }
 
 }

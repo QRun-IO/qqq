@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.logging;
@@ -29,6 +28,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
@@ -39,6 +39,7 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.message.ParameterizedMessage;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
@@ -48,6 +49,47 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  *******************************************************************************/
 public class QLogger
 {
+   private static final CopyOnWriteArrayList<LogRedactorInterface> redactors = new CopyOnWriteArrayList<>();
+
+   /*******************************************************************************
+    ** Register an application redactor once; readers never hold a registry lock.
+    *******************************************************************************/
+   public static void registerRedactor(LogRedactorInterface redactor)
+   {
+      redactors.addIfAbsent(java.util.Objects.requireNonNull(redactor));
+   }
+
+
+
+   /*******************************************************************************
+    ** Remove a redactor during application shutdown or test cleanup.
+    *******************************************************************************/
+   public static void unregisterRedactor(LogRedactorInterface redactor)
+   {
+      redactors.remove(redactor);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fail closed if an application redactor cannot process a message.
+    *******************************************************************************/
+   public static String redact(String message)
+   {
+      try
+      {
+         for(LogRedactorInterface redactor : redactors)
+         {
+            message = redactor.redact(message);
+         }
+         return message;
+      }
+      catch(Exception e)
+      {
+         return "[Log redaction failed]";
+      }
+   }
+
    private static Map<String, QLogger> loggerMap = Collections.synchronizedMap(new HashMap<>());
 
    private static boolean logSessionIdEnabled = true;
@@ -99,6 +141,8 @@ public class QLogger
          e.printStackTrace();
       }
    }
+
+
 
    /*******************************************************************************
     **
@@ -171,10 +215,27 @@ public class QLogger
 
 
    /*******************************************************************************
+    ** In log4j, {@link Level#OFF} is the most-severe level, so a message logged AT
+    ** OFF is always emitted.  Callers that make their level configurable use OFF
+    ** (or null) to mean "don't log", so the {@code log(Level, ...)} methods treat
+    ** those as a no-op.
+    *******************************************************************************/
+   static boolean isLevelOff(Level level)
+   {
+      return (level == null || Level.OFF.equals(level));
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    public void log(Level level, String message)
    {
+      if(isLevelOff(level))
+      {
+         return;
+      }
       logger.log(level, () -> makeJsonString(message));
    }
 
@@ -185,6 +246,10 @@ public class QLogger
     *******************************************************************************/
    public void log(Level level, String message, Throwable t)
    {
+      if(isLevelOff(level))
+      {
+         return;
+      }
       logger.log(level, () -> makeJsonString(message, t));
    }
 
@@ -195,6 +260,10 @@ public class QLogger
     *******************************************************************************/
    public void log(Level level, String message, Throwable t, LogPair... logPairs)
    {
+      if(isLevelOff(level))
+      {
+         return;
+      }
       logger.log(level, () -> makeJsonString(message, t, logPairs));
    }
 
@@ -205,6 +274,10 @@ public class QLogger
     *******************************************************************************/
    public void log(Level level, Throwable t)
    {
+      if(isLevelOff(level))
+      {
+         return;
+      }
       logger.log(level, () -> makeJsonString(null, t));
    }
 
@@ -235,7 +308,7 @@ public class QLogger
     *******************************************************************************/
    public void trace(String message, Object... values)
    {
-      logger.trace(makeJsonString(message), values);
+      logger.trace(makeJsonString(new ParameterizedMessage(message, values).getFormattedMessage()));
    }
 
 
@@ -305,7 +378,7 @@ public class QLogger
     *******************************************************************************/
    public void debug(String message, Object... values)
    {
-      logger.debug(makeJsonString(message), values);
+      logger.debug(makeJsonString(new ParameterizedMessage(message, values).getFormattedMessage()));
    }
 
 
@@ -385,7 +458,7 @@ public class QLogger
     *******************************************************************************/
    public void info(String message, Object... values)
    {
-      logger.info(makeJsonString(message), values);
+      logger.info(makeJsonString(new ParameterizedMessage(message, values).getFormattedMessage()));
    }
 
 
@@ -455,7 +528,7 @@ public class QLogger
     *******************************************************************************/
    public void warn(String message, Object... values)
    {
-      logger.warn(makeJsonString(message), values);
+      logger.warn(makeJsonString(new ParameterizedMessage(message, values).getFormattedMessage()));
    }
 
 
@@ -525,7 +598,7 @@ public class QLogger
     *******************************************************************************/
    public void error(String message, Object... values)
    {
-      logger.error(makeJsonString(message), values);
+      logger.error(makeJsonString(new ParameterizedMessage(message, values).getFormattedMessage()));
    }
 
 
@@ -618,7 +691,7 @@ public class QLogger
          logPairList.add(logPair("stackTrace", LogUtils.filterStackTrace(org.apache.commons.lang3.exception.ExceptionUtils.getStackTrace(t))));
       }
 
-      return (LogUtils.jsonLog(logPairList));
+      return (redact(LogUtils.jsonLog(logPairList)));
    }
 
 

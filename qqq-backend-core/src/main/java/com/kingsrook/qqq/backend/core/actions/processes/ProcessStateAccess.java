@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.actions.processes;
@@ -102,7 +101,13 @@ public final class ProcessStateAccess implements Serializable
    public void requireAccess(String expectedName, String expectedUUID) throws QException
    {
       QSession session = QContext.getQSession();
-      if(instance == null || instance != QContext.getQInstance() || session == null
+      ///////////////////////////////////////////////////////////////////////////
+      // the instance identity check applies when the access was captured in   //
+      // this JVM; an access read back from a shared (multi-node) state store  //
+      // has no instance (it is transient) and is checked by session, variants, //
+      // process and current permissions, exactly as before                    //
+      ///////////////////////////////////////////////////////////////////////////
+      if((instance != null && instance != QContext.getQInstance()) || QContext.getQInstance() == null || session == null
          || !sessionHash.equals(sessionHash(session))
          || !backendVariants.equals(session.getBackendVariants() == null ? Map.of() : session.getBackendVariants())
          || (expectedName != null && !Objects.equals(processName, expectedName))

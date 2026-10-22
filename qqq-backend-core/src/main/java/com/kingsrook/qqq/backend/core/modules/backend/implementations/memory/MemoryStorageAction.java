@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.modules.backend.implementations.memory;
@@ -27,13 +26,17 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.List;
 import java.util.Optional;
 import com.kingsrook.qqq.backend.core.actions.interfaces.QStorageInterface;
+import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
+import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertOutput;
@@ -53,6 +56,21 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
  *******************************************************************************/
 public class MemoryStorageAction implements QStorageInterface
 {
+
+   /*******************************************************************************
+    ** Delete an object, including an incomplete report output.
+    *******************************************************************************/
+   @Override
+   public void deleteObject(StorageInput storageInput) throws QException
+   {
+      DeleteOutput output = new DeleteAction().execute(new DeleteInput(storageInput.getTableName()).withPrimaryKey(storageInput.getReference()));
+      if(CollectionUtils.nullSafeHasContents(output.getRecordsWithErrors()))
+      {
+         throw new QException("Could not delete memory storage object [" + storageInput.getReference() + "]");
+      }
+   }
+
+
 
    /*******************************************************************************
     **
@@ -130,6 +148,12 @@ public class MemoryStorageAction implements QStorageInterface
 
          try
          {
+            ///////////////////////////////////////////////////////////////////
+            // a write to an existing reference replaces the object, as S3   //
+            // and filesystem storage do (deterministic keys rely on this)   //
+            ///////////////////////////////////////////////////////////////////
+            new DeleteAction().execute(new DeleteInput(tableName).withPrimaryKeys(List.of(reference)));
+
             QFieldMetaData blobField = getBlobField(tableName);
             InsertOutput insertOutput = new InsertAction().execute(new InsertInput(tableName).withRecord(new QRecord()
                .withValue(QContext.getQInstance().getTable(tableName).getPrimaryKeyField(), reference)

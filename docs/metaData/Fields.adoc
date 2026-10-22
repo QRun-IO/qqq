@@ -169,3 +169,60 @@ new QTableMetaData().withName("item").withFields(List.of(
 ===== WhiteSpaceBehavior
 
 Whitespace policies apply on writes, reads and string filter operands, with the same string-like field requirement. `TRIM` uses Java `String.trim`, `TRIM_LEFT` and `TRIM_RIGHT` use `stripLeading` and `stripTrailing`, and `REMOVE_ALL_WHITESPACE` removes characters for which `Character.isWhitespace` is true. These Java operations have different Unicode whitespace rules. `NONE` preserves the value. Whitespace and case behaviors can be combined on a field; read normalization does not modify stored values.
+
+==== Field Adornments
+`FieldAdornment` objects (`QFieldMetaData.withFieldAdornment(...)`) tell frontends how to present a field's value:
+a `type` (an `AdornmentType`) plus a map of `values` whose keys depend on the type. They are passed through, as-is,
+in v1 table meta-data (`fields.<name>.adornments`).
+
+===== FILE_PREVIEW
+A `FILE_PREVIEW` adornment renders a field as a thumbnail (for images) or a file-type icon (for other files), wherever
+the frontend shows the value: query grids, record views, child-record lists and widgets. Unless `previewable` is
+`false`, clicking (or pressing Enter on) the thumbnail opens a preview: the full-size image with zoom, a PDF, a video
+or audio player, or a file icon with open and download links. The preview shows the file name, type, size and image
+dimensions when known, and the arrow keys step through the other previewable values on the same screen.
+
+The adorned field's own value is the default source for both the thumbnail and the full-size file. It can be a URL
+(an absolute `https:` URL, or a same-origin path), or, for a `BLOB` field that also has a `FILE_DOWNLOAD` adornment,
+the download URL the backend makes for it. Every value is optional. The `...Field` values name other fields of the
+same table, and the frontend reads them from the same record, so they must be fields the record is queried with.
+
+[cols="1,3"]
+|===
+|Value key (`AdornmentType.FilePreviewValues`) |Meaning
+
+|`thumbnailUrlField` (`THUMBNAIL_URL_FIELD`) |Field holding a small rendition's URL, used for thumbnails. Default: the adorned field.
+|`fullSizeUrlField` (`FULL_SIZE_URL_FIELD`) |Field holding the full-size (or original) URL, used in the preview and for open/download. Default: the adorned field.
+|`fileNameField` (`FILE_NAME_FIELD`) |Field holding the file name. Default: the display value, else the last segment of the URL.
+|`mimeTypeField` (`MIME_TYPE_FIELD`) |Field holding the MIME type, e.g. `image/png`, `application/pdf`, `video/mp4`.
+|`defaultMimeType` (`DEFAULT_MIME_TYPE`) |MIME type to assume without a `mimeTypeField` value, e.g. `image/*`. Without either, the type is guessed from the file extension.
+|`altTextField` (`ALT_TEXT_FIELD`) |Field holding the image's alternative text. Default: the file name.
+|`captionField` (`CAPTION_FIELD`) |Field holding a caption, shown in the preview.
+|`widthField`, `heightField` (`WIDTH_FIELD`, `HEIGHT_FIELD`) |Fields holding the image's pixel dimensions, shown in the preview and used to reserve the thumbnail's aspect ratio.
+|`sizeBytesField` (`SIZE_BYTES_FIELD`) |Field holding the file size in bytes.
+|`thumbnailMaxSize` (`THUMBNAIL_MAX_SIZE`) |Largest edge of a thumbnail in lists, in CSS pixels, from 16 to 512. Default: 40.
+|`previewable` (`PREVIEWABLE`) |`false` shows the thumbnail without opening a preview. Default: `true`.
+|===
+
+`QInstanceValidator` checks that each `...Field` value names a field of the table, that `thumbnailMaxSize` is in
+range, that `previewable` is a boolean and `defaultMimeType` is `type/subtype`, and that a `BLOB` field also has a
+`FILE_DOWNLOAD` adornment or a `thumbnailUrlField` / `fullSizeUrlField`.
+
+Frontends load these URLs into `<img>`, `<video>`, `<audio>` and `<iframe>` elements, so they must be allowed by the
+dashboard's Content-Security-Policy. The default policy allows images from `'self'`, `data:`, `blob:` and any
+`https:` origin, but media and frames only from `'self'`. A cross-origin PDF is therefore offered as open/download
+links instead of an inline preview, and cross-origin video or audio falls back to those links if the policy blocks it.
+
+[source,java]
+.Thumbnails from a rendition field, and a full-size preview from the original
+----
+new QFieldMetaData("originalUrl", QFieldType.STRING)
+   .withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment()
+      .withValue(AdornmentType.FilePreviewValues.THUMBNAIL_URL_FIELD, "thumbnailUrl")
+      .withValue(AdornmentType.FilePreviewValues.FILE_NAME_FIELD, "fileName")
+      .withValue(AdornmentType.FilePreviewValues.MIME_TYPE_FIELD, "mimeType")
+      .withValue(AdornmentType.FilePreviewValues.WIDTH_FIELD, "width")
+      .withValue(AdornmentType.FilePreviewValues.HEIGHT_FIELD, "height")
+      .withValue(AdornmentType.FilePreviewValues.SIZE_BYTES_FIELD, "fileSize")
+      .withValue(AdornmentType.FilePreviewValues.CAPTION_FIELD, "caption"));
+----

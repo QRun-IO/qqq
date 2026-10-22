@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwithfrontend;
@@ -30,6 +29,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.reporting.DistinctFilteringRecordPipe;
 import com.kingsrook.qqq.backend.core.actions.reporting.RecordPipe;
 import com.kingsrook.qqq.backend.core.actions.tables.CountAction;
@@ -132,7 +132,13 @@ public class ExtractViaQueryStep extends AbstractExtractStep
 
       customizeInputPreQuery(runBackendStepInput, queryInput);
 
+      FieldAccessHelper.PendingExactMatch exactMatch = runBackendStepInput.isFieldAccessEnforced()
+         ? FieldAccessHelper.assertCriteriaAllowed(queryInput.getTableName(), queryInput.getQueryJoins(), queryInput.getFilter(), null) : null;
       new QueryAction().execute(queryInput);
+      if(exactMatch != null)
+      {
+         exactMatch.complete(queryInput.getRecordPipe().getTotalRecordCount(), "process");
+      }
 
       ///////////////////////////////////////////////////////////////////
       // output is done into the pipe - so, nothing for us to do here. //
@@ -204,7 +210,13 @@ public class ExtractViaQueryStep extends AbstractExtractStep
       countInput.setFilter(queryFilter);
       getQueryJoinsForOrderByIfNeeded(queryFilter).forEach(queryJoin -> countInput.withQueryJoin(queryJoin));
       countInput.setIncludeDistinctCount(true);
+      FieldAccessHelper.PendingExactMatch exactMatch = runBackendStepInput.isFieldAccessEnforced()
+         ? FieldAccessHelper.assertCriteriaAllowed(countInput.getTableName(), countInput.getQueryJoins(), countInput.getFilter(), null) : null;
       CountOutput countOutput = new CountAction().execute(countInput);
+      if(exactMatch != null)
+      {
+         exactMatch.complete(countOutput.getCount(), "process");
+      }
       Integer     count       = countOutput.getDistinctCount();
 
       /////////////////////////////////////////////////////////////////////////////////////////////

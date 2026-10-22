@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.model.metadata.layout;
@@ -25,6 +24,7 @@ package com.kingsrook.qqq.backend.core.model.metadata.layout;
 import java.util.ArrayList;
 import java.util.List;
 import com.kingsrook.qqq.backend.core.model.metadata.QMetaDataObject;
+import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 
 
 /*******************************************************************************
@@ -32,6 +32,9 @@ import com.kingsrook.qqq.backend.core.model.metadata.QMetaDataObject;
  *******************************************************************************/
 public class QAppSection implements Cloneable, QMetaDataObject
 {
+   private QAppSectionRole role;
+   private Boolean         collapsedByDefault;
+
    private String name;
    private String label;
    private QIcon  icon;
@@ -76,6 +79,10 @@ public class QAppSection implements Cloneable, QMetaDataObject
       try
       {
          QAppSection clone = (QAppSection) super.clone();
+         clone.tables = tables == null ? null : new ArrayList<>(tables);
+         clone.apps = apps == null ? null : new ArrayList<>(apps);
+         clone.processes = processes == null ? null : new ArrayList<>(processes);
+         clone.reports = reports == null ? null : new ArrayList<>(reports);
          return clone;
       }
       catch(CloneNotSupportedException e)
@@ -381,6 +388,105 @@ public class QAppSection implements Cloneable, QMetaDataObject
       }
       this.apps.add(appName);
       return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for role
+    *******************************************************************************/
+   public QAppSectionRole getRole()
+   {
+      return (this.role);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for role
+    *******************************************************************************/
+   public void setRole(QAppSectionRole role)
+   {
+      this.role = role;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for role
+    *******************************************************************************/
+   public QAppSection withRole(QAppSectionRole role)
+   {
+      this.role = role;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for collapsedByDefault
+    *******************************************************************************/
+   public Boolean getCollapsedByDefault()
+   {
+      return (this.collapsedByDefault);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for collapsedByDefault
+    *******************************************************************************/
+   public void setCollapsedByDefault(Boolean collapsedByDefault)
+   {
+      this.collapsedByDefault = collapsedByDefault;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for collapsedByDefault
+    *******************************************************************************/
+   public QAppSection withCollapsedByDefault(Boolean collapsedByDefault)
+   {
+      this.collapsedByDefault = collapsedByDefault;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Resolve the navigation role for explicit and legacy sections.
+    *******************************************************************************/
+   public QAppSectionRole getEffectiveRole()
+   {
+      if(role != null)
+      {
+         return (role);
+      }
+      if("settings".equalsIgnoreCase(name) || "Settings".equalsIgnoreCase(label))
+      {
+         return (QAppSectionRole.SETTINGS);
+      }
+      if("history".equalsIgnoreCase(name))
+      {
+         return (QAppSectionRole.HISTORY);
+      }
+      if(CollectionUtils.nullSafeHasContents(apps) && CollectionUtils.nullSafeIsEmpty(tables)
+         && CollectionUtils.nullSafeIsEmpty(processes) && CollectionUtils.nullSafeIsEmpty(reports))
+      {
+         return (QAppSectionRole.GROUP);
+      }
+      return (QAppSectionRole.PRIMARY);
+   }
+
+
+
+   /*******************************************************************************
+    ** Resolve the initial collapsed state, honoring an explicit override.
+    *******************************************************************************/
+   public Boolean getEffectiveCollapsedByDefault()
+   {
+      return (collapsedByDefault != null ? collapsedByDefault : getEffectiveRole() == QAppSectionRole.SETTINGS);
    }
 
 }

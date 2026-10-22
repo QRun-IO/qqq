@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.model.actions.processes;
@@ -30,6 +29,7 @@ import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.actions.async.AsyncJobCallback;
+import com.kingsrook.qqq.backend.core.actions.processes.BackendStepListener;
 import com.kingsrook.qqq.backend.core.actions.processes.QProcessCallback;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
@@ -47,6 +47,7 @@ import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 public class RunProcessInput extends AbstractActionInput
 {
    private InputSource inputSource = QInputSource.SYSTEM;
+   private boolean fieldAccessEnforced;
 
    private String               processName;
    private QProcessCallback     callback;
@@ -56,6 +57,8 @@ public class RunProcessInput extends AbstractActionInput
    private String               startAtStep;
    private String               processUUID;
    private AsyncJobCallback     asyncJobCallback;
+
+   private transient BackendStepListener backendStepListener;
 
 
 
@@ -574,5 +577,56 @@ public class RunProcessInput extends AbstractActionInput
    {
       setInputSource(inputSource);
       return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for backendStepListener (see BackendStepListener)
+    *******************************************************************************/
+   public BackendStepListener getBackendStepListener()
+   {
+      return (this.backendStepListener);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for backendStepListener
+    *******************************************************************************/
+   public void setBackendStepListener(BackendStepListener backendStepListener)
+   {
+      this.backendStepListener = backendStepListener;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for backendStepListener
+    *******************************************************************************/
+   public RunProcessInput withBackendStepListener(BackendStepListener backendStepListener)
+   {
+      this.backendStepListener = backendStepListener;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Boundary decision, independent of nested authorized scopes and caller values.
+    *******************************************************************************/
+   public boolean isFieldAccessEnforced()
+   {
+      return (fieldAccessEnforced);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set only from the process boundary; never from the process values map.
+    *******************************************************************************/
+   public void setFieldAccessEnforced(boolean fieldAccessEnforced)
+   {
+      this.fieldAccessEnforced = fieldAccessEnforced;
    }
 }

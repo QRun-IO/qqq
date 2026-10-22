@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin.specs.v1.responses;
@@ -27,11 +26,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.kingsrook.qqq.backend.core.model.secrets.OneTimeSecret;
 import com.kingsrook.qqq.middleware.javalin.executors.io.ProcessInitOrStepOrStatusOutputInterface;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.SchemaBuilder;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIIncludeProperties;
+import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIListItems;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIOneOf;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.FieldMetaData;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.FrontendStep;
@@ -95,11 +96,28 @@ public class ProcessInitOrStepOrStatusResponseV1 implements ProcessInitOrStepOrS
       @OpenAPIDescription("Name of the next process step that needs to run (a frontend step).  If there are no more steps in the process, this field will not be included.  ")
       private String nextStep;
 
+      @OpenAPIDescription("Name of the step the process can go back to (restart at, by stepping with isStepBack=true), when the process declares one.  Omitted otherwise.")
+      private String backStep;
+
       @OpenAPIDescription("Current values for fields used by the process.Keys are Strings, values can be any type, as determined by the application & process.")
       private Map<String, Serializable> values;
 
       @OpenAPIDescription("Changes to be made to the process's metaData.")
       private ProcessMetaDataAdjustment processMetaDataAdjustment;
+
+      @OpenAPIDescription("Secrets shown once in synchronous init/step responses only. Never returned by status. Clients must not cache; response uses Cache-Control: no-store.")
+      @OpenAPIListItems(value = PreferenceSecretV1.class, useRef = true)
+      private List<PreferenceSecretV1> oneTimeSecrets;
+
+
+
+      /*******************************************************************************
+       ** Getter for secrets to display once without caching.
+       *******************************************************************************/
+      public List<PreferenceSecretV1> getOneTimeSecrets()
+      {
+         return (oneTimeSecrets);
+      }
 
 
 
@@ -110,6 +128,17 @@ public class ProcessInitOrStepOrStatusResponseV1 implements ProcessInitOrStepOrS
       public String getNextStep()
       {
          return nextStep;
+      }
+
+
+
+      /*******************************************************************************
+       ** Getter for backStep
+       **
+       *******************************************************************************/
+      public String getBackStep()
+      {
+         return backStep;
       }
 
 
@@ -177,6 +206,72 @@ public class ProcessInitOrStepOrStatusResponseV1 implements ProcessInitOrStepOrS
 
       @OpenAPIDescription("Optional indicator of progress (e.g., `current` of `total`, as in (`1 of 10`).")
       private Integer total;
+      private JobProgressV1 progress;
+      @OpenAPIListItems(value = JobLogLineV1.class, useRef = true)
+      private List<JobLogLineV1> logTail;
+
+
+
+      /*******************************************************************************
+       ** Getter for progress
+       *******************************************************************************/
+      public JobProgressV1 getProgress()
+      {
+         return (this.progress);
+      }
+
+
+
+      /*******************************************************************************
+       ** Setter for progress
+       *******************************************************************************/
+      public void setProgress(JobProgressV1 progress)
+      {
+         this.progress = progress;
+      }
+
+
+
+      /*******************************************************************************
+       ** Fluent setter for progress
+       *******************************************************************************/
+      public ProcessStepRunning withProgress(JobProgressV1 progress)
+      {
+         this.progress = progress;
+         return (this);
+      }
+
+
+
+      /*******************************************************************************
+       ** Getter for logTail
+       *******************************************************************************/
+      public List<JobLogLineV1> getLogTail()
+      {
+         return (this.logTail);
+      }
+
+
+
+      /*******************************************************************************
+       ** Setter for logTail
+       *******************************************************************************/
+      public void setLogTail(List<JobLogLineV1> logTail)
+      {
+         this.logTail = logTail;
+      }
+
+
+
+      /*******************************************************************************
+       ** Fluent setter for logTail
+       *******************************************************************************/
+      public ProcessStepRunning withLogTail(List<JobLogLineV1> logTail)
+      {
+         this.logTail = logTail;
+         return (this);
+      }
+
 
 
 
@@ -300,6 +395,20 @@ public class ProcessInitOrStepOrStatusResponseV1 implements ProcessInitOrStepOrS
     **
     ***************************************************************************/
    @Override
+   public void setBackStep(String backStep)
+   {
+      if(this.typedResponse instanceof ProcessStepComplete complete)
+      {
+         complete.backStep = backStep;
+      }
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @Override
    public void setValues(Map<String, Serializable> values)
    {
       if(this.typedResponse instanceof ProcessStepComplete complete)
@@ -326,13 +435,23 @@ public class ProcessInitOrStepOrStatusResponseV1 implements ProcessInitOrStepOrS
          {
             complete.processMetaDataAdjustment = new ProcessMetaDataAdjustment();
 
-            Map<String, FieldMetaData> updatedFields = processMetaDataAdjustment.getUpdatedFields().entrySet()
-               .stream().collect(Collectors.toMap(e -> e.getKey(), f -> new FieldMetaData(f.getValue())));
-            complete.processMetaDataAdjustment.setUpdatedFields(updatedFields);
+            ////////////////////////////////////////////////////////////////////////////
+            // an adjustment may carry only fields or only steps (a route change sets //
+            // just the step list) - the other part is absent, not an error            //
+            ////////////////////////////////////////////////////////////////////////////
+            if(processMetaDataAdjustment.getUpdatedFields() != null)
+            {
+               Map<String, FieldMetaData> updatedFields = processMetaDataAdjustment.getUpdatedFields().entrySet()
+                  .stream().collect(Collectors.toMap(e -> e.getKey(), f -> new FieldMetaData(f.getValue())));
+               complete.processMetaDataAdjustment.setUpdatedFields(updatedFields);
+            }
 
-            List<FrontendStep> updatedFrontendSteps = processMetaDataAdjustment.getUpdatedFrontendStepList()
-               .stream().map(f -> new FrontendStep(f)).toList();
-            complete.processMetaDataAdjustment.setUpdatedFrontendStepList(updatedFrontendSteps);
+            if(processMetaDataAdjustment.getUpdatedFrontendStepList() != null)
+            {
+               List<FrontendStep> updatedFrontendSteps = processMetaDataAdjustment.getUpdatedFrontendStepList()
+                  .stream().map(f -> new FrontendStep(f)).toList();
+               complete.processMetaDataAdjustment.setUpdatedFrontendStepList(updatedFrontendSteps);
+            }
          }
       }
    }
@@ -441,6 +560,49 @@ public class ProcessInitOrStepOrStatusResponseV1 implements ProcessInitOrStepOrS
    public TypedResponse getTypedResponse()
    {
       return typedResponse;
+   }
+
+
+
+   /*******************************************************************************
+    ** Map the transient core secrets into the shared HTTP secret schema.
+    *******************************************************************************/
+   @Override
+   public void setOneTimeSecrets(List<OneTimeSecret> oneTimeSecrets)
+   {
+      if(this.typedResponse instanceof ProcessStepComplete complete)
+      {
+         complete.oneTimeSecrets = oneTimeSecrets.stream().map(secret -> new PreferenceSecretV1()
+            .withLabel(secret.getLabel()).withValue(secret.getValue())
+            .withMasked(secret.getMasked()).withUsageText(secret.getUsageText())).toList();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Publish optional progress.
+    *******************************************************************************/
+   @Override
+   public void setProgress(JobProgressV1 progress)
+   {
+      if(typedResponse instanceof ProcessStepRunning running)
+      {
+         running.progress = progress;
+      }
+   }
+
+
+   /*******************************************************************************
+    ** Publish optional logTail.
+    *******************************************************************************/
+   @Override
+   public void setLogTail(List<JobLogLineV1> logTail)
+   {
+      if(typedResponse instanceof ProcessStepRunning running)
+      {
+         running.logTail = logTail;
+      }
    }
 
 }

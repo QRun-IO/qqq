@@ -1,0 +1,15 @@
+name: Published BOM consumer
+'on':
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Published QQQ release or candidate version
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  verify:
+    uses: QRun-IO/qqq-orb/.github/workflows/core-published-bom-consumer.yml@0f33ddadf88b9a1b940b8883782fe2000ee1d2bd
+    with:
+      version: ${{ inputs.version || '' }}

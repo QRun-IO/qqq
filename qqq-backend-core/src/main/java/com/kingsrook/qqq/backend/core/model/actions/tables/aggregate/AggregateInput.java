@@ -5,23 +5,23 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.model.actions.tables.aggregate;
 
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
@@ -40,6 +40,10 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
  *******************************************************************************/
 public class AggregateInput extends AbstractTableActionInput implements QueryOrCountInputInterface
 {
+   private boolean allowStreamedFallback = false;
+   private int streamedRowLimit = 1_000_000;
+   private BigDecimal samplePercent;
+
    private QBackendTransaction transaction;
 
    private QQueryFilter    filter;
@@ -450,6 +454,99 @@ public class AggregateInput extends AbstractTableActionInput implements QueryOrC
    public AggregateInput withInputSource(InputSource inputSource)
    {
       super.withInputSource(inputSource);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for allowStreamedFallback
+    *******************************************************************************/
+   public boolean getAllowStreamedFallback()
+   {
+      return (this.allowStreamedFallback);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for allowStreamedFallback
+    *******************************************************************************/
+   public void setAllowStreamedFallback(boolean allowStreamedFallback)
+   {
+      this.allowStreamedFallback = allowStreamedFallback;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for allowStreamedFallback
+    *******************************************************************************/
+   public AggregateInput withAllowStreamedFallback(boolean allowStreamedFallback)
+   {
+      setAllowStreamedFallback(allowStreamedFallback);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for streamedRowLimit
+    *******************************************************************************/
+   public int getStreamedRowLimit()
+   {
+      return (this.streamedRowLimit);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for streamedRowLimit
+    *******************************************************************************/
+   public void setStreamedRowLimit(int streamedRowLimit)
+   {
+      this.streamedRowLimit = streamedRowLimit;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for streamedRowLimit
+    *******************************************************************************/
+   public AggregateInput withStreamedRowLimit(int streamedRowLimit)
+   {
+      setStreamedRowLimit(streamedRowLimit);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for samplePercent
+    *******************************************************************************/
+   public BigDecimal getSamplePercent()
+   {
+      return (this.samplePercent);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for samplePercent
+    *******************************************************************************/
+   public void setSamplePercent(BigDecimal samplePercent)
+   {
+      this.samplePercent = samplePercent;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for samplePercent
+    *******************************************************************************/
+   public AggregateInput withSamplePercent(BigDecimal samplePercent)
+   {
+      setSamplePercent(samplePercent);
       return (this);
    }
 }

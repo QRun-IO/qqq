@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.module.rdbms.jdbc;
@@ -49,6 +48,7 @@ public class ConnectionManager
    private static final QLogger LOG = QLogger.getLogger(ConnectionManager.class);
 
    private static final Map<String, ConnectionProviderInterface> connectionProviderMap = new ConcurrentHashMap<>();
+   private static final Map<ConnectionProviderInterface, PoolPressureEvaluator> poolEvaluators = java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
 
 
 
@@ -196,11 +196,65 @@ public class ConnectionManager
 
 
    /*******************************************************************************
+    ** Pool gauges for a backend's connection provider, or an empty map when its
+    ** provider has no pool or has not been initialized yet (never initializes it).
+    *******************************************************************************/
+   public static Map<String, Number> getPoolMetrics(RDBMSBackendMetaData backend)
+   {
+      ConnectionProviderInterface connectionProvider = backend == null || backend.getName() == null ? null : connectionProviderMap.get(backend.getName());
+      return (connectionProvider == null ? Map.of() : connectionProvider.getPoolMetrics());
+   }
+
+
+
+   /*******************************************************************************
+    ** Close every connection provider (pools release their connections) and
+    ** forget them. Call at the end of an application's shutdown, after the work
+    ** that uses the database (requests, jobs, the scheduler) has stopped; a later
+    ** getConnection initializes a new provider.
+    *******************************************************************************/
+   public static void closeConnectionProviders()
+   {
+      synchronized(connectionProviderMap)
+      {
+         for(Map.Entry<String, ConnectionProviderInterface> entry : connectionProviderMap.entrySet())
+         {
+            try
+            {
+               entry.getValue().close();
+            }
+            catch(Exception e)
+            {
+               LOG.warn("Error closing connection provider", e, logPair("backendName", entry.getKey()));
+            }
+         }
+         connectionProviderMap.clear();
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** reset the map of connection providers - not necessarily meant to be useful
     ** in production code - written for use in qqq tests.
     *******************************************************************************/
    public static void resetConnectionProviders()
    {
       connectionProviderMap.clear();
+   }
+
+
+
+   /*******************************************************************************
+    ** History follows the provider lifetime, not just its reusable backend name.
+    *******************************************************************************/
+   public static com.kingsrook.qqq.backend.core.health.HealthStatus getPoolPressureStatus(RDBMSBackendMetaData backend, Map<String, Number> metrics)
+   {
+      ConnectionProviderInterface provider = connectionProviderMap.get(backend.getName());
+      if(provider == null)
+      {
+         return (com.kingsrook.qqq.backend.core.health.HealthStatus.UNKNOWN);
+      }
+      return (poolEvaluators.computeIfAbsent(provider, ignored -> new PoolPressureEvaluator()).evaluate(metrics, System.nanoTime()));
    }
 }

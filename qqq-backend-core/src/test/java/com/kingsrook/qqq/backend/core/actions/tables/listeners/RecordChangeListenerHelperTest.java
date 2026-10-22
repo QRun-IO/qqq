@@ -1,0 +1,743 @@
+/*
+ * QQQ - Low-code Application Framework for Engineers.
+ * Copyright (C) 2021-2026.  Kingsrook, LLC
+ * 651 N Broad St Ste 205 # 6917 | Middletown DE 19709 | United States
+ * contact@kingsrook.com
+ * https://github.com/Kingsrook/
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.kingsrook.qqq.backend.core.actions.tables.listeners;
+
+
+import java.util.ArrayList;
+import java.util.List;
+import com.kingsrook.qqq.backend.core.BaseTest;
+import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
+import com.kingsrook.qqq.backend.core.actions.interfaces.DeleteInterface;
+import com.kingsrook.qqq.backend.core.actions.interfaces.QueryInterface;
+import com.kingsrook.qqq.backend.core.actions.interfaces.UpdateInterface;
+import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
+import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
+import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
+import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.actions.tables.RestoreWriteFlag;
+import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateOutput;
+import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeType;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
+import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleDispatcher;
+import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryBackendModule;
+import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryDeleteAction;
+import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryQueryAction;
+import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryRecordStore;
+import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryUpdateAction;
+import com.kingsrook.qqq.backend.core.utils.TestUtils;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+
+/*******************************************************************************
+ ** Unit test for RecordChangeListenerHelper.  The public nested classes are the
+ ** listeners and the no-pre-fetch backend that the Insert, Update and Delete
+ ** action tests use too.
+ *******************************************************************************/
+public class RecordChangeListenerHelperTest extends BaseTest
+{
+   public static final String NO_PREFETCH_TABLE_NAME = "recordChangeNoPrefetch";
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @BeforeEach
+   void beforeEach()
+   {
+      resetListeners();
+   }
+
+
+
+   /*******************************************************************************
+    ** Clear the static state the listeners and the test backend keep.
+    *******************************************************************************/
+   public static void resetListeners()
+   {
+      CapturingListener.events.clear();
+      RequiredCapturingListener.events.clear();
+      CapturingListener.appliesToTableName = null;
+      CapturingListener.appliesToType = null;
+      ThrowingListener.events.clear();
+      LinkageErrorListener.events.clear();
+      NoPrefetchMemoryModule.failQueries = false;
+      NoPrefetchMemoryModule.addUnreadablePrimaryKeys = false;
+   }
+
+
+
+   /*******************************************************************************
+    ** Add a memory-backed table whose backend does not pre-fetch old records on
+    ** update or delete (like the API and filesystem backends).
+    *******************************************************************************/
+   public static String defineNoPrefetchTable()
+   {
+      QBackendModuleDispatcher.registerBackendModule(new NoPrefetchMemoryModule());
+      QInstance qInstance = QContext.getQInstance();
+      qInstance.addBackend(new QBackendMetaData().withName(NO_PREFETCH_TABLE_NAME).withBackendType(NoPrefetchMemoryModule.class));
+      qInstance.addTable(new QTableMetaData().withName(NO_PREFETCH_TABLE_NAME).withBackendName(NO_PREFETCH_TABLE_NAME).withPrimaryKeyField("id")
+         .withField(new QFieldMetaData("id", QFieldType.INTEGER))
+         .withField(new QFieldMetaData("name", QFieldType.STRING)));
+      return (NO_PREFETCH_TABLE_NAME);
+   }
+
+
+
+   /*******************************************************************************
+    ** Number of queries the memory backend has run since statistics were reset.
+    *******************************************************************************/
+   public static Integer getMemoryQueryCount()
+   {
+      return (MemoryRecordStore.getStatistics().getOrDefault(MemoryRecordStore.STAT_QUERIES_RAN, 0));
+   }
+
+
+
+   /*******************************************************************************
+    ** New inputs publish events by default; both setter forms control the flag.
+    *******************************************************************************/
+   @Test
+   void testOmitRecordChangeEventsAccessors()
+   {
+      InsertInput insertInput = new InsertInput();
+      assertFalse(insertInput.getOmitRecordChangeEvents());
+      assertThat(insertInput.withOmitRecordChangeEvents(true)).isSameAs(insertInput);
+      assertThat(insertInput.getOmitRecordChangeEvents()).isTrue();
+      insertInput.setOmitRecordChangeEvents(false);
+      assertFalse(insertInput.getOmitRecordChangeEvents());
+
+      UpdateInput updateInput = new UpdateInput();
+      assertFalse(updateInput.getOmitRecordChangeEvents());
+      assertThat(updateInput.withOmitRecordChangeEvents(true)).isSameAs(updateInput);
+      assertThat(updateInput.getOmitRecordChangeEvents()).isTrue();
+      updateInput.setOmitRecordChangeEvents(false);
+      assertFalse(updateInput.getOmitRecordChangeEvents());
+
+      DeleteInput deleteInput = new DeleteInput();
+      assertFalse(deleteInput.getOmitRecordChangeEvents());
+      assertThat(deleteInput.withOmitRecordChangeEvents(true)).isSameAs(deleteInput);
+      assertThat(deleteInput.getOmitRecordChangeEvents()).isTrue();
+      deleteInput.setOmitRecordChangeEvents(false);
+      assertFalse(deleteInput.getOmitRecordChangeEvents());
+   }
+
+
+
+   /*******************************************************************************
+    ** Insert suppresses optional notifications but always runs integrity listeners.
+    *******************************************************************************/
+   @ParameterizedTest
+   @ValueSource(booleans = { false, true })
+   void testInsertOmitRecordChangeEvents(boolean omitEvents) throws QException
+   {
+      QContext.getQInstance()
+         .withRecordChangeListener(new QCodeReference(CapturingListener.class))
+         .withRecordChangeListener(new QCodeReference(RequiredCapturingListener.class));
+      assertThat(new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withOmitRecordChangeEvents(omitEvents)
+         .withRecord(new QRecord().withValue("firstName", "After").withValue("lastName", "Test")))
+         .getRecords().get(0).getErrors()).isNullOrEmpty();
+      assertThat(CapturingListener.events).hasSize(omitEvents ? 0 : 1);
+      assertThat(RequiredCapturingListener.events).hasSize(1);
+      assertThat(RequiredCapturingListener.events.get(0).getType()).isEqualTo(RecordChangeType.INSERT);
+      assertThat(RequiredCapturingListener.events.get(0).getRecords()).hasSize(1);
+      assertThat(RequiredCapturingListener.events.get(0).getNotificationsSuppressed()).isEqualTo(omitEvents);
+   }
+
+
+
+   /*******************************************************************************
+    ** Update suppresses optional notifications but always runs integrity listeners.
+    *******************************************************************************/
+   @ParameterizedTest
+   @ValueSource(booleans = { false, true })
+   void testUpdateOmitRecordChangeEvents(boolean omitEvents) throws QException
+   {
+      QRecord record = new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withRecord(new QRecord().withValue("firstName", "Before").withValue("lastName", "Test"))).getRecords().get(0);
+      QContext.getQInstance()
+         .withRecordChangeListener(new QCodeReference(CapturingListener.class))
+         .withRecordChangeListener(new QCodeReference(RequiredCapturingListener.class));
+      assertThat(new UpdateAction().execute(new UpdateInput(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withOmitRecordChangeEvents(omitEvents)
+         .withRecord(new QRecord().withValue("id", record.getValueInteger("id")).withValue("firstName", "After")))
+         .getRecords().get(0).getErrors()).isNullOrEmpty();
+      assertThat(CapturingListener.events).hasSize(omitEvents ? 0 : 1);
+      assertThat(RequiredCapturingListener.events).hasSize(1);
+      assertThat(RequiredCapturingListener.events.get(0).getType()).isEqualTo(RecordChangeType.UPDATE);
+      assertThat(RequiredCapturingListener.events.get(0).getRecords()).hasSize(1);
+   }
+
+
+
+   /*******************************************************************************
+    ** Delete suppresses optional notifications but always runs integrity listeners.
+    *******************************************************************************/
+   @ParameterizedTest
+   @ValueSource(booleans = { false, true })
+   void testDeleteOmitRecordChangeEvents(boolean omitEvents) throws QException
+   {
+      QRecord record = new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withRecord(new QRecord().withValue("firstName", "Before").withValue("lastName", "Test"))).getRecords().get(0);
+      QContext.getQInstance()
+         .withRecordChangeListener(new QCodeReference(CapturingListener.class))
+         .withRecordChangeListener(new QCodeReference(RequiredCapturingListener.class));
+      new DeleteAction().execute(new DeleteInput(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withOmitRecordChangeEvents(omitEvents).withPrimaryKeys(List.of(record.getValueInteger("id"))));
+      assertThat(CapturingListener.events).hasSize(omitEvents ? 0 : 1);
+      assertThat(RequiredCapturingListener.events).hasSize(1);
+      assertThat(RequiredCapturingListener.events.get(0).getType()).isEqualTo(RecordChangeType.DELETE);
+      assertThat(RequiredCapturingListener.events.get(0).getRecords()).hasSize(1);
+   }
+
+
+
+   /*******************************************************************************
+    ** Either suppression control keeps only required listeners for restore writes.
+    *******************************************************************************/
+   @ParameterizedTest
+   @CsvSource({ "false, false", "false, true", "true, false", "true, true" })
+   void testOmitRecordChangeEventsCombinedWithRestore(boolean omitEvents, boolean publishEvents) throws QException
+   {
+      QContext.getQSession().withPermission(RestoreWriteFlag.REQUIRED_PERMISSION);
+      QContext.getQInstance()
+         .withRecordChangeListener(new QCodeReference(CapturingListener.class))
+         .withRecordChangeListener(new QCodeReference(RequiredCapturingListener.class));
+      RestoreWriteFlag restoreFlag = new RestoreWriteFlag().withPublishEvents(publishEvents);
+      QRecord record = new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withFlag(restoreFlag).withOmitRecordChangeEvents(omitEvents)
+         .withRecord(new QRecord().withValue("firstName", "Before").withValue("lastName", "Test"))).getRecords().get(0);
+      assertThat(record.getErrors()).isNullOrEmpty();
+      assertThat(CapturingListener.events).hasSize(omitEvents || !publishEvents ? 0 : 1);
+      assertThat(RequiredCapturingListener.events).hasSize(1);
+
+      assertThat(new UpdateAction().execute(new UpdateInput(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withFlag(restoreFlag).withOmitRecordChangeEvents(omitEvents)
+         .withRecord(new QRecord().withValue("id", record.getValueInteger("id")).withValue("firstName", "After")))
+         .getRecords().get(0).getErrors()).isNullOrEmpty();
+      assertThat(CapturingListener.events).hasSize(omitEvents || !publishEvents ? 0 : 2);
+      assertThat(RequiredCapturingListener.events).extracting(RecordChangeEvent::getType)
+         .containsExactly(RecordChangeType.INSERT, RecordChangeType.UPDATE);
+   }
+
+
+
+   /*******************************************************************************
+    ** With no listeners, nothing applies and firing is a no-op.
+    *******************************************************************************/
+   @Test
+   void testNoListeners()
+   {
+      QInstance qInstance = QContext.getQInstance();
+      assertThat(qInstance.getRecordChangeListeners()).isEmpty();
+      assertFalse(RecordChangeListenerHelper.anyApply(qInstance, TestUtils.TABLE_NAME_PERSON_MEMORY, RecordChangeType.INSERT));
+      assertFalse(RecordChangeListenerHelper.anyApply(null, TestUtils.TABLE_NAME_PERSON_MEMORY, RecordChangeType.INSERT));
+      RecordChangeListenerHelper.fire(qInstance, personInsertEvent());
+      RecordChangeListenerHelper.fire(null, personInsertEvent());
+
+      qInstance.setRecordChangeListeners(null);
+      assertFalse(RecordChangeListenerHelper.anyApply(qInstance, TestUtils.TABLE_NAME_PERSON_MEMORY, RecordChangeType.INSERT));
+      RecordChangeListenerHelper.fire(qInstance, personInsertEvent());
+
+      qInstance.withRecordChangeListener(new QCodeReference(CapturingListener.class));
+      assertThat(qInstance.getRecordChangeListeners()).hasSize(1);
+      RecordChangeListenerHelper.fire(qInstance, null);
+      assertThat(CapturingListener.events).isEmpty();
+   }
+
+
+
+   /*******************************************************************************
+    ** Only applying listeners hear about an event, and events without records
+    ** are not sent at all.
+    *******************************************************************************/
+   @Test
+   void testFireOnlyToApplyingListeners()
+   {
+      QInstance qInstance = QContext.getQInstance().withRecordChangeListener(new QCodeReference(CapturingListener.class));
+      CapturingListener.appliesToTableName = TestUtils.TABLE_NAME_PERSON_MEMORY;
+      assertTrue(RecordChangeListenerHelper.anyApply(qInstance, TestUtils.TABLE_NAME_PERSON_MEMORY, RecordChangeType.INSERT));
+      assertFalse(RecordChangeListenerHelper.anyApply(qInstance, TestUtils.TABLE_NAME_SHAPE, RecordChangeType.INSERT));
+
+      CapturingListener.appliesToType = RecordChangeType.UPDATE;
+      assertFalse(RecordChangeListenerHelper.anyApply(qInstance, TestUtils.TABLE_NAME_PERSON_MEMORY, RecordChangeType.INSERT));
+      assertTrue(RecordChangeListenerHelper.anyApply(qInstance, TestUtils.TABLE_NAME_PERSON_MEMORY, RecordChangeType.UPDATE));
+      CapturingListener.appliesToType = null;
+
+      RecordChangeEvent event = personInsertEvent();
+      RecordChangeListenerHelper.fire(qInstance, event);
+      RecordChangeListenerHelper.fire(qInstance, personInsertEvent().withTableName(TestUtils.TABLE_NAME_SHAPE));
+      RecordChangeListenerHelper.fire(qInstance, personInsertEvent().withRecords(List.of()));
+      RecordChangeListenerHelper.fire(qInstance, personInsertEvent().withRecords(null));
+      assertThat(CapturingListener.events).containsExactly(event);
+   }
+
+
+
+   /*******************************************************************************
+    ** A listener that throws, or that cannot be loaded, does not keep the other
+    ** listeners from running, and nothing escapes to the caller.
+    *******************************************************************************/
+   @Test
+   void testListenerFailuresAreCaught()
+   {
+      QInstance qInstance = QContext.getQInstance()
+         .withRecordChangeListener(new QCodeReference(ThrowingListener.class))
+         .withRecordChangeListener(new QCodeReference(ThrowingAppliesToListener.class))
+         .withRecordChangeListener(new QCodeReference(Object.class))
+         .withRecordChangeListener(new QCodeReference("com.kingsrook.qqq.NoSuchListener", QCodeType.JAVA))
+         .withRecordChangeListener(new QCodeReference("noSuchScript", QCodeType.JAVA_SCRIPT))
+         .withRecordChangeListener(new QCodeReference(CapturingListener.class));
+
+      RecordChangeEvent event = personInsertEvent();
+      RecordChangeListenerHelper.fire(qInstance, event);
+      assertThat(ThrowingListener.events).containsExactly(event);
+      assertThat(CapturingListener.events).containsExactly(event);
+      assertTrue(RecordChangeListenerHelper.anyApply(qInstance, TestUtils.TABLE_NAME_PERSON_MEMORY, RecordChangeType.DELETE));
+
+      qInstance.setRecordChangeListeners(new ArrayList<>(List.of(new QCodeReference(ThrowingAppliesToListener.class), new QCodeReference(Object.class))));
+      assertFalse(RecordChangeListenerHelper.anyApply(qInstance, TestUtils.TABLE_NAME_PERSON_MEMORY, RecordChangeType.DELETE));
+   }
+
+
+
+   /*******************************************************************************
+    ** A listener that throws a LinkageError (e.g., a NoClassDefFoundError from
+    ** an optional client jar that isn't on the classpath) - from appliesTo, from
+    ** onRecordsChanged, or from its own class initialization - is caught like an
+    ** exception, so other listeners still run and nothing escapes to the caller.
+    *******************************************************************************/
+   @Test
+   void testListenerLinkageErrorsAreCaught()
+   {
+      QInstance qInstance = QContext.getQInstance()
+         .withRecordChangeListener(new QCodeReference(LinkageErrorListener.class))
+         .withRecordChangeListener(new QCodeReference(LinkageErrorAppliesToListener.class))
+         .withRecordChangeListener(new QCodeReference(FailingInitializationListener.class))
+         .withRecordChangeListener(new QCodeReference(CapturingListener.class));
+
+      RecordChangeEvent event = personInsertEvent();
+      RecordChangeListenerHelper.fire(qInstance, event);
+      assertThat(LinkageErrorListener.events).containsExactly(event);
+      assertThat(CapturingListener.events).containsExactly(event);
+
+      qInstance.setRecordChangeListeners(new ArrayList<>(List.of(new QCodeReference(LinkageErrorAppliesToListener.class), new QCodeReference(FailingInitializationListener.class))));
+      assertFalse(RecordChangeListenerHelper.anyApply(qInstance, TestUtils.TABLE_NAME_PERSON_MEMORY, RecordChangeType.INSERT));
+   }
+
+
+
+   /*******************************************************************************
+    ** The event is a plain bean; setters and fluent setters match.
+    *******************************************************************************/
+   @Test
+   void testEventAccessors()
+   {
+      QBackendTransaction transaction = new QBackendTransaction();
+      List<QRecord>       records     = List.of(new QRecord().withValue("id", 1));
+      List<QRecord>       oldRecords  = List.of(new QRecord().withValue("id", 1).withValue("firstName", "Old"));
+
+      RecordChangeEvent event = new RecordChangeEvent();
+      event.setTableName(TestUtils.TABLE_NAME_PERSON_MEMORY);
+      event.setType(RecordChangeType.UPDATE);
+      event.setRecords(records);
+      event.setOldRecords(oldRecords);
+      event.setTransaction(transaction);
+
+      assertEquals(TestUtils.TABLE_NAME_PERSON_MEMORY, event.getTableName());
+      assertEquals(RecordChangeType.UPDATE, event.getType());
+      assertSame(records, event.getRecords());
+      assertSame(oldRecords, event.getOldRecords());
+      assertSame(transaction, event.getTransaction());
+
+      RecordChangeEvent fluent = new RecordChangeEvent().withOldRecords(oldRecords).withTransaction(transaction);
+      assertSame(oldRecords, fluent.getOldRecords());
+      assertSame(transaction, fluent.getTransaction());
+      assertNull(fluent.getTableName());
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static RecordChangeEvent personInsertEvent()
+   {
+      return (new RecordChangeEvent()
+         .withTableName(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withType(RecordChangeType.INSERT)
+         .withRecords(List.of(new QRecord().withValue("id", 1))));
+   }
+
+
+
+   /*******************************************************************************
+    ** Records every event it gets.  Applies to all tables and types unless
+    ** appliesToTableName or appliesToType is set.
+    *******************************************************************************/
+   public static class CapturingListener implements RecordChangeListenerInterface
+   {
+      public static final List<RecordChangeEvent> events = new ArrayList<>();
+
+      public static String           appliesToTableName = null;
+      public static RecordChangeType appliesToType      = null;
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public boolean appliesTo(String tableName, RecordChangeType type)
+      {
+         return ((appliesToTableName == null || appliesToTableName.equals(tableName)) && (appliesToType == null || appliesToType.equals(type)));
+      }
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public void onRecordsChanged(RecordChangeEvent event)
+      {
+         events.add(event);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Captures integrity events independently of optional notifications.
+    *******************************************************************************/
+   public static class RequiredCapturingListener extends CapturingListener
+   {
+      public static final List<RecordChangeEvent> events = new ArrayList<>();
+
+
+
+      /*******************************************************************************
+       ** Integrity listeners must run even when notifications are suppressed.
+       *******************************************************************************/
+      @Override
+      public boolean isRequired()
+      {
+         return (true);
+      }
+
+
+
+      /*******************************************************************************
+       ** Capture the event received by the integrity listener.
+       *******************************************************************************/
+      @Override
+      public void onRecordsChanged(RecordChangeEvent event)
+      {
+         events.add(event);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Records every event it gets, then throws.
+    *******************************************************************************/
+   public static class ThrowingListener implements RecordChangeListenerInterface
+   {
+      public static final List<RecordChangeEvent> events = new ArrayList<>();
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public boolean appliesTo(String tableName, RecordChangeType type)
+      {
+         return (true);
+      }
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public void onRecordsChanged(RecordChangeEvent event) throws QException
+      {
+         events.add(event);
+         throw (new QException("Expected listener failure"));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Throws from appliesTo, so it never receives an event.
+    *******************************************************************************/
+   public static class ThrowingAppliesToListener implements RecordChangeListenerInterface
+   {
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public boolean appliesTo(String tableName, RecordChangeType type)
+      {
+         throw (new IllegalStateException("Expected appliesTo failure"));
+      }
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public void onRecordsChanged(RecordChangeEvent event)
+      {
+         throw (new IllegalStateException("Should not be called"));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Records every event it gets, then throws a LinkageError.
+    *******************************************************************************/
+   public static class LinkageErrorListener implements RecordChangeListenerInterface
+   {
+      public static final List<RecordChangeEvent> events = new ArrayList<>();
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public boolean appliesTo(String tableName, RecordChangeType type)
+      {
+         return (true);
+      }
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public void onRecordsChanged(RecordChangeEvent event)
+      {
+         events.add(event);
+         throw (new NoClassDefFoundError("com/example/MissingBrokerClient"));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Throws a LinkageError from appliesTo, so it never receives an event.
+    *******************************************************************************/
+   public static class LinkageErrorAppliesToListener implements RecordChangeListenerInterface
+   {
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public boolean appliesTo(String tableName, RecordChangeType type)
+      {
+         throw (new NoClassDefFoundError("com/example/MissingBrokerClient"));
+      }
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public void onRecordsChanged(RecordChangeEvent event)
+      {
+         throw (new IllegalStateException("Should not be called"));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A listener class that can't be initialized, so loading it throws a
+    ** LinkageError (ExceptionInInitializerError, then NoClassDefFoundError).
+    *******************************************************************************/
+   public static class FailingInitializationListener implements RecordChangeListenerInterface
+   {
+      private static final Object UNINITIALIZABLE = failInitialization();
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      private static Object failInitialization()
+      {
+         throw (new IllegalStateException("Expected class initialization failure"));
+      }
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public boolean appliesTo(String tableName, RecordChangeType type)
+      {
+         return (UNINITIALIZABLE != null);
+      }
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public void onRecordsChanged(RecordChangeEvent event)
+      {
+         throw (new IllegalStateException("Should not be called"));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Memory storage behind update and delete actions that do not pre-fetch old
+    ** records.  Set failQueries to make every query throw.  Set
+    ** addUnreadablePrimaryKeys to have each update also return a record whose
+    ** primary key can't be read as the table's (integer) type.
+    *******************************************************************************/
+   public static class NoPrefetchMemoryModule extends MemoryBackendModule
+   {
+      public static final String UNREADABLE_PRIMARY_KEY = "not-a-number";
+
+      public static Boolean failQueries              = false;
+      public static Boolean addUnreadablePrimaryKeys = false;
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public String getBackendType()
+      {
+         return (NO_PREFETCH_TABLE_NAME);
+      }
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public UpdateInterface getUpdateInterface()
+      {
+         return (new MemoryUpdateAction()
+         {
+            @Override
+            public boolean supportsPreFetchQuery()
+            {
+               return (false);
+            }
+
+
+
+            @Override
+            public UpdateOutput execute(UpdateInput updateInput) throws QException
+            {
+               UpdateOutput updateOutput = super.execute(updateInput);
+               if(addUnreadablePrimaryKeys)
+               {
+                  updateOutput.getRecords().add(new QRecord().withValue("id", UNREADABLE_PRIMARY_KEY).withValue("name", "unreadable"));
+               }
+               return (updateOutput);
+            }
+         });
+      }
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public DeleteInterface getDeleteInterface()
+      {
+         return (new MemoryDeleteAction()
+         {
+            @Override
+            public boolean supportsPreFetchQuery()
+            {
+               return (false);
+            }
+         });
+      }
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public QueryInterface getQueryInterface()
+      {
+         return (new MemoryQueryAction()
+         {
+            @Override
+            public QueryOutput execute(QueryInput queryInput) throws QException
+            {
+               if(failQueries)
+               {
+                  throw (new QException("Expected query failure"));
+               }
+               return (super.execute(queryInput));
+            }
+         });
+      }
+   }
+}

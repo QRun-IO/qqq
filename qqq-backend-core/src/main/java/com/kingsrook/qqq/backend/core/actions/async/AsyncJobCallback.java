@@ -5,26 +5,27 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.actions.async;
 
 
+import java.util.List;
 import java.util.UUID;
-import com.kingsrook.qqq.backend.core.state.StateType;
-import com.kingsrook.qqq.backend.core.state.UUIDAndTypeStateKey;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobLogLine;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobProgress;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobProgressSnapshot;
 
 
 /*******************************************************************************
@@ -34,6 +35,7 @@ import com.kingsrook.qqq.backend.core.state.UUIDAndTypeStateKey;
  *******************************************************************************/
 public class AsyncJobCallback
 {
+   private transient JobProgress jobProgress;
    private UUID           jobUUID;
    private AsyncJobStatus asyncJobStatus;
 
@@ -164,7 +166,11 @@ public class AsyncJobCallback
     *******************************************************************************/
    protected void storeUpdatedStatus()
    {
-      AsyncJobManager.getStateProvider().put(new UUIDAndTypeStateKey(jobUUID, StateType.ASYNC_JOB_STATUS), asyncJobStatus);
+      ///////////////////////////////////////////////////////////////////////
+      // throttled when state is shared across nodes (AsyncJobRegistry); a //
+      // cancel requested on another node is read back before each write   //
+      ///////////////////////////////////////////////////////////////////////
+      AsyncJobRegistry.store(jobUUID, asyncJobStatus, false);
    }
 
 
@@ -172,12 +178,45 @@ public class AsyncJobCallback
    /*******************************************************************************
     ** Check if the asyncJobStatus had a cancellation requested.
     **
-    ** TODO - concern about multiple threads writing this object to a non-in-memory
-    **  state provider, and this value getting lost...
+    ** With shared (multi-node) state, a cancel stored by any node is seen here
+    ** (AsyncJobRegistry checks the store at most once a second).
     *******************************************************************************/
    public boolean wasCancelRequested()
    {
-      return (this.asyncJobStatus.getCancelRequested());
+      return (AsyncJobRegistry.wasCancelRequested(jobUUID, this.asyncJobStatus));
    }
 
+
+
+   /*******************************************************************************
+    ** Publish rich progress and the redacted tail through this callback.
+    *******************************************************************************/
+   public void updateProgress(JobProgressSnapshot progress, List<JobLogLine> logTail)
+   {
+      asyncJobStatus.setProgress(progress);
+      asyncJobStatus.setLogTail(logTail);
+      storeUpdatedStatus();
+   }
+
+
+   /*******************************************************************************
+    ** Read current status for adapters.
+    *******************************************************************************/
+   public AsyncJobStatus getAsyncJobStatus()
+   {
+      return (asyncJobStatus);
+   }
+
+
+   /*******************************************************************************
+    ** One shared progress reporter for this callback.
+    *******************************************************************************/
+   public synchronized JobProgress getJobProgress()
+   {
+      if(jobProgress == null)
+      {
+         jobProgress = new JobProgress(this);
+      }
+      return (jobProgress);
+   }
 }

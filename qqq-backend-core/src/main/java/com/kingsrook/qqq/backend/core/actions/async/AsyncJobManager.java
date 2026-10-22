@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.actions.async;
@@ -39,7 +38,7 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
-import com.kingsrook.qqq.backend.core.state.InMemoryStateProvider;
+import com.kingsrook.qqq.backend.core.state.QStateProviders;
 import com.kingsrook.qqq.backend.core.state.StateProviderInterface;
 import com.kingsrook.qqq.backend.core.state.StateType;
 import com.kingsrook.qqq.backend.core.state.UUIDAndTypeStateKey;
@@ -100,7 +99,8 @@ public class AsyncJobManager
       {
          asyncJobStatus.setStateAccess(ProcessStateAccess.capture(jobName, processUUID));
       }
-      getStateProvider().put(uuidAndTypeStateKey, asyncJobStatus);
+      AsyncJobRegistry.register(jobUUID, asyncJobStatus);
+      AsyncJobRegistry.store(jobUUID, asyncJobStatus, true);
 
       try
       {
@@ -172,7 +172,7 @@ public class AsyncJobManager
          LOG.debug("Starting job " + uuidAndTypeStateKey.getUuid());
          T result = asyncJob.run(new AsyncJobCallback(uuidAndTypeStateKey.getUuid(), asyncJobStatus));
          asyncJobStatus.setState(AsyncJobState.COMPLETE);
-         getStateProvider().put(uuidAndTypeStateKey, asyncJobStatus);
+         AsyncJobRegistry.store(uuidAndTypeStateKey.getUuid(), asyncJobStatus, true);
          LOG.debug("Completed job " + uuidAndTypeStateKey.getUuid());
          return (result);
       }
@@ -187,7 +187,7 @@ public class AsyncJobManager
          {
             asyncJobStatus.setCaughtException(new QException("Caught throwable", t));
          }
-         getStateProvider().put(uuidAndTypeStateKey, asyncJobStatus);
+         AsyncJobRegistry.store(uuidAndTypeStateKey.getUuid(), asyncJobStatus, true);
 
          //////////////////////////////////////////////////////
          // if user facing, just log an info, warn otherwise //
@@ -197,6 +197,7 @@ public class AsyncJobManager
       }
       finally
       {
+         AsyncJobRegistry.unregister(uuidAndTypeStateKey.getUuid());
          Thread.currentThread().setName(originalThreadName);
          QContext.clear();
       }
@@ -211,7 +212,7 @@ public class AsyncJobManager
    public Optional<AsyncJobStatus> getJobStatus(String uuid)
    {
       UUIDAndTypeStateKey uuidAndTypeStateKey = new UUIDAndTypeStateKey(UUID.fromString(uuid), StateType.ASYNC_JOB_STATUS);
-      return (getStateProvider().get(AsyncJobStatus.class, uuidAndTypeStateKey));
+      return (getStateProvider().get(AsyncJobStatus.class, uuidAndTypeStateKey).map(AsyncJobRegistry::checkLost));
    }
 
 
@@ -248,11 +249,11 @@ public class AsyncJobManager
     *******************************************************************************/
    static StateProviderInterface getStateProvider()
    {
-      // TODO - read this from somewhere in meta data eh?
-      return InMemoryStateProvider.getInstance();
-
-      // todo - by using JSON serialization internally, this makes stupidly large payloads and crashes things.
-      // return TempFileStateProvider.getInstance();
+      //////////////////////////////////////////////////////////////////////////
+      // the instance's StateProviderMetaData (shared across nodes), else the //
+      // in-memory provider (spec 2026-10-15-cluster-ha-design, section B)    //
+      //////////////////////////////////////////////////////////////////////////
+      return (QStateProviders.get());
    }
 
 
@@ -263,7 +264,7 @@ public class AsyncJobManager
    public void cancelJob(String jobUUID)
    {
       Optional<AsyncJobStatus> jobStatus = getJobStatus(jobUUID);
-      jobStatus.ifPresent(asyncJobStatus -> asyncJobStatus.setCancelRequested(true));
+      jobStatus.ifPresent(asyncJobStatus -> AsyncJobRegistry.requestCancel(UUID.fromString(jobUUID), asyncJobStatus));
    }
 
 

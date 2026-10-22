@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert;
@@ -221,6 +220,56 @@ class BulkInsertStepUtilsTest extends BaseTest
       assertNull(profile.getFieldList().get(0).getHeaderName());
       assertNull(profile.getFieldList().get(0).getColumnIndex());
       assertTrue(profile.getFieldList().get(0).getClearIfEmpty());
+   }
+
+
+
+   /*******************************************************************************
+    ** a file without a header row arrives with "headerName": null (QRun-IO/qqq#660)
+    *******************************************************************************/
+   @Test
+   void testGetBulkLoadProfile_v1WithNullHeaderName_parsedAsNull()
+   {
+      RunBackendStepInput input = new RunBackendStepInput();
+      input.addValue("version", "v1");
+      input.addValue("layout", "FLAT");
+      input.addValue("hasHeaderRow", false);
+      input.addValue("keyFields", "");
+      input.addValue("isBulkEdit", false);
+      input.addValue("fieldListJSON", """
+         [{"fieldName":"firstName","columnIndex":0,"headerName":null,"doValueMapping":false,"clearIfEmpty":false}]
+         """);
+
+      BulkLoadProfile profile = BulkInsertStepUtils.getBulkLoadProfile(input);
+
+      assertNull(profile.getFieldList().get(0).getHeaderName());
+      assertEquals(0, profile.getFieldList().get(0).getColumnIndex());
+   }
+
+
+
+   /*******************************************************************************
+    ** other optional profile field values sent as JSON null read as absent
+    *******************************************************************************/
+   @Test
+   void testGetBulkLoadProfile_v1WithNullOptionalValues_parsedAsNull()
+   {
+      RunBackendStepInput input = new RunBackendStepInput();
+      input.addValue("version", "v1");
+      input.addValue("layout", "FLAT");
+      input.addValue("hasHeaderRow", true);
+      input.addValue("keyFields", "");
+      input.addValue("isBulkEdit", false);
+      input.addValue("fieldListJSON", """
+         [{"fieldName":"status","headerName":"Status","columnIndex":null,"defaultValue":null,"doValueMapping":true,"valueMappings":null}]
+         """);
+
+      BulkLoadProfile profile = BulkInsertStepUtils.getBulkLoadProfile(input);
+
+      assertEquals("Status", profile.getFieldList().get(0).getHeaderName());
+      assertNull(profile.getFieldList().get(0).getColumnIndex());
+      assertNull(profile.getFieldList().get(0).getDefaultValue());
+      assertNull(profile.getFieldList().get(0).getValueMappings());
    }
 
 

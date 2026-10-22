@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.logging;
@@ -66,6 +65,34 @@ class QCollectingLoggerTest extends BaseTest
 
 
    /*******************************************************************************
+    ** In log4j, Level.OFF is the most-severe level, so logging AT it is always
+    ** emitted.  QLogger treats OFF (and null) as "don't log" for its
+    ** log(Level, ...) methods, so a configurable level of OFF means silence.
+    *******************************************************************************/
+   @Test
+   void testLogAtLevelOffOrNullIsNotEmitted()
+   {
+      ClassThatLogsThings classThatLogsThings = new ClassThatLogsThings();
+      QCollectingLogger   collectingLogger    = QLogger.activateCollectingLoggerForClass(ClassThatLogsThings.class);
+      try
+      {
+         classThatLogsThings.logAtLevel(Level.OFF, "off");
+         classThatLogsThings.logAtLevel(null, "null");
+         assertThat(collectingLogger.getCollectedMessages()).isEmpty();
+
+         classThatLogsThings.logAtLevel(Level.INFO, "info");
+         assertEquals(4, collectingLogger.getCollectedMessages().size());
+         assertThat(collectingLogger.getCollectedMessages()).allMatch(m -> Level.INFO.equals(m.getLevel()));
+      }
+      finally
+      {
+         QLogger.deactivateCollectingLoggerForClass(ClassThatLogsThings.class);
+      }
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    public static class ClassThatLogsThings
@@ -86,6 +113,17 @@ class QCollectingLoggerTest extends BaseTest
       private void logAWarn(String message)
       {
          LOG.warn(message);
+      }
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      private void logAtLevel(Level level, String message)
+      {
+         LOG.log(level, message);
+         LOG.log(level, message, (Throwable) null);
+         LOG.log(level, message, null, new LogPair("k", "v"));
+         LOG.log(level, new Exception(message));
       }
    }
 

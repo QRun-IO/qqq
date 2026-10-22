@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin.specs;
@@ -32,10 +31,15 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
+import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.exceptions.QRuntimeException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.session.QCredentialScope;
+import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
+import com.kingsrook.qqq.backend.core.utils.ExceptionUtils;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
@@ -55,6 +59,7 @@ import io.javalin.http.ContentType;
 import io.javalin.http.Context;
 import io.javalin.http.Handler;
 import org.apache.commons.lang3.NotImplementedException;
+import org.eclipse.jetty.http.BadMessageException;
 import org.json.JSONObject;
 
 
@@ -191,6 +196,7 @@ public abstract class AbstractEndpointSpec<
             QContext.setQInstance(qInstance);
          }
 
+         checkCredentialScopeOperation();
          abstractMiddlewareVersion.preExecute(context);
 
          INPUT    input    = buildInput(context);
@@ -214,6 +220,50 @@ public abstract class AbstractEndpointSpec<
 
 
    /***************************************************************************
+    ** The operation id of this spec: `METHOD /path-template` (relative to the
+    ** version base path), as credential scopes and UiApiInvoker name operations.
+    ***************************************************************************/
+   public String getOperationId()
+   {
+      CompleteOperation operation = defineCompleteOperation();
+      return (operation.getHttpMethod().name() + " " + operation.getPath());
+   }
+
+
+
+   /***************************************************************************
+    ** The OpenAPI operationId of this spec (e.g. `queryTable`).  A credential
+    ** scope may name an operation by either this or getOperationId().
+    ***************************************************************************/
+   public String getOpenApiOperationId()
+   {
+      ////////////////////////////////////////////////////////////////////////////
+      // the same id the document publishes: the spec's own, else the derived  //
+      // one (a spec that builds its Method itself may leave it unset)         //
+      ////////////////////////////////////////////////////////////////////////////
+      CompleteOperation operation = defineCompleteOperation();
+      String            explicit  = operation.getMethod() == null ? null : operation.getMethod().getOperationId();
+      return (explicit != null ? explicit : UiApiOperationIds.of(operation.getHttpMethod(), operation.getPath()));
+   }
+
+
+
+   /***************************************************************************
+    ** Refuse an operation outside the session's credential scope (if any).
+    ***************************************************************************/
+   protected void checkCredentialScopeOperation() throws QPermissionDeniedException
+   {
+      QSession         session = QContext.getQSession();
+      QCredentialScope scope   = session == null ? null : session.getCredentialScope();
+      if(scope != null && !QCredentialScope.allows(scope.getOperationIds(), getOperationId()) && !QCredentialScope.allows(scope.getOperationIds(), getOpenApiOperationId()))
+      {
+         throw (new QPermissionDeniedException("Permission denied."));
+      }
+   }
+
+
+
+   /***************************************************************************
     **
     ***************************************************************************/
    protected void handleException(Context context, Exception e)
@@ -231,6 +281,7 @@ public abstract class AbstractEndpointSpec<
       BasicOperation basicOperation = defineBasicOperation();
 
       Method method = new Method()
+         .withOperationId(basicOperation.getOperationId() != null ? basicOperation.getOperationId() : UiApiOperationIds.of(basicOperation.getHttpMethod(), basicOperation.getPath()))
          .withSummary(basicOperation.getShortSummary())
          .withDescription(basicOperation.getLongDescription())
          .withParameters(defineRequestParameters())
@@ -334,6 +385,15 @@ public abstract class AbstractEndpointSpec<
       {
          Response responseObject = rs.computeIfAbsent(basicResponse.status().getCode(), (k) -> new Response());
          responseObject.withDescription(basicResponse.description());
+
+         ///////////////////////////////////////////////////////////////////////
+         // a response without a schema (e.g. 204 No Content) has no content //
+         ///////////////////////////////////////////////////////////////////////
+         if(basicResponse.schemaRefName() == null)
+         {
+            continue;
+         }
+
          Map<String, Content> content = responseObject.getContent();
          if(content == null)
          {
@@ -473,7 +533,19 @@ public abstract class AbstractEndpointSpec<
                String value = null;
                if(ContentType.MULTIPART_FORM_DATA.getMimeType().equals(requestContentType))
                {
-                  value = context.formParam(name);
+                  try
+                  {
+                     value = context.formParam(name);
+                  }
+                  catch(Exception e)
+                  {
+                     BadMessageException badMessage = ExceptionUtils.findClassInRootChain(e, BadMessageException.class);
+                     if(badMessage != null && badMessage.getCode() == 400)
+                     {
+                        throw new QRuntimeException(new QBadRequestException("Malformed multipart request", e));
+                     }
+                     throw e;
+                  }
                }
                else if(ContentType.APPLICATION_JSON.getMimeType().equals(requestContentType))
                {

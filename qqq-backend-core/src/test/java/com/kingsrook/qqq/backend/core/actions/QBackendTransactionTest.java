@@ -5,23 +5,25 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.actions;
 
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
@@ -29,13 +31,15 @@ import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 
 /*******************************************************************************
  ** Unit tests for QBackendTransaction
  **
- ** The base class has no-op commit/rollback/close — these tests verify the base
- ** class contract and that openFor() delegates to the correct backend module.
+ ** The base class has no backend work in commit/rollback/close, beyond running
+ ** or discarding after-commit callbacks - these tests verify the base class
+ ** contract and that openFor() delegates to the correct backend module.
  *******************************************************************************/
 class QBackendTransactionTest extends BaseTest
 {
@@ -128,6 +132,143 @@ class QBackendTransactionTest extends BaseTest
       {
          tx.rollback();
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Callbacks should not run until commit, and then run in the order added.
+    *******************************************************************************/
+   @Test
+   void callbacksRunAfterCommitInOrder() throws QException
+   {
+      List<String>        ran = new ArrayList<>();
+      QBackendTransaction tx  = new QBackendTransaction();
+      tx.addAfterCommitCallback(() -> ran.add("a"));
+      tx.addAfterCommitCallback(() -> ran.add("b"));
+      tx.addAfterCommitCallback(() -> ran.add("c"));
+      assertThat(ran).isEmpty();
+
+      tx.commit();
+      assertThat(ran).containsExactly("a", "b", "c");
+   }
+
+
+
+   /*******************************************************************************
+    ** Rollback should discard callbacks without running them - so a later commit
+    ** must not run them either.
+    *******************************************************************************/
+   @Test
+   void callbacksDiscardedOnRollback() throws QException
+   {
+      List<String>        ran = new ArrayList<>();
+      QBackendTransaction tx  = new QBackendTransaction();
+      tx.addAfterCommitCallback(() -> ran.add("a"));
+
+      tx.rollback();
+      assertThat(ran).isEmpty();
+
+      tx.commit();
+      assertThat(ran).isEmpty();
+   }
+
+
+
+   /*******************************************************************************
+    ** A callback that throws must not fail the commit, nor stop later callbacks.
+    *******************************************************************************/
+   @Test
+   void callbackExceptionDoesNotFailCommitOrLaterCallbacks() throws QException
+   {
+      List<String>        ran = new ArrayList<>();
+      QBackendTransaction tx  = new QBackendTransaction();
+      tx.addAfterCommitCallback(() -> ran.add("a"));
+      tx.addAfterCommitCallback(() ->
+      {
+         throw (new IllegalStateException("callback failure"));
+      });
+      tx.addAfterCommitCallback(() -> ran.add("c"));
+
+      assertThatCode(tx::commit).doesNotThrowAnyException();
+      assertThat(ran).containsExactly("a", "c");
+   }
+
+
+
+   /*******************************************************************************
+    ** Committing a second time must not re-run callbacks from the first commit.
+    *******************************************************************************/
+   @Test
+   void callbacksRunOnlyOnce() throws QException
+   {
+      AtomicInteger       runCount = new AtomicInteger(0);
+      QBackendTransaction tx       = new QBackendTransaction();
+      tx.addAfterCommitCallback(runCount::incrementAndGet);
+
+      tx.commit();
+      tx.commit();
+      assertThat(runCount.get()).isEqualTo(1);
+   }
+
+
+
+   /*******************************************************************************
+    ** A callback added while callbacks are running belongs to the next commit, as
+    ** the transaction is re-opened once a commit completes.
+    *******************************************************************************/
+   @Test
+   void callbackAddedDuringCallbacksRunsOnNextCommit() throws QException
+   {
+      List<String>        ran = new ArrayList<>();
+      QBackendTransaction tx  = new QBackendTransaction();
+      tx.addAfterCommitCallback(() ->
+      {
+         ran.add("first");
+         tx.addAfterCommitCallback(() -> ran.add("second"));
+      });
+
+      tx.commit();
+      assertThat(ran).containsExactly("first");
+
+      tx.commit();
+      assertThat(ran).containsExactly("first", "second");
+   }
+
+
+
+   /*******************************************************************************
+    ** A callback that throws a LinkageError (e.g., a NoClassDefFoundError from an
+    ** optional client jar that isn't on the classpath) must not fail the commit -
+    ** whose data is already committed - nor stop later callbacks.
+    *******************************************************************************/
+   @Test
+   void callbackLinkageErrorDoesNotFailCommitOrLaterCallbacks() throws QException
+   {
+      List<String>        ran = new ArrayList<>();
+      QBackendTransaction tx  = new QBackendTransaction();
+      tx.addAfterCommitCallback(() -> ran.add("a"));
+      tx.addAfterCommitCallback(() ->
+      {
+         throw (new NoClassDefFoundError("com/example/MissingBrokerClient"));
+      });
+      tx.addAfterCommitCallback(() -> ran.add("c"));
+
+      assertThatCode(tx::commit).doesNotThrowAnyException();
+      assertThat(ran).containsExactly("a", "c");
+   }
+
+
+
+   /*******************************************************************************
+    ** A null callback is a caller bug - reject it when added, not at commit time.
+    *******************************************************************************/
+   @Test
+   void nullCallbackIsRejected()
+   {
+      QBackendTransaction tx = new QBackendTransaction();
+      assertThatThrownBy(() -> tx.addAfterCommitCallback(null))
+         .isInstanceOf(NullPointerException.class);
    }
 
 }

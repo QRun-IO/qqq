@@ -1,0 +1,876 @@
+/*
+ * QQQ - Low-code Application Framework for Engineers.
+ * Copyright (C) 2021-2026.  Kingsrook, LLC
+ * 651 N Broad St Ste 205 # 6917 | Middletown DE 19709 | United States
+ * contact@kingsrook.com
+ * https://github.com/Kingsrook/
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.kingsrook.qqq.esb.connection;
+
+
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Deque;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaData;
+import com.kingsrook.qqq.esb.model.EsbInstanceMetaData;
+import com.kingsrook.qqq.esb.model.QEsbDestinationMetaData;
+import com.kingsrook.qqq.esb.model.QEsbProviderMetaData;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.Queue;
+import jakarta.jms.Session;
+import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
+
+
+/*******************************************************************************
+ * Long-lived JMS connections to ESB providers (brokers): one connection per
+ * provider, shared by every session opened on it.
+ *
+ * A provider's connection is made, from the provider's meta-data in the
+ * QContext's instance, on the first openSession for that provider, and is kept
+ * until closeAll.  Each openSession call opens a new session on it; callers
+ * close the sessions they open. Publishing uses a separate bounded pool of
+ * exclusive transacted leases, invalidated whenever the connection is lost.
+ *
+ * Connecting waits at most EsbConnectionFactoryBuilder.CONNECT_TIMEOUT_MS
+ * (5 s).  When a connection can't be made, or is lost (reported to the JMS
+ * ExceptionListener), the manager reconnects in the background with backoff
+ * (1 s, doubling up to 30 s), then fires the provider's connection listeners,
+ * so the owners of sessions and consumers (which died with the old connection)
+ * can open new ones.  While it is reconnecting, openSession fails at once
+ * rather than waiting - so a broker that is down holds up only the first
+ * attempt (by at most the connect timeout), not every one after it.
+ *
+ * In HA mode (an Artemis failover url with reconnectAttempts), the client
+ * fails over by itself and reports it to the ExceptionListener as a failover,
+ * not a loss (EsbConnectionFactoryBuilder.isFailover): the manager keeps the
+ * connection (and its sessions, which the client re-attached) and only fires
+ * the connection listeners, so triggers rebuild their consumers on the new
+ * broker.
+ *******************************************************************************/
+public final class EsbConnectionManager
+{
+   private static final QLogger LOG = QLogger.getLogger(EsbConnectionManager.class);
+
+   private static final Integer MAX_PUBLISHING_SESSIONS = 8;
+
+   private static final Long INITIAL_RECONNECT_DELAY_MS = 1000L;
+   private static final Long MAX_RECONNECT_DELAY_MS     = 30_000L;
+
+   private static final EsbConnectionManager INSTANCE = new EsbConnectionManager();
+
+   private final Map<String, ProviderConnection> providerConnections = new ConcurrentHashMap<>();
+   private final Map<String, List<Runnable>>     connectionListeners = new ConcurrentHashMap<>();
+
+
+
+   /*******************************************************************************
+    ** Singleton - use getInstance.
+    *******************************************************************************/
+   private EsbConnectionManager()
+   {
+   }
+
+
+
+   /*******************************************************************************
+    ** Get the singleton instance.
+    *******************************************************************************/
+   public static EsbConnectionManager getInstance()
+   {
+      return (INSTANCE);
+   }
+
+
+
+   /*******************************************************************************
+    ** Open a new session on a provider's connection - connecting first, if this is
+    ** the provider's first session.  A transacted session sends and receives when
+    ** it commits; a non-transacted one auto-acknowledges.
+    **
+    ** Throws QException if the provider is unknown, its broker client isn't on
+    ** the classpath, or it can't be connected to (then the manager keeps trying
+    ** in the background - see the class comment).
+    *******************************************************************************/
+   public Session openSession(String providerName, boolean transacted) throws QException
+   {
+      return (getOrCreateProviderConnection(providerName).openSession(transacted));
+   }
+
+
+
+   /*******************************************************************************
+    ** Exclusively borrow a transacted publishing session. Capacity is bounded per
+    ** provider; healthy saturation waits interruptibly for a returned lease.
+    ** Close the producer before committing the lease. Closing an uncommitted
+    ** lease rolls back and discards it. Consumer openSession ownership is separate.
+    *******************************************************************************/
+   public PublishingSessionLease borrowPublishingSession(String providerName) throws QException
+   {
+      return (getOrCreateProviderConnection(providerName).borrowPublishingSession());
+   }
+
+
+
+   /*******************************************************************************
+    ** The JMS Queue or Topic for an ESB destination, on a session from
+    ** openSession for the destination's provider.
+    *******************************************************************************/
+   public Destination resolve(Session session, QEsbDestinationMetaData destination) throws JMSException
+   {
+      return (getDestinationResolver(destination.getProviderName()).resolve(session, destination));
+   }
+
+
+
+   /*******************************************************************************
+    ** The JMS Queue for a broker-side queue name (e.g., a dead-letter queue), on a
+    ** session from openSession for the provider.
+    *******************************************************************************/
+   public Queue resolveQueue(Session session, String providerName, String brokerQueueName) throws JMSException
+   {
+      return (getDestinationResolver(providerName).resolveQueue(session, brokerQueueName));
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether the provider has a live connection (false if it was never
+    ** connected, or is reconnecting).
+    *******************************************************************************/
+   public boolean isConnected(String providerName)
+   {
+      ProviderConnection providerConnection = getProviderConnection(providerName);
+      return (providerConnection != null && providerConnection.isConnected());
+   }
+
+
+
+   /*******************************************************************************
+    ** Add a listener to run each time the manager (re)connects to the provider in
+    ** the background - after a lost connection, or after a first connect that
+    ** failed.  Listeners run on the reconnecting thread (which has no QContext);
+    ** one that throws is logged, and doesn't stop the others.
+    *******************************************************************************/
+   public void addConnectionListener(String providerName, Runnable onReconnect)
+   {
+      connectionListeners.computeIfAbsent(providerName, name -> new CopyOnWriteArrayList<>()).add(onReconnect);
+   }
+
+
+
+   /*******************************************************************************
+    ** Close every provider's connection (and so every session on them), stop any
+    ** background reconnecting, and remove all connection listeners - a full
+    ** reset.  The next openSession connects anew.
+    *******************************************************************************/
+   public void closeAll()
+   {
+      List<ProviderConnection> providerConnectionsToClose;
+      synchronized(this)
+      {
+         providerConnectionsToClose = new ArrayList<>(providerConnections.values());
+         providerConnections.clear();
+         connectionListeners.clear();
+      }
+
+      for(ProviderConnection providerConnection : providerConnectionsToClose)
+      {
+         providerConnection.close();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private ProviderConnection getProviderConnection(String providerName)
+   {
+      return (providerName == null ? null : providerConnections.get(providerName));
+   }
+
+
+
+   /*******************************************************************************
+    ** Get the provider's connection state - making it (from the provider's
+    ** meta-data), if this is the provider's first use.
+    *******************************************************************************/
+   private synchronized ProviderConnection getOrCreateProviderConnection(String providerName) throws QException
+   {
+      ProviderConnection providerConnection = getProviderConnection(providerName);
+      if(providerConnection != null)
+      {
+         return (providerConnection);
+      }
+
+      QEsbProviderMetaData provider = getProviderMetaData(providerName);
+      if(provider.getType() == null)
+      {
+         throw (new QException("ESB provider " + providerName + " has no type"));
+      }
+
+      EsbConnectionFactoryBuilder connectionFactoryBuilder = EsbConnectionFactoryBuilder.forProviderType(provider.getType(), EsbConnectionManager.class.getClassLoader());
+
+      ConnectionFactory connectionFactory;
+      try
+      {
+         connectionFactory = connectionFactoryBuilder.buildConnectionFactory(provider);
+      }
+      catch(JMSException | RuntimeException e)
+      {
+         throw (new QException("Could not set up a connection factory for ESB provider " + providerName, e));
+      }
+
+      providerConnection = new ProviderConnection(providerName, connectionFactoryBuilder, connectionFactory, () -> fireConnectionListeners(providerName));
+      providerConnections.put(providerName, providerConnection);
+      return (providerConnection);
+   }
+
+
+
+   /*******************************************************************************
+    ** Look up a provider in the QContext's instance.
+    *******************************************************************************/
+   private static QEsbProviderMetaData getProviderMetaData(String providerName) throws QException
+   {
+      QInstance qInstance = QContext.getQInstance();
+      if(qInstance == null)
+      {
+         throw (new QException("There is no QInstance in context, to look up ESB provider " + providerName));
+      }
+
+      EsbInstanceMetaData  esbInstanceMetaData = QSupplementalInstanceMetaData.of(qInstance, EsbInstanceMetaData.NAME);
+      QEsbProviderMetaData provider            = esbInstanceMetaData == null ? null : esbInstanceMetaData.getProvider(providerName);
+      if(provider == null)
+      {
+         throw (new QException("Unknown ESB provider: " + providerName));
+      }
+
+      return (provider);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private EsbDestinationResolver getDestinationResolver(String providerName) throws JMSException
+   {
+      ProviderConnection providerConnection = getProviderConnection(providerName);
+      if(providerConnection == null)
+      {
+         throw (new jakarta.jms.IllegalStateException("There is no open connection for ESB provider: " + providerName));
+      }
+      return (providerConnection.getDestinationResolver());
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private void fireConnectionListeners(String providerName)
+   {
+      for(Runnable listener : connectionListeners.getOrDefault(providerName, List.of()))
+      {
+         try
+         {
+            listener.run();
+         }
+         catch(Exception e)
+         {
+            LOG.warn("Error in an ESB connection listener", e, logPair("providerName", providerName));
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static void closeQuietly(AutoCloseable closeable)
+   {
+      try
+      {
+         closeable.close();
+      }
+      catch(Exception e)
+      {
+         LOG.debug("Error closing an ESB connection or session", e);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** One exclusive publication. The session must not escape this lease or be
+    ** used after commit/close. Only commit success permits reuse; any other exit
+    ** rolls back and discards the session, including failed producer cleanup.
+    *******************************************************************************/
+   public static final class PublishingSessionLease implements AutoCloseable
+   {
+      private final ProviderConnection owner;
+      private final Connection         connection;
+      private final Session            session;
+      private boolean                  committed;
+      private boolean                  commitAttempted;
+      private boolean                  closed;
+
+
+
+      /*******************************************************************************
+       ** Only the provider can create a lease.
+       *******************************************************************************/
+      private PublishingSessionLease(ProviderConnection owner, Connection connection, Session session)
+      {
+         this.owner = owner;
+         this.connection = connection;
+         this.session = session;
+      }
+
+
+
+      /*******************************************************************************
+       ** The JMS session is owned exclusively by this publication.
+       *******************************************************************************/
+      public Session getSession()
+      {
+         if(closed || commitAttempted)
+         {
+            throw (new IllegalStateException("Publishing lease is already complete"));
+         }
+         return (session);
+      }
+
+
+
+      /*******************************************************************************
+       ** Commit once, only while this connection generation remains current.
+       *******************************************************************************/
+      public void commit() throws JMSException
+      {
+         getSession();
+         commitAttempted = true;
+         if(!owner.isCurrent(connection))
+         {
+            throw (new jakarta.jms.IllegalStateException("Publishing connection is no longer current"));
+         }
+         session.commit();
+         committed = true;
+      }
+
+
+
+      /*******************************************************************************
+       ** Never return an unsuccessful or obsolete session to the pool.
+       *******************************************************************************/
+      @Override
+      public void close()
+      {
+         if(closed)
+         {
+            return;
+         }
+         closed = true;
+         if(!committed)
+         {
+            try
+            {
+               session.rollback();
+            }
+            catch(Exception e)
+            {
+               LOG.debug("Error rolling back an ESB publishing session", e);
+            }
+         }
+         owner.returnPublishingSession(connection, session, committed);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    * One provider's connection, and its background reconnecting.
+    *
+    * connection is null while there is none: before the first connect, while
+    * reconnecting (reconnectThread is then set), and after close.
+    *******************************************************************************/
+   static class ProviderConnection
+   {
+      private final String                      providerName;
+      private final EsbConnectionFactoryBuilder connectionFactoryBuilder;
+      private final ConnectionFactory           connectionFactory;
+      private final EsbDestinationResolver      destinationResolver;
+      private final Runnable                    onReconnect;
+
+      private final Deque<Session> idlePublishingSessions = new ArrayDeque<>();
+      private final Set<Session>   publishingSessions = Collections.newSetFromMap(new IdentityHashMap<>());
+
+      private Connection connection;
+      private Thread     reconnectThread;
+      private Boolean    closed = false;
+
+
+
+      /*******************************************************************************
+       ** Constructor
+       *******************************************************************************/
+      ProviderConnection(String providerName, EsbConnectionFactoryBuilder connectionFactoryBuilder, ConnectionFactory connectionFactory, Runnable onReconnect)
+      {
+         this.providerName = providerName;
+         this.connectionFactoryBuilder = connectionFactoryBuilder;
+         this.connectionFactory = connectionFactory;
+         this.destinationResolver = new EsbDestinationResolver(connectionFactoryBuilder);
+         this.onReconnect = onReconnect;
+      }
+
+
+
+      /*******************************************************************************
+       ** Open a session on the connection (connecting first, if there is none and
+       ** no reconnect is under way).
+       *******************************************************************************/
+      Session openSession(boolean transacted) throws QException
+      {
+         Connection currentConnection = getOrConnect();
+
+         Session session;
+         try
+         {
+            session = currentConnection.createSession(transacted, transacted ? Session.SESSION_TRANSACTED : Session.AUTO_ACKNOWLEDGE);
+         }
+         catch(JMSException | RuntimeException e)
+         {
+            ///////////////////////////////////////////////////////////////////////
+            // a connection that can't make sessions is treated as lost - it may //
+            // have failed before (or without) telling its ExceptionListener     //
+            ///////////////////////////////////////////////////////////////////////
+            onConnectionLost(currentConnection, e);
+            throw (new QException("Could not open a session on ESB provider " + providerName, e));
+         }
+
+         try
+         {
+            connectionFactoryBuilder.configureSession(session);
+            return (session);
+         }
+         catch(JMSException | RuntimeException e)
+         {
+            try
+            {
+               session.close();
+            }
+            catch(JMSException | RuntimeException cleanupFailure)
+            {
+               if(cleanupFailure != e)
+               {
+                  e.addSuppressed(cleanupFailure);
+               }
+               onConnectionLost(currentConnection, cleanupFailure);
+            }
+            throw (new QException("Could not configure a session on ESB provider " + providerName, e));
+         }
+      }
+
+
+
+      /*******************************************************************************
+       ** Pool creation and checkout are serialized; no session can be borrowed
+       ** twice. The connection object is the generation token, including across
+       ** manager reset (which creates an entirely new provider owner).
+       *******************************************************************************/
+      synchronized PublishingSessionLease borrowPublishingSession() throws QException
+      {
+         Connection currentConnection = getOrConnect();
+         while(idlePublishingSessions.isEmpty() && publishingSessions.size() >= MAX_PUBLISHING_SESSIONS)
+         {
+            try
+            {
+               wait();
+            }
+            catch(InterruptedException e)
+            {
+               Thread.currentThread().interrupt();
+               throw (new QException("Interrupted waiting for a publishing session on ESB provider " + providerName, e));
+            }
+            if(!isCurrent(currentConnection))
+            {
+               throw (new QException("Publishing connection changed or closed while waiting for ESB provider " + providerName));
+            }
+         }
+         Session session = idlePublishingSessions.pollFirst();
+         if(session == null)
+         {
+            session = openSession(true);
+            if(!isCurrent(currentConnection))
+            {
+               closeQuietly(session);
+               throw (new QException("Publishing connection changed for ESB provider " + providerName));
+            }
+            publishingSessions.add(session);
+         }
+         return (new PublishingSessionLease(this, currentConnection, session));
+      }
+
+
+
+      /*******************************************************************************
+       ** Failed sessions keep their capacity slot until cleanup finishes. A stale
+       ** return must never replenish a replacement connection's pool.
+       *******************************************************************************/
+      void returnPublishingSession(Connection leaseConnection, Session session, boolean committed)
+      {
+         synchronized(this)
+         {
+            if(committed && isCurrent(leaseConnection))
+            {
+               idlePublishingSessions.addLast(session);
+               notifyAll();
+               return;
+            }
+         }
+         try
+         {
+            session.close();
+         }
+         catch(JMSException | RuntimeException e)
+         {
+            /////////////////////////////////////////////////////////////////////
+            // A session that cannot close may still own broker resources.     //
+            // Retire its connection rather than replenish capacity around it. //
+            /////////////////////////////////////////////////////////////////////
+            onConnectionLost(leaseConnection, e);
+         }
+         finally
+         {
+            synchronized(this)
+            {
+               publishingSessions.remove(session);
+               notifyAll();
+            }
+         }
+      }
+
+
+
+      /*******************************************************************************
+       ** Identity, rather than provider name, fences late returns after reconnect.
+       *******************************************************************************/
+      synchronized boolean isCurrent(Connection candidate)
+      {
+         return (!closed && connection == candidate);
+      }
+
+
+
+      /*******************************************************************************
+       ** The owning connection closes these sessions, including borrowed ones.
+       ** Forget references immediately so reconnect cannot hand out an old lease.
+       *******************************************************************************/
+      private void invalidatePublishingSessions()
+      {
+         idlePublishingSessions.clear();
+         publishingSessions.clear();
+         notifyAll();
+      }
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      EsbDestinationResolver getDestinationResolver()
+      {
+         return (destinationResolver);
+      }
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      synchronized Boolean isConnected()
+      {
+         return (connection != null);
+      }
+
+
+
+      /*******************************************************************************
+       ** Close the connection, and stop any reconnecting.  Final.
+       *******************************************************************************/
+      void close()
+      {
+         Connection connectionToClose;
+         Thread     threadToStop;
+         synchronized(this)
+         {
+            closed = true;
+            invalidatePublishingSessions();
+            connectionToClose = connection;
+            connection = null;
+            threadToStop = reconnectThread;
+            reconnectThread = null;
+         }
+
+         if(threadToStop != null)
+         {
+            threadToStop.interrupt();
+         }
+
+         if(connectionToClose != null)
+         {
+            closeQuietly(connectionToClose);
+         }
+
+         if(connectionFactory instanceof AutoCloseable closeableConnectionFactory)
+         {
+            closeQuietly(closeableConnectionFactory);
+         }
+      }
+
+
+
+      /*******************************************************************************
+       ** The live connection - or a new one, if there's none and no reconnect is
+       ** under way.  If connecting fails, start reconnecting in the background.
+       *******************************************************************************/
+      private synchronized Connection getOrConnect() throws QException
+      {
+         if(closed)
+         {
+            throw (new QException("The connection to ESB provider " + providerName + " has been closed"));
+         }
+
+         if(connection != null)
+         {
+            return (connection);
+         }
+
+         if(reconnectThread != null)
+         {
+            throw (new QException("ESB provider " + providerName + " is not connected (reconnecting in the background)"));
+         }
+
+         try
+         {
+            connection = createStartedConnection();
+            LOG.info("Connected to ESB provider", logPair("providerName", providerName));
+            return (connection);
+         }
+         catch(JMSException | RuntimeException e)
+         {
+            LOG.warn("Could not connect to ESB provider; will keep trying in the background", e, logPair("providerName", providerName));
+            startReconnecting(null);
+            throw (new QException("Could not connect to ESB provider " + providerName, e));
+         }
+      }
+
+
+
+      /*******************************************************************************
+       ** Make, and start, a connection - whose loss is reported to
+       ** onConnectionLost.
+       *******************************************************************************/
+      private Connection createStartedConnection() throws JMSException
+      {
+         Connection newConnection = connectionFactory.createConnection();
+         try
+         {
+            newConnection.setExceptionListener(exception ->
+            {
+               if(connectionFactoryBuilder.isFailover(exception))
+               {
+                  onFailedOver(newConnection, exception);
+               }
+               else
+               {
+                  onConnectionLost(newConnection, exception);
+               }
+            });
+            newConnection.start();
+            return (newConnection);
+         }
+         catch(JMSException | RuntimeException e)
+         {
+            closeQuietly(newConnection);
+            throw (e);
+         }
+      }
+
+
+
+      /*******************************************************************************
+       ** Called (e.g., by the JMS client) when a connection fails.  Only acts if
+       ** that connection is the current one (not an old one, or a duplicate
+       ** report).
+       *******************************************************************************/
+      private synchronized void onConnectionLost(Connection failedConnection, Exception exception)
+      {
+         if(closed || connection != failedConnection)
+         {
+            return;
+         }
+
+         LOG.warn("Lost connection to ESB provider; reconnecting", exception, logPair("providerName", providerName));
+         connection = null;
+         invalidatePublishingSessions();
+         startReconnecting(failedConnection);
+      }
+
+
+
+      /*******************************************************************************
+       ** Called (by the JMS client) when the current connection failed over to
+       ** another broker by itself: keep it, and tell the connection listeners
+       ** (on their own thread, off the client's).
+       *******************************************************************************/
+      private synchronized void onFailedOver(Connection failedOverConnection, Exception exception)
+      {
+         if(closed || connection != failedOverConnection)
+         {
+            return;
+         }
+         LOG.info("ESB provider failed over to another broker; rebuilding consumers", logPair("providerName", providerName), logPair("detail", exception.getMessage()));
+         Thread.ofPlatform()
+            .daemon()
+            .name("qqq-esb-failover-" + providerName)
+            .start(() ->
+            {
+               if(!isClosed())
+               {
+                  onReconnect.run();
+               }
+            });
+      }
+
+
+
+      /*******************************************************************************
+       ** Start the background reconnect thread (if it isn't running).  Called
+       ** while holding this object's lock.
+       *******************************************************************************/
+      private void startReconnecting(Connection failedConnection)
+      {
+         if(reconnectThread != null)
+         {
+            return;
+         }
+
+         reconnectThread = Thread.ofPlatform()
+            .daemon()
+            .name("qqq-esb-reconnect-" + providerName)
+            .start(() -> reconnect(failedConnection));
+      }
+
+
+
+      /*******************************************************************************
+       ** Body of the reconnect thread: close the failed connection (off the JMS
+       ** client's thread), then try to connect - waiting 1 s before the first try,
+       ** doubling up to 30 s - until connected (then fire the listeners), or closed.
+       *******************************************************************************/
+      private void reconnect(Connection failedConnection)
+      {
+         if(failedConnection != null)
+         {
+            closeQuietly(failedConnection);
+         }
+
+         Long delayMs = INITIAL_RECONNECT_DELAY_MS;
+         while(true)
+         {
+            try
+            {
+               Thread.sleep(delayMs);
+            }
+            catch(InterruptedException e)
+            {
+               Thread.currentThread().interrupt();
+               return;
+            }
+
+            if(isClosed())
+            {
+               return;
+            }
+
+            try
+            {
+               Connection newConnection = createStartedConnection();
+               if(!installReconnectedConnection(newConnection))
+               {
+                  closeQuietly(newConnection);
+                  return;
+               }
+
+               LOG.info("Reconnected to ESB provider", logPair("providerName", providerName));
+               onReconnect.run();
+               return;
+            }
+            catch(JMSException | RuntimeException e)
+            {
+               delayMs = Math.min(delayMs * 2, MAX_RECONNECT_DELAY_MS);
+               LOG.info("Could not reconnect to ESB provider; will try again", logPair("providerName", providerName), logPair("retryInMs", delayMs), logPair("error", e.getMessage()));
+            }
+         }
+      }
+
+
+
+      /*******************************************************************************
+       ** Make a reconnected connection the current one, and end the reconnect -
+       ** unless closed meanwhile (then return false).
+       *******************************************************************************/
+      private synchronized Boolean installReconnectedConnection(Connection newConnection)
+      {
+         if(closed)
+         {
+            return (false);
+         }
+
+         connection = newConnection;
+         reconnectThread = null;
+         return (true);
+      }
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      private synchronized Boolean isClosed()
+      {
+         return (closed);
+      }
+   }
+
+}

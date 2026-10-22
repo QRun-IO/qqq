@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.model.metadata.frontend;
@@ -27,16 +26,26 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessDecision;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessTier;
+import com.kingsrook.qqq.backend.core.actions.values.ContingentPossibleValueHelper;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldAdornment;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehaviorForFrontend;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QSupplementalFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.ValueRangeBehavior;
+import com.kingsrook.qqq.backend.core.model.metadata.help.HelpContentVisibility;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.PossibleValueDependencyBehavior;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValuePicker;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 
@@ -49,23 +58,42 @@ import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 @JsonInclude(Include.NON_NULL)
 public class QFrontendFieldMetaData implements Serializable
 {
+   private String accessTier;
+   private List<String> allowedFilterOperators;
+   private Boolean isSortable;
+
    private String       name;
    private String       label;
    private QFieldType   type;
    private boolean      isRequired;
    private boolean      isEditable;
    private boolean      isHeavy;
+   private boolean      isSensitive;
    private boolean      isHidden;
    private Integer      gridColumns;
    private String       possibleValueSourceName;
+   private List<String> possibleValueSourceDependsOn;
+   private String       possibleValueSourceDependencyBehavior;
    private String       displayFormat;
    private Serializable defaultValue;
    private Integer      maxLength;
+   private Number       minValue;
+   private Number       maxValue;
+
+   private QFrontendFieldValidation validation;
 
    private List<FieldAdornment> adornments;
    private List<QHelpContent>   helpContents;
    private QPossibleValueSource inlinePossibleValueSource;
    private QQueryFilter         possibleValueSourceFilter;
+
+   //////////////////////////////////////////////////////////////////////
+   // set when the field's possible value source declares a picker: the //
+   // picker config plus the source table, whose metadata the UI reads   //
+   // for filter controls and labels.                                    //
+   //////////////////////////////////////////////////////////////////////
+   private QPossibleValuePicker picker;
+   private String               pickerTableName;
 
    private List<FieldBehaviorForFrontend>          behaviors;
    private Map<String, QSupplementalFieldMetaData> supplementalFieldMetaData;
@@ -86,16 +114,51 @@ public class QFrontendFieldMetaData implements Serializable
       this.isRequired = fieldMetaData.getIsRequired();
       this.isEditable = fieldMetaData.getIsEditable();
       this.isHeavy = fieldMetaData.getIsHeavy();
+      this.isSensitive = fieldMetaData.getIsSensitive();
       this.isHidden = fieldMetaData.getIsHidden();
       this.gridColumns = fieldMetaData.getGridColumns();
       this.possibleValueSourceName = fieldMetaData.getPossibleValueSourceName();
       this.displayFormat = fieldMetaData.getDisplayFormat();
       this.adornments = fieldMetaData.getAdornments();
       this.defaultValue = fieldMetaData.getDefaultValue();
-      this.helpContents = fieldMetaData.getHelpContents();
+      this.helpContents = HelpContentVisibility.filter(fieldMetaData.getHelpContents());
       this.inlinePossibleValueSource = fieldMetaData.getInlinePossibleValueSource();
       this.maxLength = fieldMetaData.getMaxLength();
+
+      /////////////////////////////////////////////////////////////////////////////////////////
+      // a value range that rejects (ERROR) values outside it, and includes its bounds, can   //
+      // be shown to a user as is; other kinds (CLIP, exclusive bounds) are left to the backend //
+      /////////////////////////////////////////////////////////////////////////////////////////
+      ValueRangeBehavior valueRangeBehavior = fieldMetaData.getBehaviorOnlyIfSet(ValueRangeBehavior.class);
+      if(valueRangeBehavior != null)
+      {
+         if(valueRangeBehavior.getMinBehavior() == ValueRangeBehavior.Behavior.ERROR && valueRangeBehavior.getMinAllowEqualTo())
+         {
+            this.minValue = valueRangeBehavior.getMinValue();
+         }
+         if(valueRangeBehavior.getMaxBehavior() == ValueRangeBehavior.Behavior.ERROR && valueRangeBehavior.getMaxAllowEqualTo())
+         {
+            this.maxValue = valueRangeBehavior.getMaxValue();
+         }
+      }
+      this.validation = QFrontendFieldValidation.of(fieldMetaData);
       this.possibleValueSourceFilter = fieldMetaData.getPossibleValueSourceFilter();
+      if(ContingentPossibleValueHelper.isContingent(fieldMetaData))
+      {
+         this.possibleValueSourceDependsOn = new ArrayList<>(ContingentPossibleValueHelper.getDependencyFieldNames(fieldMetaData));
+         this.possibleValueSourceDependencyBehavior = Objects.requireNonNullElse(fieldMetaData.getPossibleValueSourceDependencyBehavior(), PossibleValueDependencyBehavior.DISABLE_UNTIL_SET).name();
+      }
+
+      QInstance qInstance = QContext.getQInstance();
+      if(qInstance != null && fieldMetaData.getPossibleValueSourceName() != null)
+      {
+         QPossibleValueSource possibleValueSource = qInstance.getPossibleValueSource(fieldMetaData.getPossibleValueSourceName());
+         if(possibleValueSource != null && possibleValueSource.getPicker() != null)
+         {
+            this.picker = possibleValueSource.getPicker();
+            this.pickerTableName = possibleValueSource.getTableName();
+         }
+      }
 
       for(FieldBehavior<?> behavior : CollectionUtils.nonNullCollection(fieldMetaData.getBehaviors()))
       {
@@ -187,6 +250,16 @@ public class QFrontendFieldMetaData implements Serializable
    public boolean getIsHeavy()
    {
       return isHeavy;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for isSensitive - frontends may use it to mask values by default.
+    *******************************************************************************/
+   public boolean getIsSensitive()
+   {
+      return isSensitive;
    }
 
 
@@ -313,11 +386,144 @@ public class QFrontendFieldMetaData implements Serializable
 
 
    /*******************************************************************************
+    ** Getter for minValue - the smallest value accepted, when the field's
+    ** ValueRangeBehavior rejects smaller ones.
+    **
+    *******************************************************************************/
+   public Number getMinValue()
+   {
+      return minValue;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for maxValue - the largest value accepted, when the field's
+    ** ValueRangeBehavior rejects larger ones.
+    **
+    *******************************************************************************/
+   public Number getMaxValue()
+   {
+      return maxValue;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for validation - the field's validation rules (null when it has none).
+    *******************************************************************************/
+   public QFrontendFieldValidation getValidation()
+   {
+      return (this.validation);
+   }
+
+
+
+   /*******************************************************************************
     ** Getter for possibleValueSourceFilter
     **
     *******************************************************************************/
    public QQueryFilter getPossibleValueSourceFilter()
    {
       return possibleValueSourceFilter;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for picker
+    *******************************************************************************/
+   public QPossibleValuePicker getPicker()
+   {
+      return (this.picker);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for pickerTableName
+    *******************************************************************************/
+   public String getPickerTableName()
+   {
+      return (this.pickerTableName);
+   }
+
+
+
+   /*******************************************************************************
+    ** Construct session-specific field capabilities.
+    *******************************************************************************/
+   public QFrontendFieldMetaData(QFieldMetaData fieldMetaData, FieldAccessTier tier)
+   {
+      this(fieldMetaData, new FieldAccessDecision(tier, null, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Construct session-specific capabilities including exact-match restrictions.
+    *******************************************************************************/
+   public QFrontendFieldMetaData(QFieldMetaData fieldMetaData, FieldAccessDecision decision)
+   {
+      this(fieldMetaData);
+      FieldAccessTier tier = decision.tier();
+      if(tier != FieldAccessTier.FULL)
+      {
+         accessTier = tier.name();
+         allowedFilterOperators = tier == FieldAccessTier.REVEALABLE && decision.exactMatchAllowed() ? List.of("EQUALS", "IN") : List.of();
+         isSortable = false;
+         isEditable = false;
+         defaultValue = null;
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for accessTier
+    *******************************************************************************/
+   public String getAccessTier()
+   {
+      return (accessTier);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for allowedFilterOperators
+    *******************************************************************************/
+   public List<String> getAllowedFilterOperators()
+   {
+      return (allowedFilterOperators);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for isSortable
+    *******************************************************************************/
+   public Boolean getIsSortable()
+   {
+      return (isSortable);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for possibleValueSourceDependsOn
+    *******************************************************************************/
+   public List<String> getPossibleValueSourceDependsOn()
+   {
+      return (this.possibleValueSourceDependsOn);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for possibleValueSourceDependencyBehavior
+    *******************************************************************************/
+   public String getPossibleValueSourceDependencyBehavior()
+   {
+      return (this.possibleValueSourceDependencyBehavior);
    }
 }

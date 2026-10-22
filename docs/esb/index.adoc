@@ -1,0 +1,144 @@
+== Enterprise Service Bus (ESB)
+
+QQQ publishes table and process events as CloudEvents 1.0 JSON messages over Jakarta Messaging (JMS). A process trigger consumes from a queue or a durable topic subscription. The broker stores and redelivers messages. Optionally, a transactional outbox makes table events survive broker outages, and idempotent triggers skip redelivered messages (see below); both are off by default.
+
+=== Run the sample
+
+The `qqq-sample-project` includes an embedded ActiveMQ Artemis broker. Start `com.kingsrook.sampleapp.SampleJavalinServer` to start both the HTTP server and ESB runtime. The sample publishes `person` INSERT, UPDATE, and DELETE events to the `personEvents` topic. Its `syncPerson` process subscribes to that topic and logs each received event's ID and person ID. Stop the sample server to stop its consumers and broker.
+
+The broker listens on `127.0.0.1:61616` by default. Set `-Dqqq.sample.esb.port=<port>` before startup to choose another local port. The sample broker is in memory, has authentication disabled, and is for local development only. Its data is lost on shutdown.
+
+An application using its own broker adds `qqq-esb` and the client for the chosen broker, defines the metadata below, then calls `QEsbRuntime.getInstance().start(qInstance)` after creating its validated instance. Call `stop()` during shutdown. A broker outage does not block application boot; the runtime retries connecting.
+
+=== Metadata
+
+Define a `QEsbProviderMetaData` for each broker with a unique `name`, `type`, and `url`. Types are `ACTIVEMQ_ARTEMIS` and `RABBITMQ`. The Artemis URL uses `tcp://host:port`; the RabbitMQ URL is an AMQP URI including its virtual host. Optional `username` and `password` are connection credentials. Values can use `${env.VARIABLE}` interpolation. Keep credentials outside source control.
+
+Define each `QEsbDestinationMetaData` with a `name`, `providerName`, and `type` (`QUEUE` or `TOPIC`). `destinationName` optionally overrides the broker-side name; by default it equals `name`.
+
+On a table, `EsbTableMetaData` contains `EsbTablePublication` entries with `destinationName` and events `INSERT`, `UPDATE`, or `DELETE`. On a process, `EsbProcessMetaData` can publish `STARTED`, `COMPLETED`, and `FAILED`, and can contain `EsbTrigger` entries. A trigger names its destination and can configure:
+
+* `subscriptionName` for a topic's shared durable subscription; its default is `<process>.<broker-side destination>` and it must be unique per provider.
+* `mode` (`SINGLE`, the default, or `BATCH`), `batchSize` (100), and `batchWaitMs` (1000).
+* `concurrency` (1 consumer per node), `maxAttempts` (3), and retry delay, multiplier, and maximum delay (`retryDelayMs`, `retryMultiplier`, `retryMaxDelayMs`).
+* `onDeadLetter` (`DEAD_LETTER_QUEUE` by default or `DISCARD`), optional `deadLetterDestinationName`, optional `runAsSessionSupplier`, optional `timeoutMs`, and `startPaused` (false).
+
+QQQ validates unknown providers, destinations, and processes at boot. In `SINGLE` mode a trigger passes one CloudEvent in `esbMessages`; `BATCH` passes a list. When the process's `tableName` matches an event's table, the process callback selects that event's record key. Table messages include the current record on insert, current and old records on update, and the old record on delete.
+
+=== Brokers and delivery
+
+ActiveMQ Artemis and RabbitMQ 4.x are supported through JMS 3.x. ActiveMQ Classic is unsupported because it lacks the shared durable topic subscription required by triggers. For RabbitMQ, queues and durable subscription queues use quorum queues. A queue's consumers compete for messages; each topic subscription receives its own copy, while consumers sharing that subscription divide its messages.
+
+Table events publish after a successful transaction commits. A publish that failed because of a failover or a stale session is retried once on a fresh session; otherwise a failure is logged and counted but does not undo the table write, and the event is lost. Enable the transactional outbox (below) so it is not. Trigger success commits the JMS session; failure rolls it back for broker redelivery until `maxAttempts`, when the event is dead-lettered or discarded. Keep `maxAttempts` below the broker's own redelivery limit (Artemis defaults to 10; RabbitMQ quorum queues default to 20). Broker high availability is configured on the broker itself; QQQ connects to it through the provider URL (see Single broker or HA, below).
+
+Stopping the runtime interrupts active process runs. A run that completes successfully during the interrupt grace period is committed; otherwise, a stopped run's messages roll back for redelivery after restart. This stopped-run rollback does not increment QQQ's failure counter, but broker redelivery advances `JMSXDeliveryCount`, which QQQ uses for `maxAttempts`. Repeated shutdowns can therefore consume delivery attempts.
+
+In batch mode, a retry rolls back the whole JMS transaction, including any dead-letter sends for unparseable messages. Those messages are redelivered with the batch and are dead-lettered or discarded, according to `onDeadLetter`, when a later transaction commits.
+
+Delivery is at least once. Write triggered processes so a repeat delivery is safe. There is no ordering guarantee unless concurrency is 1, no duplicate filtering unless idempotent triggers are enabled, and no XA transaction across the broker and table backend. Avoid publishing an event that triggers the same process indefinitely. A rollback on a non-transactional table backend drops pending events even if its write persisted. If fetching the old record for DELETE fails, QQQ publishes no delete event.
+
+=== Transactional outbox
+
+With the outbox enabled, a table write's events are written to an outbox table in the same backend transaction as the records, so they commit or roll back together. A relay thread on every node then publishes them. A broker outage delays events but never drops them.
+
+[source,java]
+----
+qInstance.addTable(EsbOutboxTable.defineTable("esb_outbox", "rdbms"));   // same backend as the publishing tables
+EsbInstanceMetaData.of(qInstance)
+   .withOutbox(new EsbOutboxConfig().withEnabled(true));                  // tableName defaults to esb_outbox
+----
+
+* Where the rows are written: in the write's transaction when it is on the outbox table's backend; after the commit when the transaction is on another backend (not atomic; avoid this); and right away, before the action returns, when there is no transaction. Writes that omit record change events write no rows.
+* If the outbox insert fails inside a transaction, the record write fails too (the listener is a required listener), so the caller rolls back. Without a transaction the records are already stored; the failure is logged and counted.
+* The relay claims each destination's oldest `PENDING` rows with a lease (`SELECT ... FOR UPDATE SKIP LOCKED` on PostgreSQL, then `lease_owner` and `lease_expires_at`). It sends them in one broker transaction in id order, then marks them `SENT`. Only one node sends a destination's rows at a time, so order per destination is kept.
+* Each message carries the outbox row's uuid as the JMS string property `qqq_message_id`. Directly published messages use the event id. Delivery is at least once: a send whose rows were not marked `SENT` (because of a crash, a lost database connection, or an expired lease) is sent again with the same id. Consumers dedupe on that id.
+* A failed send while the broker is connected counts an attempt on the head row. That row is retried alone after a doubling backoff (`initialBackoffMs` 1000 to `maxBackoffMs` 300000) and blocks its destination meanwhile. After `maxAttempts` (10) it becomes `DEAD`. A failed send while the broker is unreachable does not count, and the rows wait. To retry a `DEAD` row, set its status back to `PENDING` and `attempts` to 0.
+* `SENT` rows are purged after `retentionDays` (7), checked every `purgeIntervalMs` (1 h). `DEAD` rows are kept.
+* The `core.esb.outbox` health check is DOWN while any row is `DEAD` and DEGRADED when the oldest `PENDING` row is older than `pendingAlertMs` (5 min). It reports dead, pending and oldest-pending-age metrics.
+* Other settings: `batchSize` (100), `pollIntervalMs` (1000; a commit on the node wakes the relay sooner), and `leaseMs` (60000).
+* The relay is started and stopped by `EsbRuntimeService`, apart from the trigger runtime. It runs on a daemon thread and stops within 5 s at application stop. Running it on several nodes needs a backend with `SKIP LOCKED` (PostgreSQL). On other backends it relies on leases alone, which is safe for one node.
+* Process lifecycle events and `EsbPublishAction` still publish directly.
+
+=== Idempotent triggers
+
+Failovers, lost commits, and outbox re-sends redeliver messages. With dedupe enabled, each trigger records the message ids it processed in a processed-message table and skips a message it already processed. The message is still acknowledged, and the process does not run again.
+
+[source,java]
+----
+qInstance.addTable(EsbProcessedMessageTable.defineTable("esb_processed_message", "rdbms"));
+EsbInstanceMetaData.of(qInstance)
+   .withDedupe(new EsbDedupeConfig().withEnabled(true));   // retentionDays defaults to 7
+----
+
+The key is the message's `qqq_message_id` property, falling back to the CloudEvent id (`ce_id`). The trigger checks the table before running and records the ids after a successful run, before the JMS commit. A failed run is not recorded, so its retry runs. A failure between the run and the record can still repeat a run, so processes should stay idempotent. Records older than `retentionDays` are purged. A redelivery after that runs again.
+
+The record is a shared table, not a per-node cache: after a failover the redelivery often reaches a different node, and a restarted node has an empty cache. Every message needs the database check either way, so no cache sits in front of it. The unique `(trigger_name, message_id)` index keeps the record correct when nodes race.
+
+=== Host DDL (PostgreSQL, Liquibase formatted SQL)
+
+Add only the tables you enable. Columns are snake_case and there are no foreign keys.
+
+[source,sql]
+----
+--liquibase formatted sql
+
+--changeset qqq:esb-outbox-1
+CREATE TABLE esb_outbox
+(
+   id               BIGSERIAL PRIMARY KEY,
+   uuid             VARCHAR(36)  NOT NULL,
+   destination_name VARCHAR(250) NOT NULL,
+   event_type       VARCHAR(250),
+   event_json       TEXT         NOT NULL,
+   status           VARCHAR(20)  NOT NULL,
+   attempts         INTEGER      NOT NULL DEFAULT 0,
+   next_attempt_at  TIMESTAMP,
+   lease_owner      VARCHAR(250),
+   lease_expires_at TIMESTAMP,
+   last_error       TEXT,
+   created_at       TIMESTAMP    NOT NULL DEFAULT now(),
+   sent_at          TIMESTAMP
+);
+CREATE UNIQUE INDEX esb_outbox_uuid_uk ON esb_outbox (uuid);
+CREATE INDEX esb_outbox_pending_idx ON esb_outbox (destination_name, id) WHERE status = 'PENDING';
+CREATE INDEX esb_outbox_status_sent_idx ON esb_outbox (status, sent_at);
+--rollback DROP TABLE esb_outbox;
+
+--changeset qqq:esb-processed-message-1
+CREATE TABLE esb_processed_message
+(
+   id           BIGSERIAL PRIMARY KEY,
+   trigger_name VARCHAR(250) NOT NULL,
+   message_id   VARCHAR(250) NOT NULL,
+   processed_at TIMESTAMP    NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX esb_processed_message_uk ON esb_processed_message (trigger_name, message_id);
+CREATE INDEX esb_processed_message_processed_at_idx ON esb_processed_message (processed_at);
+--rollback DROP TABLE esb_processed_message;
+----
+
+=== Single broker or HA
+
+The mode is chosen by the provider `url` alone. The URL is passed to the Artemis client untouched.
+
+[cols="1,3"]
+|===
+|Mode |Provider url
+
+|Single broker
+|`tcp://broker:61616`
+
+|HA (live/backup pair or cluster)
+|`(tcp://broker-a:61616,tcp://broker-b:61616)?ha=true&reconnectAttempts=-1&retryInterval=1000`
+|===
+
+* Single broker: the client does not reconnect by itself. A lost connection reaches the JMS `ExceptionListener`, and `EsbConnectionManager` reconnects with backoff (1 s, doubling to 30 s). Then it fires its listeners, so triggers re-subscribe and the control channel listens again. Publishing sessions from the old connection are discarded.
+* HA: the client connects to the first broker that answers and fails over by itself, keeping the connection and re-attaching its sessions. It reports the failover to the `ExceptionListener` with code `FAILOVER`. The manager keeps the connection and only fires its listeners, so triggers rebuild their consumers on the new broker. A transacted commit cut by the failover throws; the trigger rolls back, and the message is redelivered (and skipped, with dedupe, if its run was recorded). A publish whose commit a failover rolled back (or left in doubt) is retried once on a fresh session; the outbox relay retries until the send succeeds. If the client gives up (a finite `reconnectAttempts`), the manager takes over as in single-broker mode.
+* Defaults applied unless the URL sets them: a 5 s connect timeout per connector and a 30 s `callFailoverTimeout`. The client's own default of -1 would block a send or commit for as long as a failover lasts, which is forever when `reconnectAttempts=-1` and every broker is down.
+* RabbitMQ: use its own clustering and a single AMQP URI (or a load balancer). The manager's reconnect covers a node loss.
+
+=== Visibility, management, and permissions
+
+ESB endpoints under `/qqq/v1/esb` expose the overview, table and process publications, triggers, counters, and browsable queue or dead-letter messages. Counters are local to the node. Broker queue depth and consumer counts require the provider's optional `managementUrl` and management credentials: Artemis uses Jolokia; RabbitMQ uses its management HTTP API.
+
+The ESB overview requires `esbView.hasAccess`. A table's ESB details require that table's READ permission; a process's details require process access. A user can browse a destination when they have ESB view access, READ on a table publishing there, or access to a process it triggers. Trigger pause, resume, restart, replay, and supported queue move actions require `esbOperate.hasAccess`; purge and delete require `esbDelete.hasAccess`. The server enforces these permissions. Artemis supports queue pause/resume, purge, delete, and move through management; RabbitMQ supports purge but not queue-level pause, selected delete, or move. Both support JMS queue browsing and QQQ trigger pause/resume/restart. Runtime trigger pause state is local and resets to `startPaused` on restart.

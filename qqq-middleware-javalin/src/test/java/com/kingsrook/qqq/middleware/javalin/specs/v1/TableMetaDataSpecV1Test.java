@@ -5,31 +5,70 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.function.Supplier;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.AdornmentType;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.CaseChangeBehavior;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldAdornment;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehavior;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QSupplementalFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.ValuePatternBehavior;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.ValueRangeBehavior;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.ValueTooLongBehavior;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.WhiteSpaceBehavior;
+import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.help.HelpFormat;
+import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
+import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpRole;
+import com.kingsrook.qqq.backend.core.model.metadata.layout.CollapsibleMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
+import com.kingsrook.qqq.backend.core.model.metadata.menus.QMenu;
+import com.kingsrook.qqq.backend.core.model.metadata.menus.QMenuSlot;
+import com.kingsrook.qqq.backend.core.model.metadata.menus.items.QMenuItemBuiltIn;
+import com.kingsrook.qqq.backend.core.model.metadata.menus.items.QMenuItemDivider;
+import com.kingsrook.qqq.backend.core.model.metadata.menus.items.QMenuItemDownloadFile;
+import com.kingsrook.qqq.backend.core.model.metadata.menus.items.QMenuItemRunProcess;
+import com.kingsrook.qqq.backend.core.model.metadata.menus.items.QMenuItemSubList;
+import com.kingsrook.qqq.backend.core.model.metadata.menus.items.QMenuItemSubMenu;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValue;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValuePicker;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSourceType;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QFieldSection;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QFieldSectionAlternativeType;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.Tier;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.middleware.javalin.TestUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
 import com.kingsrook.qqq.middleware.javalin.specs.SpecTestBase;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.FieldMetaData;
 import kong.unirest.HttpResponse;
 import kong.unirest.Unirest;
 import org.eclipse.jetty.http.HttpStatus;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -88,6 +127,403 @@ class TableMetaDataSpecV1Test extends SpecTestBase
 
 
    /*******************************************************************************
+    ** typed client capabilities (UI API 1.6.0): saved views and the bulk processes
+    ** by name, so a client never hard-codes them; validation rules per field.
+    *******************************************************************************/
+   @Test
+   void testClientCapabilitiesAndValidation()
+   {
+      QFieldMetaData firstName = serverQInstance.getTable("person").getField("firstName");
+      Integer        original  = firstName.getMaxLength();
+      try
+      {
+         firstName.withMaxLength(25).withBehavior(ValueTooLongBehavior.ERROR)
+            .withBehavior(new ValuePatternBehavior("[A-Za-z' -]+", "Letters only"));
+
+         HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/metaData/table/person").asString();
+         assertEquals(200, response.getStatus());
+         JSONObject table = JsonUtils.toJSONObject(response.getBody());
+
+         JSONObject capabilities = table.getJSONObject("clientCapabilities");
+         JSONObject savedViews   = capabilities.getJSONObject("savedViews");
+         assertTrue(savedViews.getBoolean("available"));
+         assertEquals("querySavedView", savedViews.getString("queryProcessName"));
+         assertEquals("storeSavedView", savedViews.getString("storeProcessName"));
+         assertEquals("deleteSavedView", savedViews.getString("deleteProcessName"));
+
+         JSONObject bulkEdit = capabilities.getJSONObject("bulkEdit");
+         assertTrue(bulkEdit.getBoolean("available"));
+         assertEquals("person.bulkEdit", bulkEdit.getString("processName"));
+         assertEquals("person.bulkInsert", capabilities.getJSONObject("bulkInsert").getString("processName"));
+         assertEquals("person.bulkDelete", capabilities.getJSONObject("bulkDelete").getString("processName"));
+
+         JSONObject audits = capabilities.getJSONObject("audits");
+         assertFalse(audits.getBoolean("available"));
+         assertEquals("NONE", audits.getString("level"));
+         assertFalse(capabilities.has("sharing"));
+
+         JSONObject validation = table.getJSONObject("fields").getJSONObject("firstName").getJSONObject("validation");
+         assertEquals(25, validation.getInt("maxLength"));
+         assertEquals("ERROR", validation.getString("tooLongBehavior"));
+         assertEquals("[A-Za-z' -]+", validation.getString("pattern"));
+         assertEquals("Letters only", validation.getString("patternMessage"));
+         assertFalse(table.getJSONObject("fields").getJSONObject("birthDate").has("validation"));
+      }
+      finally
+      {
+         firstName.setMaxLength(original);
+         firstName.getBehaviors().removeIf(b -> b instanceof ValuePatternBehavior || b instanceof ValueTooLongBehavior);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** field help content is part of v1 field meta-data, with its format and roles
+    ** (the frontend picks the entry for the current screen), as in legacy meta-data.
+    *******************************************************************************/
+   @Test
+   void testFieldHelpContents()
+   {
+      QFieldMetaData firstName = serverQInstance.getTable("person").getField("firstName");
+      List<QHelpContent> original = firstName.getHelpContents();
+      try
+      {
+         firstName.setHelpContents(List.of(
+            new QHelpContent().withContentAsText("Given name on file.").withRole(QHelpRole.READ_SCREENS),
+            new QHelpContent().withContentAsMarkdown("Enter the **given** name.").withRole(QHelpRole.WRITE_SCREENS)));
+
+         HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/metaData/table/person").asString();
+         assertEquals(200, response.getStatus());
+         JSONArray helpContents = JsonUtils.toJSONObject(response.getBody()).getJSONObject("fields").getJSONObject("firstName").getJSONArray("helpContents");
+         assertEquals(2, helpContents.length());
+
+         JSONObject read = helpContents.getJSONObject(0);
+         assertEquals("Given name on file.", read.getString("content"));
+         assertEquals(HelpFormat.TEXT.name(), read.getString("format"));
+         assertEquals(List.of("READ_SCREENS"), read.getJSONArray("roles").toList());
+
+         JSONObject write = helpContents.getJSONObject(1);
+         assertEquals(HelpFormat.MARKDOWN.name(), write.getString("format"));
+         assertEquals(List.of("WRITE_SCREENS"), write.getJSONArray("roles").toList());
+         assertThat(write.getString("contentAsHtml")).contains("<strong>given</strong>");
+
+         /////////////////////////////////////////////////////////
+         // a field without help content omits the key entirely //
+         /////////////////////////////////////////////////////////
+         assertFalse(JsonUtils.toJSONObject(response.getBody()).getJSONObject("fields").getJSONObject("lastName").has("helpContents"));
+      }
+      finally
+      {
+         firstName.setHelpContents(original);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A FILE_PREVIEW adornment reaches v1 table meta-data with its type and its
+    ** values (the field names the frontend reads thumbnail / full-size URLs from).
+    *******************************************************************************/
+   @Test
+   void testFilePreviewAdornment()
+   {
+      QFieldMetaData lastName = serverQInstance.getTable("person").getField("lastName");
+      List<FieldAdornment> original = lastName.getAdornments() == null ? null : new ArrayList<>(lastName.getAdornments());
+      try
+      {
+         lastName.withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment()
+            .withValue(AdornmentType.FilePreviewValues.THUMBNAIL_URL_FIELD, "firstName")
+            .withValue(AdornmentType.FilePreviewValues.DEFAULT_MIME_TYPE, "image/jpeg")
+            .withValue(AdornmentType.FilePreviewValues.THUMBNAIL_MAX_SIZE, 48));
+
+         HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/metaData/table/person").asString();
+         assertEquals(200, response.getStatus());
+         JSONArray adornments = JsonUtils.toJSONObject(response.getBody()).getJSONObject("fields").getJSONObject("lastName").getJSONArray("adornments");
+         JSONObject preview = adornments.getJSONObject(adornments.length() - 1);
+         assertEquals("FILE_PREVIEW", preview.getString("type"));
+         assertEquals("firstName", preview.getJSONObject("values").getString("thumbnailUrlField"));
+         assertEquals("image/jpeg", preview.getJSONObject("values").getString("defaultMimeType"));
+         assertEquals(48, preview.getJSONObject("values").getInt("thumbnailMaxSize"));
+      }
+      finally
+      {
+         lastName.setAdornments(original);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Inline field enum values are part of the v1 response, including their IDs
+    ** and labels.  Fields without an inline source omit the property.
+    *******************************************************************************/
+   @Test
+   void testInlinePossibleValueSource()
+   {
+      QFieldMetaData firstName = serverQInstance.getTable("person").getField("firstName");
+      QPossibleValueSource original = firstName.getInlinePossibleValueSource();
+      try
+      {
+         firstName.setInlinePossibleValueSource(new QPossibleValueSource().withType(QPossibleValueSourceType.ENUM).withIdType(QFieldType.STRING)
+            .withEnumValues(List.of(new QPossibleValue<>("LOW", "Low"), new QPossibleValue<>("HIGH", "High"))));
+
+         HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/metaData/table/person").asString();
+         assertEquals(200, response.getStatus());
+         JSONObject fields = JsonUtils.toJSONObject(response.getBody()).getJSONObject("fields");
+         JSONArray values = fields.getJSONObject("firstName").getJSONObject("inlinePossibleValueSource").getJSONArray("enumValues");
+         assertEquals(2, values.length());
+         assertEquals("LOW", values.getJSONObject(0).getString("id"));
+         assertEquals("Low", values.getJSONObject(0).getString("label"));
+         assertEquals("HIGH", values.getJSONObject(1).getString("id"));
+         assertEquals("High", values.getJSONObject(1).getString("label"));
+         assertFalse(fields.getJSONObject("lastName").has("inlinePossibleValueSource"));
+      }
+      finally
+      {
+         firstName.setInlinePossibleValueSource(original);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Versioned field metadata carries only the supplemental settings intended
+    ** for frontends, as the legacy QFrontendFieldMetaData does.
+    *******************************************************************************/
+   @Test
+   void testFrontendVisibleFieldSupplementalMetaData()
+   {
+      QFieldMetaData firstName = serverQInstance.getTable("person").getField("firstName");
+      Map<String, QSupplementalFieldMetaData> original = firstName.getSupplementalMetaData();
+      try
+      {
+         firstName.setSupplementalMetaData(Map.of(
+            "visible", new TestSupplementalFieldMetaData("visible", true),
+            "private", new TestSupplementalFieldMetaData("private", false)));
+
+         HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/metaData/table/person").asString();
+         assertEquals(200, response.getStatus());
+         JSONObject fields = JsonUtils.toJSONObject(response.getBody()).getJSONObject("fields");
+         JSONObject supplemental = fields.getJSONObject("firstName").getJSONObject("supplementalMetaData");
+         assertEquals("visible", supplemental.getJSONObject("visible").getString("type"));
+         assertFalse(supplemental.has("private"));
+         assertFalse(fields.getJSONObject("lastName").has("supplementalMetaData"));
+
+         assertThat(new FieldMetaData(new QFrontendFieldMetaData(firstName)).getSupplementalMetaData())
+            .containsOnlyKeys("visible");
+      }
+      finally
+      {
+         firstName.setSupplementalMetaData(original);
+      }
+   }
+
+
+
+   /** Supplemental field metadata with a selectable frontend visibility policy. */
+   public static class TestSupplementalFieldMetaData extends QSupplementalFieldMetaData
+   {
+      private final String type;
+      private final boolean frontendVisible;
+
+      /** Builds a test value for either the public or private metadata path. */
+      public TestSupplementalFieldMetaData(String type, boolean frontendVisible)
+      {
+         this.type = type;
+         this.frontendVisible = frontendVisible;
+      }
+
+      @Override
+      public String getType()
+      {
+         return type;
+      }
+
+      @Override
+      public boolean includeInFrontendMetaData()
+      {
+         return frontendVisible;
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** a field's grid width and its frontend behaviors (live case change, white
+    ** space) are part of v1 field meta-data, as in the legacy table meta-data
+    ** (QRun-IO/qqq#723); fields without them omit the keys.
+    *******************************************************************************/
+   @Test
+   void testFieldGridColumnsAndBehaviors()
+   {
+      QFieldMetaData firstName = serverQInstance.getTable("person").getField("firstName");
+      Integer originalGridColumns = firstName.getGridColumns();
+      Set<FieldBehavior<?>> originalBehaviors = firstName.getBehaviors();
+      try
+      {
+         firstName.setGridColumns(12);
+         firstName.setBehaviors(new LinkedHashSet<>(List.of(CaseChangeBehavior.TO_UPPER_CASE, WhiteSpaceBehavior.TRIM, ValueTooLongBehavior.TRUNCATE)));
+
+         HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/metaData/table/person").asString();
+         assertEquals(200, response.getStatus());
+         JSONObject fields = JsonUtils.toJSONObject(response.getBody()).getJSONObject("fields");
+         JSONObject field = fields.getJSONObject("firstName");
+         assertEquals(12, field.getInt("gridColumns"));
+
+         /////////////////////////////////////////////////////////////////////////////
+         // only behaviors a frontend uses are listed (not the backend-only ones); the //
+         // too-long behavior is one, so a form can cap typing or note trimming        //
+         /////////////////////////////////////////////////////////////////////////////
+         assertThat(field.getJSONArray("behaviors").toList()).containsExactlyInAnyOrder("TO_UPPER_CASE", "TRIM", "TRUNCATE");
+
+         assertFalse(fields.getJSONObject("lastName").has("gridColumns"));
+         assertFalse(fields.getJSONObject("lastName").has("behaviors"));
+      }
+      finally
+      {
+         firstName.setGridColumns(originalGridColumns);
+         firstName.setBehaviors(originalBehaviors);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** a number field's range is published (as plain digits) only when its value
+    ** range behavior rejects values outside it, so a form can say so up front.
+    *******************************************************************************/
+   @Test
+   void testFieldValueRange()
+   {
+      QFieldMetaData firstName = serverQInstance.getTable("person").getField("firstName");
+      Set<FieldBehavior<?>> originalBehaviors = firstName.getBehaviors();
+      try
+      {
+         firstName.setBehaviors(new LinkedHashSet<>(List.of(new ValueRangeBehavior().withMinValue(1).withMaxValue(120).withMaxBehavior(ValueRangeBehavior.Behavior.CLIP))));
+
+         HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/metaData/table/person").asString();
+         assertEquals(200, response.getStatus());
+         JSONObject fields = JsonUtils.toJSONObject(response.getBody()).getJSONObject("fields");
+         assertEquals("1", fields.getJSONObject("firstName").getString("minValue"));
+         assertFalse(fields.getJSONObject("firstName").has("maxValue"));
+         assertFalse(fields.getJSONObject("lastName").has("minValue"));
+      }
+      finally
+      {
+         firstName.setBehaviors(originalBehaviors);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Sections publish their collapsible behavior and their per-screen
+    ** alternatives; a section without either omits both keys.
+    *******************************************************************************/
+   @Test
+   void testSectionCollapsibleAndAlternatives()
+   {
+      QTableMetaData      person   = serverQInstance.getTable("person");
+      List<QFieldSection> original = person.getSections();
+      try
+      {
+         List<QFieldSection> sections = new ArrayList<>(original);
+         sections.add(new QFieldSection("folded", "Folded", new QIcon("expand"), Tier.T2, List.of("firstName"))
+            .withCollapsible(CollapsibleMetaData.INITIALLY_CLOSED)
+            .withAlternative(QFieldSectionAlternativeType.RECORD_VIEW, new QFieldSection("folded", "Folded For Viewing", new QIcon("visibility"), Tier.T2, List.of("lastName"))
+               .withCollapsible(CollapsibleMetaData.INITIALLY_OPEN)));
+         person.setSections(sections);
+
+         HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/metaData/table/person").asString();
+         assertEquals(200, response.getStatus(), response.getBody());
+         JSONArray  published = JsonUtils.toJSONObject(response.getBody()).getJSONArray("sections");
+         JSONObject folded    = published.getJSONObject(published.length() - 1);
+         assertEquals("folded", folded.getString("name"));
+         assertTrue(folded.getJSONObject("collapsible").getBoolean("isCollapsible"));
+         assertFalse(folded.getJSONObject("collapsible").getBoolean("initiallyOpen"));
+
+         JSONObject recordView = folded.getJSONObject("alternatives").getJSONObject("RECORD_VIEW");
+         assertEquals("Folded For Viewing", recordView.getString("label"));
+         assertEquals(List.of("lastName"), recordView.getJSONArray("fieldNames").toList());
+         assertTrue(recordView.getJSONObject("collapsible").getBoolean("initiallyOpen"));
+         assertEquals("visibility", recordView.getJSONObject("icon").getString("name"));
+
+         JSONObject first = published.getJSONObject(0);
+         assertFalse(first.has("collapsible"));
+         assertFalse(first.has("alternatives"));
+      }
+      finally
+      {
+         person.setSections(original);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Table menus are published with their slot and items: built-in options,
+    ** processes, file downloads, sub-lists, sub-menus and dividers.
+    *******************************************************************************/
+   @Test
+   void testMenus()
+   {
+      QTableMetaData person = serverQInstance.getTable("person");
+      assertFalse(JsonUtils.toJSONObject(Unirest.get(getBaseUrlAndPath() + "/metaData/table/person").asString().getBody()).has("menus"));
+
+      try
+      {
+         person.withMenus(List.of(
+            new QMenu().withLabel("Record Actions").withIcon(new QIcon("bolt")).withSlot(QMenuSlot.VIEW_SCREEN_ACTIONS)
+               .withItem(new QMenuItemSubList()
+                  .withItem(new QMenuItemBuiltIn(QMenuItemBuiltIn.DefaultOptions.EDIT))
+                  .withItem(new QMenuItemBuiltIn(QMenuItemBuiltIn.DefaultOptions.DEVELOPER_MODE)))
+               .withItem(new QMenuItemDivider())
+               .withItem(new QMenuItemRunProcess(TestUtils.PROCESS_NAME_GREET_PEOPLE_INTERACTIVE)),
+            new QMenu().withLabel("Files").withSlot(QMenuSlot.VIEW_SCREEN_ADDITIONAL)
+               .withItem(new QMenuItemDownloadFile("firstName").withLabel("Download Name"))
+               .withItem(new QMenuItemSubMenu().withLabel("More").withItem(new QMenuItemBuiltIn(QMenuItemBuiltIn.DefaultOptions.AUDIT)))));
+
+         HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/metaData/table/person").asString();
+         assertEquals(200, response.getStatus(), response.getBody());
+         JSONArray menus = JsonUtils.toJSONObject(response.getBody()).getJSONArray("menus");
+         assertEquals(2, menus.length());
+
+         JSONObject actions = menus.getJSONObject(0);
+         assertEquals("Record Actions", actions.getString("label"));
+         assertEquals("VIEW_SCREEN_ACTIONS", actions.getString("slot"));
+         assertEquals("bolt", actions.getJSONObject("icon").getString("name"));
+         JSONArray actionItems = actions.getJSONArray("items");
+         assertEquals("SUB_LIST", actionItems.getJSONObject(0).getString("itemType"));
+         assertEquals("DIVIDER", actionItems.getJSONObject(1).getString("itemType"));
+         assertEquals("RUN_PROCESS", actionItems.getJSONObject(2).getString("itemType"));
+         JSONArray subList = actionItems.getJSONObject(0).getJSONObject("values").getJSONArray("items");
+         assertEquals("BUILT_IN", subList.getJSONObject(0).getString("itemType"));
+         assertEquals("EDIT", subList.getJSONObject(0).getJSONObject("values").getString("option"));
+         assertEquals("DEVELOPER_MODE", subList.getJSONObject(1).getJSONObject("values").getString("option"));
+         assertEquals(TestUtils.PROCESS_NAME_GREET_PEOPLE_INTERACTIVE, actionItems.getJSONObject(2).getJSONObject("values").getString("processName"));
+         assertEquals(serverQInstance.getProcess(TestUtils.PROCESS_NAME_GREET_PEOPLE_INTERACTIVE).getLabel(), actionItems.getJSONObject(2).getString("label"));
+
+         JSONObject additional = menus.getJSONObject(1);
+         assertEquals("VIEW_SCREEN_ADDITIONAL", additional.getString("slot"));
+         JSONObject download = additional.getJSONArray("items").getJSONObject(0);
+         assertEquals("DOWNLOAD_FILE", download.getString("itemType"));
+         assertEquals("Download Name", download.getString("label"));
+         assertEquals("firstName", download.getJSONObject("values").getString("fieldName"));
+         JSONObject subMenu = additional.getJSONArray("items").getJSONObject(1);
+         assertEquals("SUB_MENU", subMenu.getString("itemType"));
+         assertEquals("More", subMenu.getString("label"));
+         assertEquals("AUDIT", subMenu.getJSONObject("values").getJSONArray("items").getJSONObject(0).getJSONObject("values").getString("option"));
+      }
+      finally
+      {
+         person.setMenus(null);
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** test the table-level meta-data endpoint for a non-real name
     **
     *******************************************************************************/
@@ -98,7 +534,7 @@ class TableMetaDataSpecV1Test extends SpecTestBase
 
       assertEquals(HttpStatus.NOT_FOUND_404, response.getStatus());
       JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
-      assertEquals(1, jsonObject.keySet().size(), "Number of top-level keys");
+      assertEquals(java.util.Set.of("error", "code", "message", "traceId"), jsonObject.keySet(), "Error body keys");
       String error = jsonObject.getString("error");
       assertThat(error).contains("Table").contains("notAnActualTable").contains("not found");
    }
@@ -141,6 +577,34 @@ class TableMetaDataSpecV1Test extends SpecTestBase
       finally
       {
          TestUtils.TablePersonalizer.unregister(serverQInstance);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A field whose possible value source declares a picker carries the picker
+    ** and its table in table meta data; other fields carry neither.
+    *******************************************************************************/
+   @Test
+   void testFieldPicker()
+   {
+      QPossibleValueSource source = serverQInstance.getPossibleValueSource(TestUtils.TABLE_NAME_PERSON);
+      source.setPicker(new QPossibleValuePicker().withThumbnailField("email").withSort("Newest", "id", false));
+      try
+      {
+         HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/metaData/table/person").asString();
+         assertEquals(200, response.getStatus());
+         JSONObject fields  = JsonUtils.toJSONObject(response.getBody()).getJSONObject("fields");
+         JSONObject partner = fields.getJSONObject("partnerPersonId");
+         assertEquals("email", partner.getJSONObject("picker").getString("thumbnailField"));
+         assertEquals("Newest", partner.getJSONObject("picker").getJSONArray("sorts").getJSONObject(0).getString("label"));
+         assertEquals("person", partner.getString("pickerTableName"));
+         assertFalse(fields.getJSONObject("firstName").has("picker"));
+      }
+      finally
+      {
+         source.setPicker(null);
       }
    }
 }

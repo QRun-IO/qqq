@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.model.session;
@@ -62,6 +61,19 @@ public class QSession implements Serializable, Cloneable
    // values meant to be passed to a frontend //
    /////////////////////////////////////////////
    private Map<String, Serializable> valuesForFrontend;
+
+   ////////////////////////////////////////////////////////////////////////////////
+   // which client made the request (e.g. next-ui, assistant/<turnId>) - set by  //
+   // the server (UI API header, UiApiInvoker, or server-side code); extra       //
+   // attribution for audit and client-channel deny rules - never grants access  //
+   ////////////////////////////////////////////////////////////////////////////////
+   private String clientChannel;
+
+   //////////////////////////////////////////////////////////////////////////////
+   // the scope of the credential (e.g. an access token) the session came from  //
+   // - null when unrestricted.  Only ever narrows the user's permissions.      //
+   //////////////////////////////////////////////////////////////////////////////
+   private QCredentialScope credentialScope;
 
    public static final String VALUE_KEY_USER_TIMEZONE                = "UserTimezone";
    public static final String VALUE_KEY_USER_TIMEZONE_OFFSET_MINUTES = "UserTimezoneOffsetMinutes";
@@ -113,6 +125,11 @@ public class QSession implements Serializable, Cloneable
       {
          clone.valuesForFrontend = new HashMap<>();
          clone.valuesForFrontend.putAll(valuesForFrontend);
+      }
+
+      if(credentialScope != null)
+      {
+         clone.credentialScope = credentialScope.clone();
       }
 
       return (clone);
@@ -252,6 +269,86 @@ public class QSession implements Serializable, Cloneable
 
 
    /*******************************************************************************
+    ** Getter for clientChannel - the full channel, e.g. assistant/turn-123 (null
+    ** when the request named no client).
+    *******************************************************************************/
+   public String getClientChannel()
+   {
+      return (this.clientChannel);
+   }
+
+
+
+   /*******************************************************************************
+    ** The channel name: the client channel up to its first '/', lower-cased
+    ** (e.g. assistant for assistant/turn-123); null when there is none.
+    *******************************************************************************/
+   public String getClientChannelName()
+   {
+      if(clientChannel == null || clientChannel.isBlank())
+      {
+         return (null);
+      }
+      return (clientChannel.strip().replaceFirst("[/:].*$", "").toLowerCase());
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for credentialScope - the scope of the credential (e.g. access token)
+    ** the session came from; null when unrestricted.
+    *******************************************************************************/
+   public QCredentialScope getCredentialScope()
+   {
+      return (this.credentialScope);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for credentialScope
+    *******************************************************************************/
+   public void setCredentialScope(QCredentialScope credentialScope)
+   {
+      this.credentialScope = credentialScope;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for credentialScope - set by the authentication module's
+    ** customizer for scoped credentials; it can only narrow access.
+    *******************************************************************************/
+   public QSession withCredentialScope(QCredentialScope credentialScope)
+   {
+      this.credentialScope = credentialScope;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for clientChannel
+    *******************************************************************************/
+   public void setClientChannel(String clientChannel)
+   {
+      this.clientChannel = clientChannel;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for clientChannel
+    *******************************************************************************/
+   public QSession withClientChannel(String clientChannel)
+   {
+      this.clientChannel = clientChannel;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
     ** Getter for uuid
     **
     *******************************************************************************/
@@ -288,6 +385,12 @@ public class QSession implements Serializable, Cloneable
     *******************************************************************************/
    public List<Serializable> getSecurityKeyValues(String keyName)
    {
+      List<Serializable> derived = derivedSecurityKeyValues(keyName);
+      if(derived != null)
+      {
+         return (derived);
+      }
+
       if(securityKeyValues == null)
       {
          return (new ArrayList<>());
@@ -303,6 +406,12 @@ public class QSession implements Serializable, Cloneable
     *******************************************************************************/
    public List<Serializable> getSecurityKeyValues(String keyName, QFieldType type)
    {
+      List<Serializable> derived = derivedSecurityKeyValues(keyName);
+      if(derived != null)
+      {
+         return (derived);
+      }
+
       if(securityKeyValues == null)
       {
          return (new ArrayList<>());
@@ -329,6 +438,12 @@ public class QSession implements Serializable, Cloneable
     *******************************************************************************/
    public boolean hasSecurityKeyValue(String keyName, Serializable value)
    {
+      List<Serializable> derived = derivedSecurityKeyValues(keyName);
+      if(derived != null)
+      {
+         return (derived.contains(value));
+      }
+
       if(securityKeyValues == null)
       {
          return (false);
@@ -350,6 +465,12 @@ public class QSession implements Serializable, Cloneable
     *******************************************************************************/
    public boolean hasSecurityKeyValue(String keyName, Serializable value, QFieldType fieldType)
    {
+      List<Serializable> derived = derivedSecurityKeyValues(keyName);
+      if(derived != null)
+      {
+         return (derived.contains(value));
+      }
+
       if(securityKeyValues == null)
       {
          return (false);
@@ -632,4 +753,21 @@ public class QSession implements Serializable, Cloneable
       return (this);
    }
 
+
+
+   /*******************************************************************************
+    ** Reserved session-relative keys cannot be overridden by captured key values.
+    *******************************************************************************/
+   private List<Serializable> derivedSecurityKeyValues(String keyName)
+   {
+      if("qqq.session.userId".equals(keyName))
+      {
+         return (getUser() == null || getUser().getIdReference() == null ? List.of() : List.of(getUser().getIdReference()));
+      }
+      if(keyName != null && keyName.startsWith("qqq.permission."))
+      {
+         return (hasPermission(keyName.substring("qqq.permission.".length())) ? List.of(true) : List.of());
+      }
+      return (null);
+   }
 }

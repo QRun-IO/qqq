@@ -5,26 +5,34 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.actions.async;
 
 
+import java.io.IOException;
+import java.io.ObjectOutputStream;
 import java.io.Serializable;
+import java.time.Instant;
+import java.util.List;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.kingsrook.qqq.backend.core.actions.processes.ProcessStateAccess;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobLogLine;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobProgressSnapshot;
+import com.kingsrook.qqq.backend.core.state.StateSerialization;
 
 
 /*******************************************************************************
@@ -33,7 +41,19 @@ import com.kingsrook.qqq.backend.core.actions.processes.ProcessStateAccess;
  *******************************************************************************/
 public class AsyncJobStatus implements Serializable
 {
-   private transient ProcessStateAccess stateAccess;
+   ////////////////////////////////////////////////////////////////////////
+   // serialized, so a shared (multi-node) state provider keeps the owner //
+   // check on every node                                                 //
+   ////////////////////////////////////////////////////////////////////////
+   private ProcessStateAccess stateAccess;
+
+   ////////////////////////////////////////////////////////////////////////
+   // the node running the job, and when it last wrote this status (a    //
+   // running job's node re-writes it periodically; a stale heartbeat on //
+   // a RUNNING job means its node is gone)                              //
+   ////////////////////////////////////////////////////////////////////////
+   private String  nodeId;
+   private Instant heartbeatAt;
 
    private String        jobName;
    private AsyncJobState state;
@@ -41,6 +61,9 @@ public class AsyncJobStatus implements Serializable
    private Integer       current;
    private Integer       total;
    private Exception     caughtException;
+
+   private JobProgressSnapshot progress;
+   private List<JobLogLine> logTail;
 
    private boolean cancelRequested;
 
@@ -242,5 +265,140 @@ public class AsyncJobStatus implements Serializable
    public void setStateAccess(ProcessStateAccess stateAccess)
    {
       this.stateAccess = stateAccess;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for progress
+    *******************************************************************************/
+   public JobProgressSnapshot getProgress()
+   {
+      return (this.progress);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for progress
+    *******************************************************************************/
+   public void setProgress(JobProgressSnapshot progress)
+   {
+      this.progress = progress;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for progress
+    *******************************************************************************/
+   public AsyncJobStatus withProgress(JobProgressSnapshot progress)
+   {
+      this.progress = progress;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for logTail
+    *******************************************************************************/
+   public List<JobLogLine> getLogTail()
+   {
+      return (this.logTail);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for logTail
+    *******************************************************************************/
+   public void setLogTail(List<JobLogLine> logTail)
+   {
+      this.logTail = logTail;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for logTail
+    *******************************************************************************/
+   public AsyncJobStatus withLogTail(List<JobLogLine> logTail)
+   {
+      this.logTail = logTail;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Serialize, replacing a caught exception that cannot be serialized (for
+    ** example, one holding a non-serializable field) with one that carries its
+    ** message - user-facing stays user-facing.
+    *******************************************************************************/
+   private void writeObject(ObjectOutputStream out) throws IOException
+   {
+      Exception original = caughtException;
+      if(original != null)
+      {
+         try
+         {
+            StateSerialization.toBytes(original);
+         }
+         catch(QException e)
+         {
+            caughtException = (original instanceof QUserFacingException) ? new QUserFacingException(original.getMessage()) : new QException(original.getMessage());
+         }
+      }
+      try
+      {
+         out.defaultWriteObject();
+      }
+      finally
+      {
+         caughtException = original;
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for nodeId
+    *******************************************************************************/
+   @JsonIgnore
+   public String getNodeId()
+   {
+      return (this.nodeId);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for nodeId
+    *******************************************************************************/
+   public void setNodeId(String nodeId)
+   {
+      this.nodeId = nodeId;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for heartbeatAt
+    *******************************************************************************/
+   @JsonIgnore
+   public Instant getHeartbeatAt()
+   {
+      return (this.heartbeatAt);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for heartbeatAt
+    *******************************************************************************/
+   public void setHeartbeatAt(Instant heartbeatAt)
+   {
+      this.heartbeatAt = heartbeatAt;
    }
 }

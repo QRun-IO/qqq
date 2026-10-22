@@ -64,6 +64,36 @@ new QFieldMetaData("birthDate", QFieldType.DATE)
 .withRecordLabelFields(List.of("name", "birthDate"))
 ----
 
+* `searchFields` - *List of String* - Fields that record search matches a search term against (`RecordSearchAction`, and the v1 `POST /search` endpoint that the dashboard's global search uses).
+String fields (`STRING`, `TEXT`, `HTML`) match when they contain the term, ignoring case; integer fields (`INTEGER`, `LONG`) match when they equal a numeric term.
+A table without search fields is not searched.
+Search fields must be visible, non-password fields of the table, and the table's backend must not use variants.
+Record search only searches tables the user may read, applies record security locks, and returns a limited number of records per table.
+The table meta data lists `searchFields` only to users who may read the table, so a frontend searches only when some table declares them.
+
+[source,java]
+----
+.withSearchFields("firstName", "lastName", "email")
+----
++
+A *record search provider* can search some tables in place of the default "contains" query - for example, a module backed by a search index such as OpenSearch.
+Register one on the instance with `QInstance.withRecordSearchProvider(new QCodeReference(YourProvider.class))`, where `YourProvider` implements `RecordSearchProviderInterface`:
++
+--
+** `boolean claimsTable(QTableMetaData table)` - whether the provider searches this table.
+It is asked only about tables that are being searched (tables with search fields that the user may read and that support query), so a provider-searched table still needs `searchFields` (frontends use them to find searchable tables, and they are the fallback).
+** `RecordSearchOutput search(RecordSearchInput input)` - search the claimed tables.
+The input has the trimmed search term, exactly the claimed tables the user may read as `tableNames`, the effective `limitPerTable`, and the caller's input source.
+Return a `RecordSearchResult` with at least `tableName` and `recordId` (primary key) for each hit, most relevant first within each table.
+--
++
+Unclaimed tables keep the default search, and both sets of results are returned together, in table order, so the `POST /search` response does not change.
+Provider hits are read again by primary key through `QueryAction`, so record security locks apply, records deleted since they were indexed drop out, and record labels are computed as usual.
+For each table, up to `RecordSearchAction.MAX_PROVIDER_IDS_PER_TABLE` (100) ids are considered in the provider's order, and the first `limitPerTable` the user may read are returned; a provider may return more than `limitPerTable` ids per table to make up for hits that drop out.
+If the provider throws (or cannot be loaded), a warning is logged and its tables are searched with the default search, so an unavailable search index does not fail search.
+A new provider instance is loaded for each search; keep connections and other shared state outside it.
+Without a provider, record search is unchanged.
+
 * `sections` - *List of <<QFieldSection>>* - Mechanism to organize fields within user interfaces, into logical sections.
 If any sections are present in the table meta data, then all fields in the table must be listed in exactly 1 section.
 If no sections are defined, then instance enrichment will define default sections.
@@ -249,6 +279,17 @@ A QQQ Table can have end-user defined Script records associated with individual 
 
 The "types" of these scripts (e.g., how they are used in an application) are wholly application-designed & managed.
 QQQ provides the mechanism for UI's to present and manage such scripts (e.g., the *Developer Mode* screen in the Material Dashboard), as well as an interface to load & execute such scripts `RunAssociatedScriptAction`).
+
+[WARNING]
+====
+*Script Test executes against live application data.* Explicit write calls such as
+`qqq.update(...)` persist changes using the caller's permissions. Writes completed
+before a later script error can remain committed. Test does not save its draft
+revision or execution logs, and local changes to an input record are not saved
+unless the script explicitly writes them. Test does not isolate Java calls or
+external service effects. Use disposable records and a test environment for code
+that can change data.
+====
 
 *AssociatedScript Properties:*
 

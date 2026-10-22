@@ -5,27 +5,36 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.actions;
 
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
+import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistencyGuarantee;
+import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistentReadInput;
+import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleInterface;
+import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
@@ -35,10 +44,22 @@ import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleInterface;
  ** Most obvious use-case would be a JDBC Connection.  See subclass in rdbms module.
  ** Ditto MongoDB.
  **
+ ** Also holds after-commit callbacks: work (e.g., publishing events about
+ ** changed records) that must only happen once the transaction's data is
+ ** committed, and never if it is rolled back.  Subclasses that override commit()
+ ** must call runAfterCommitCallbacks() once their commit succeeds, and
+ ** discardAfterCommitCallbacks() if it fails.  Subclasses that override
+ ** rollback() must call super.rollback(), which discards them.
+ **
  ** Note:  One would imagine that this class shouldn't ever implement Serializable...
  *******************************************************************************/
 public class QBackendTransaction implements AutoCloseable
 {
+   private static final QLogger LOG = QLogger.getLogger(QBackendTransaction.class);
+
+   private List<Runnable> afterCommitCallbacks = new ArrayList<>();
+
+
 
    /*******************************************************************************
     **
@@ -54,13 +75,64 @@ public class QBackendTransaction implements AutoCloseable
 
 
    /*******************************************************************************
+    ** Open a consistent-read transaction (see QBackendModuleInterface
+    ** .openConsistentReadTransaction) on the named backend.
+    **
+    ** @throws QException if the backend's module doesn't support them.
+    *******************************************************************************/
+   public static QBackendTransaction openConsistentReadFor(ConsistentReadInput input) throws QException
+   {
+      QBackendMetaData backend = QContext.getQInstance().getBackend(input.getBackendName());
+      if(backend == null)
+      {
+         throw (new QException("Unrecognized backend name: " + input.getBackendName()));
+      }
+
+      QBackendModuleInterface qModule = new QBackendModuleDispatcher().getQBackendModule(backend);
+      Optional<QBackendTransaction> transaction = qModule.openConsistentReadTransaction(input);
+      if(transaction.isEmpty())
+      {
+         throw (new QException("Backend [" + input.getBackendName() + "] does not support consistent read transactions"));
+      }
+      return (transaction.get());
+   }
+
+
+
+   /*******************************************************************************
+    ** For a transaction from openConsistentReadTransaction, the id of a snapshot
+    ** that other transactions can attach to (via ConsistentReadInput
+    ** .importSnapshotId) - for backends that support sharing one (e.g., postgres).
+    ** Empty otherwise.
+    *******************************************************************************/
+   public Optional<String> getExportedSnapshotId()
+   {
+      return (Optional.empty());
+   }
+
+
+
+   /*******************************************************************************
+    ** What a transaction from openConsistentReadTransaction guarantees.  Callers
+    ** should record this, rather than assume ONE_INSTANT.
+    *******************************************************************************/
+   public ConsistencyGuarantee getConsistencyGuarantee()
+   {
+      return (ConsistencyGuarantee.BEST_EFFORT);
+   }
+
+
+
+   /*******************************************************************************
     ** Commit the transaction.
     *******************************************************************************/
    public void commit() throws QException
    {
-      ////////////////////////
-      // noop in base class //
-      ////////////////////////
+      //////////////////////////////////////////////////////////////////////
+      // nothing to commit in base class - so just run any callbacks that //
+      // were waiting on the commit                                       //
+      //////////////////////////////////////////////////////////////////////
+      runAfterCommitCallbacks();
    }
 
 
@@ -70,9 +142,76 @@ public class QBackendTransaction implements AutoCloseable
     *******************************************************************************/
    public void rollback() throws QException
    {
-      ////////////////////////
-      // noop in base class //
-      ////////////////////////
+      //////////////////////////////////////////////////////////////////////
+      // nothing to roll back in base class - but any after-commit        //
+      // callbacks were for work that won't be committed, so discard them //
+      //////////////////////////////////////////////////////////////////////
+      discardAfterCommitCallbacks();
+   }
+
+
+
+   /*******************************************************************************
+    ** Register a callback to run after this transaction's next successful commit.
+    ** Callbacks run in the order they were added, and each runs at most once.  If
+    ** the transaction is rolled back instead, they are discarded without running.
+    **
+    ** A callback that throws (an Exception, or a LinkageError, such as a
+    ** NoClassDefFoundError from an optional library that isn't on the classpath)
+    ** is logged, and does not fail the commit - whose data is already committed -
+    ** nor stop later callbacks from running.
+    *******************************************************************************/
+   public void addAfterCommitCallback(Runnable callback)
+   {
+      afterCommitCallbacks.add(Objects.requireNonNull(callback, "callback"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Run (and then forget) all after-commit callbacks, in the order they were
+    ** added, catching and logging any Exception or LinkageError from each.  For
+    ** subclasses to call once their commit has succeeded.
+    *******************************************************************************/
+   protected void runAfterCommitCallbacks()
+   {
+      if(afterCommitCallbacks.isEmpty())
+      {
+         return;
+      }
+
+      /////////////////////////////////////////////////////////////////////////////
+      // swap the list out before running, so each callback runs at most once.   //
+      // a callback added while these run (e.g., by more writes on this          //
+      // transaction, which a commit re-opens) waits for the next commit, rather //
+      // than running before its work is committed.                              //
+      /////////////////////////////////////////////////////////////////////////////
+      List<Runnable> callbacksToRun = afterCommitCallbacks;
+      afterCommitCallbacks = new ArrayList<>();
+
+      for(Runnable callback : callbacksToRun)
+      {
+         try
+         {
+            callback.run();
+         }
+         catch(Exception | LinkageError e)
+         {
+            LOG.warn("Error running after-commit callback", e, logPair("callbackClass", callback.getClass().getName()));
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Forget all after-commit callbacks, without running them - their work will
+    ** not be committed.  For rollback, and for subclasses to call when their
+    ** commit fails (so a later commit on this transaction doesn't run them).
+    *******************************************************************************/
+   protected void discardAfterCommitCallbacks()
+   {
+      afterCommitCallbacks.clear();
    }
 
 

@@ -1,0 +1,9 @@
+bundle: invalid-coverage
+version: 1
+layer: CORE
+entries:
+  - key: table:missing;slot:help
+    summary: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    content: "{{label:missing}}"
+  - key: table:person;slot:help
+    summary: "**markup**"

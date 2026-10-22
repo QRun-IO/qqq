@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.model.metadata.frontend;
@@ -24,11 +23,17 @@ package com.kingsrook.qqq.backend.core.model.metadata.frontend;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.jobs.DurableJobs;
+import com.kingsrook.qqq.backend.core.jobs.DurableProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.help.HelpContentVisibility;
+import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QFrontendStepMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
@@ -44,6 +49,8 @@ import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 @JsonInclude(Include.NON_NULL)
 public class QFrontendProcessMetaData
 {
+   private Map<String, List<QHelpContent>> helpContents;
+
    private String  name;
    private String  label;
    private String  tableName;
@@ -58,6 +65,9 @@ public class QFrontendProcessMetaData
 
    private boolean hasPermission;
 
+   private boolean durableJobEligible;
+   private boolean durableJobAlways;
+
    //////////////////////////////////////////////////////////////////////////////////
    // do not add setters.  take values from the source-object in the constructor!! //
    //////////////////////////////////////////////////////////////////////////////////
@@ -69,6 +79,7 @@ public class QFrontendProcessMetaData
     *******************************************************************************/
    public QFrontendProcessMetaData(AbstractActionInput actionInput, QProcessMetaData processMetaData, boolean includeSteps)
    {
+      this.helpContents = HelpContentVisibility.filter(processMetaData.getHelpContent());
       this.name = processMetaData.getName();
       this.label = processMetaData.getLabel();
       this.tableName = processMetaData.getTableName();
@@ -86,6 +97,7 @@ public class QFrontendProcessMetaData
                case LINEAR -> processMetaData.getStepList().stream()
                   .filter(QFrontendStepMetaData.class::isInstance)
                   .map(QFrontendStepMetaData.class::cast)
+                  .map(QFrontendProcessMetaData::filteredStep)
                   .collect(Collectors.toList());
 
                case STATE_MACHINE -> processMetaData.getAllSteps().values().stream()
@@ -94,6 +106,7 @@ public class QFrontendProcessMetaData
                   .flatMap(step -> step.getSubSteps().stream())
                   .filter(QFrontendStepMetaData.class::isInstance)
                   .map(QFrontendStepMetaData.class::cast)
+                  .map(QFrontendProcessMetaData::filteredStep)
                   .collect(Collectors.toList());
             };
          }
@@ -106,6 +119,33 @@ public class QFrontendProcessMetaData
       this.icon = processMetaData.getIcon();
 
       hasPermission = PermissionsHelper.hasProcessPermission(actionInput, name);
+
+      //////////////////////////////////////////////////////////////////////
+      // can it run as a durable background job ("Run in background")?  //
+      //////////////////////////////////////////////////////////////////////
+      this.durableJobEligible = DurableJobs.isEligible(processMetaData);
+      DurableProcessMetaData durable = DurableProcessMetaData.of(processMetaData);
+      this.durableJobAlways = this.durableJobEligible && durable != null && Boolean.TRUE.equals(durable.getAlwaysDurable());
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for durableJobEligible: the process may run as a durable job.
+    *******************************************************************************/
+   public boolean getDurableJobEligible()
+   {
+      return (this.durableJobEligible);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for durableJobAlways: the process always runs as a durable job.
+    *******************************************************************************/
+   public boolean getDurableJobAlways()
+   {
+      return (this.durableJobAlways);
    }
 
 
@@ -240,4 +280,34 @@ public class QFrontendProcessMetaData
       return maxInputRecords;
    }
 
+
+
+   /*******************************************************************************
+    ** Getter for helpContents
+    *******************************************************************************/
+   public Map<String, List<QHelpContent>> getHelpContents()
+   {
+      return (helpContents);
+   }
+
+
+   /*******************************************************************************
+    ** Copy step help and every field list before applying session targeting.
+    *******************************************************************************/
+   private static QFrontendStepMetaData filteredStep(QFrontendStepMetaData step)
+   {
+      QFrontendStepMetaData copy = step.clone();
+      copy.setHelpContents(HelpContentVisibility.filter(step.getHelpContents()));
+      for(List<QFieldMetaData> fields : List.of(CollectionUtils.nonNullList(copy.getFormFields()), CollectionUtils.nonNullList(copy.getViewFields()), CollectionUtils.nonNullList(copy.getRecordListFields())))
+      {
+         for(QFieldMetaData field : fields)
+         {
+            field.setHelpContents(HelpContentVisibility.filter(field.getHelpContents()));
+         }
+      }
+      List<QFieldMetaData> formFields = copy.getFormFields();
+      copy.setFormFields(null);
+      copy.setFormFields(formFields);
+      return (copy);
+   }
 }

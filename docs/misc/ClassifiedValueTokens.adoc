@@ -1,0 +1,86 @@
+= Classified Value Tokens
+
+PII and PHI values never appear in core audit details. Effective classification
+comes from `AiDataClassifications`, or an instance's `AuditValueProtectorInterface`.
+Unclassified audit details keep their existing behavior.
+
+== Formats and binding
+
+The UTF-8 MAC input is `table + "\u001F" + field + "\u001F" + String.valueOf(pk)
++ "\u001F" + canonical(value)`. Context tokens join the supplied binding parts
+and canonical value with the same separator; the first part is a nonempty domain,
+for example `email`. Context binding parts cannot contain the separator.
+No additional prefix is added to the agreed record binding.
+
+* `hmac:v1:<keyId>:<mac>`: HMAC-SHA256 with the instance key.
+* `shred:v1:<keyRef>:<mac>`: HMAC-SHA256 with the record-field key.
+* `changed:v1`: no key or an application policy that stores no derivative.
+* `wiped:v1:<ruleId>`: the new value for fields changed by an update carrying `WipeAuditFlag`.
+* `shredded:v1:<ruleId>`: a separate key-destruction detail written by `AuditShreddedEvent.shreddedDetail`.
+
+MACs use base64url without padding. Identifiers use ASCII letters, digits, dot,
+underscore or hyphen; complete tokens stay below 200 characters. Null values stay
+absent. Canonical strings use `ValueUtils`, with `BigDecimal` trailing zeros
+removed and plain notation; `Instant` uses ISO-8601 UTC, dates ISO and booleans
+lowercase. Binding values are case-sensitive and are not trimmed.
+
+== Keys and verification
+
+Register a `ClassifiedValueKeySource` using
+`ClassifiedValueKeySourceMetaData.ofOrWithNew(instance).withKeySourceInstance(source)`
+(or `withKeySource(QCodeReference)`). Its nested `KeyAndId` holds key bytes and ID.
+Record tokens prefer `keyForRecordField(table, field, pk, true)`, then
+`instanceKey()`, then `changed:v1`. Context tokens use only the instance key.
+The default reads base64 `QQQ_AUDIT_HMAC_KEY` and optional `QQQ_AUDIT_HMAC_KEY_ID`
+(default `env1`) through the metadata variable interpreter. Same-named Java
+properties support tests. Secret values are never logged. Missing keys produce
+one warning on first token use.
+
+`verifyRecordField(table, field, pk, candidate, token)` and
+`verifyContext(parts, candidate, token)` compare complete keyed tokens in constant
+time. Marker tokens and null candidates never verify. Shred verification requests
+`create=false`: a destroyed key is never recreated and there is no instance-key
+fallback for a shred token. The current SPI exposes one instance key; verification
+of historical rotated instance keys requires selecting the corresponding key
+source externally. Keep verification actions access-controlled in the application.
+
+Register audit policy through
+`AuditValueProtectionMetaData.ofOrWithNew(instance).withProtectorInstance(protector)`.
+The protector returns tokens; core constructs the value-free Set/Changed/Removed
+message. Wipe updates omit old values entirely. Pass the key-destruction
+transaction to the five-argument `AuditShreddedEvent.shreddedDetail` overload so
+key destruction and its audit commit together.
+
+== Logs and events
+
+`QLogger.registerRedactor` / `unregisterRedactor` maintain a thread-safe registry.
+Redactors run on string log values and completed messages, including formatted
+parameters and exception text. QRecord log rendering masks classified values
+independently of user tier and omits record labels, display values and backend
+metadata. Records with unknown table metadata are fully masked. Ordinary API JSON
+serialization is unchanged; use QRecord log pairs for record logging.
+
+ESB table publications omit classified values by default, including old values
+and classified primary-key subjects. UPDATE payloads retain names in
+`changedFields`. `EsbTablePublication.withIncludeClassified(true)` explicitly opts
+a destination in. If the same destination has multiple matching registrations,
+all must opt in. Outbound webhook consumers inherit the default safe payload.
+
+== Shared test vectors
+
+Test key (bytes 00 through 1f), base64:
+`AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=`.
+This is a public fixture, never a production key.
+
+[cols="1,2",options="header"]
+|===
+|Input |Expected token
+|Record: patient / systolic / 42 / BigDecimal("120.00")
+|`hmac:v1:env1:YJ7YulFxAOci7Cm0pX0fOAZwmcEVTzBXaAQrmFD2fk8`
+|Same record and value, record-field key ID dek42
+|`shred:v1:dek42:YJ7YulFxAOci7Cm0pX0fOAZwmcEVTzBXaAQrmFD2fk8`
+|Context: email / welcome / recipient / message-7 / Ada@example.com
+|`hmac:v1:env1:p1BggBbb8ytFgS5YeM6eBiriGgC1j3x0YGjics5qVeM`
+|Record: patient / systolic / 42 / Instant("2026-10-13T12:34:56Z")
+|`hmac:v1:env1:y5go1-Gynl0OjSDFoDaUiXNTWm6ci_3IHOn7HBxuc4k`
+|===

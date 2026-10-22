@@ -5,37 +5,81 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.module.filesystem.s3.model.metadata;
 
 
 import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.module.filesystem.base.model.metadata.AbstractFilesystemBackendMetaData;
 import com.kingsrook.qqq.backend.module.filesystem.s3.S3BackendModule;
 
 
 /*******************************************************************************
  ** S3 backend meta data.
+ **
+ ** Works with AWS S3 and with any S3-compatible store (MinIO, Garage, Cloudflare
+ ** R2, Backblaze B2, Wasabi, DigitalOcean Spaces, Ceph RGW, ...):
+ ** - endpoint: the store's URL (empty means AWS's regional endpoint).
+ ** - pathStyleAccess: true for http(s)://host/bucket/key addressing, which most
+ **   self-hosted stores need; false (default) for virtual-hosted addressing.
+ ** - checksumMode: see S3ChecksumMode.  Null means WHEN_REQUIRED when an
+ **   endpoint is set, else the SDK default (WHEN_SUPPORTED).
+ ** - tlsVerify: null/true verifies TLS certificates; false trusts any
+ **   certificate (development only).
+ ** - caCertificatesPem: extra PEM certificate(s) to trust, for stores behind a
+ **   private CA (in addition to the JVM's default trust store).
+ ** - connectTimeoutMillis / socketTimeoutMillis: null keeps the defaults
+ **   (10 seconds / 50 seconds, the same as the AWS SDK v1 defaults).
+ ** - maxListedObjects: listings that would return more objects than this fail
+ **   with a clear error instead of exhausting memory.  Null means the default
+ **   (100,000); zero or negative means no cap.
+ **
+ ** - sessionToken: the session token of temporary (STS) credentials, used with
+ **   accessKey and secretKey.  It is fixed once set: when it expires, give the
+ **   backend the new credentials (a new client is built for them).
+ ** - credentialsProviderCode: a class implementing the AWS SDK's
+ **   AwsCredentialsProvider (no-arg constructor), for credentials that refresh
+ **   themselves (e.g., an STS assume-role provider).  When set, it wins over
+ **   accessKey / secretKey / sessionToken.
+ ** - With neither keys nor a provider, the SDK's default chain applies
+ **   (environment, profile, web identity, container and instance roles), which
+ **   refreshes its own temporary credentials.
+ **
+ ** accessKey, secretKey, sessionToken, region, endpoint and caCertificatesPem
+ ** are interpreted for ${env.X} / ${prop.X} / ${file.PATH} references when the
+ ** instance is enriched (see QMetaDataVariableInterpreter).
  *******************************************************************************/
 public class S3BackendMetaData extends AbstractFilesystemBackendMetaData
 {
    private String bucketName;
    private String accessKey;
    private String secretKey;
+   private String sessionToken;
    private String region;
+
+   private QCodeReference credentialsProviderCode;
+
+   private String         endpoint;
+   private Boolean        pathStyleAccess;
+   private S3ChecksumMode checksumMode;
+   private Boolean        tlsVerify;
+   private String         caCertificatesPem;
+   private Integer        connectTimeoutMillis;
+   private Integer        socketTimeoutMillis;
+   private Integer        maxListedObjects;
 
 
 
@@ -153,6 +197,69 @@ public class S3BackendMetaData extends AbstractFilesystemBackendMetaData
 
 
    /*******************************************************************************
+    ** Getter for sessionToken - the session token of temporary (STS) credentials
+    *******************************************************************************/
+   public String getSessionToken()
+   {
+      return (sessionToken);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for sessionToken - the session token of temporary (STS) credentials
+    *******************************************************************************/
+   public void setSessionToken(String sessionToken)
+   {
+      this.sessionToken = sessionToken;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for sessionToken - the session token of temporary (STS)
+    ** credentials
+    *******************************************************************************/
+   public S3BackendMetaData withSessionToken(String sessionToken)
+   {
+      this.sessionToken = sessionToken;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for credentialsProviderCode - an AwsCredentialsProvider class
+    *******************************************************************************/
+   public QCodeReference getCredentialsProviderCode()
+   {
+      return (credentialsProviderCode);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for credentialsProviderCode - an AwsCredentialsProvider class
+    *******************************************************************************/
+   public void setCredentialsProviderCode(QCodeReference credentialsProviderCode)
+   {
+      this.credentialsProviderCode = credentialsProviderCode;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for credentialsProviderCode - an AwsCredentialsProvider class
+    *******************************************************************************/
+   public S3BackendMetaData withCredentialsProviderCode(QCodeReference credentialsProviderCode)
+   {
+      this.credentialsProviderCode = credentialsProviderCode;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
     ** Getter for region
     **
     *******************************************************************************/
@@ -186,6 +293,255 @@ public class S3BackendMetaData extends AbstractFilesystemBackendMetaData
 
 
 
+
+   /*******************************************************************************
+    ** Getter for endpoint - the endpoint URL of the S3-compatible store
+    *******************************************************************************/
+   public String getEndpoint()
+   {
+      return (endpoint);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for endpoint - the endpoint URL of the S3-compatible store
+    *******************************************************************************/
+   public void setEndpoint(String endpoint)
+   {
+      this.endpoint = endpoint;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for endpoint - the endpoint URL of the S3-compatible store
+    *******************************************************************************/
+   public S3BackendMetaData withEndpoint(String endpoint)
+   {
+      this.endpoint = endpoint;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for pathStyleAccess - whether to use path-style addressing
+    *******************************************************************************/
+   public Boolean getPathStyleAccess()
+   {
+      return (pathStyleAccess);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for pathStyleAccess - whether to use path-style addressing
+    *******************************************************************************/
+   public void setPathStyleAccess(Boolean pathStyleAccess)
+   {
+      this.pathStyleAccess = pathStyleAccess;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for pathStyleAccess - whether to use path-style addressing
+    *******************************************************************************/
+   public S3BackendMetaData withPathStyleAccess(Boolean pathStyleAccess)
+   {
+      this.pathStyleAccess = pathStyleAccess;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for checksumMode - the request/response checksum mode
+    *******************************************************************************/
+   public S3ChecksumMode getChecksumMode()
+   {
+      return (checksumMode);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for checksumMode - the request/response checksum mode
+    *******************************************************************************/
+   public void setChecksumMode(S3ChecksumMode checksumMode)
+   {
+      this.checksumMode = checksumMode;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for checksumMode - the request/response checksum mode
+    *******************************************************************************/
+   public S3BackendMetaData withChecksumMode(S3ChecksumMode checksumMode)
+   {
+      this.checksumMode = checksumMode;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for tlsVerify - whether TLS certificates are verified
+    *******************************************************************************/
+   public Boolean getTlsVerify()
+   {
+      return (tlsVerify);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for tlsVerify - whether TLS certificates are verified
+    *******************************************************************************/
+   public void setTlsVerify(Boolean tlsVerify)
+   {
+      this.tlsVerify = tlsVerify;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for tlsVerify - whether TLS certificates are verified
+    *******************************************************************************/
+   public S3BackendMetaData withTlsVerify(Boolean tlsVerify)
+   {
+      this.tlsVerify = tlsVerify;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for caCertificatesPem - extra PEM CA certificates to trust
+    *******************************************************************************/
+   public String getCaCertificatesPem()
+   {
+      return (caCertificatesPem);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for caCertificatesPem - extra PEM CA certificates to trust
+    *******************************************************************************/
+   public void setCaCertificatesPem(String caCertificatesPem)
+   {
+      this.caCertificatesPem = caCertificatesPem;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for caCertificatesPem - extra PEM CA certificates to trust
+    *******************************************************************************/
+   public S3BackendMetaData withCaCertificatesPem(String caCertificatesPem)
+   {
+      this.caCertificatesPem = caCertificatesPem;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for connectTimeoutMillis - the HTTP connect timeout
+    *******************************************************************************/
+   public Integer getConnectTimeoutMillis()
+   {
+      return (connectTimeoutMillis);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for connectTimeoutMillis - the HTTP connect timeout
+    *******************************************************************************/
+   public void setConnectTimeoutMillis(Integer connectTimeoutMillis)
+   {
+      this.connectTimeoutMillis = connectTimeoutMillis;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for connectTimeoutMillis - the HTTP connect timeout
+    *******************************************************************************/
+   public S3BackendMetaData withConnectTimeoutMillis(Integer connectTimeoutMillis)
+   {
+      this.connectTimeoutMillis = connectTimeoutMillis;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for socketTimeoutMillis - the HTTP socket (read) timeout
+    *******************************************************************************/
+   public Integer getSocketTimeoutMillis()
+   {
+      return (socketTimeoutMillis);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for socketTimeoutMillis - the HTTP socket (read) timeout
+    *******************************************************************************/
+   public void setSocketTimeoutMillis(Integer socketTimeoutMillis)
+   {
+      this.socketTimeoutMillis = socketTimeoutMillis;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for socketTimeoutMillis - the HTTP socket (read) timeout
+    *******************************************************************************/
+   public S3BackendMetaData withSocketTimeoutMillis(Integer socketTimeoutMillis)
+   {
+      this.socketTimeoutMillis = socketTimeoutMillis;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for maxListedObjects - the cap on objects returned by one listing
+    *******************************************************************************/
+   public Integer getMaxListedObjects()
+   {
+      return (maxListedObjects);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for maxListedObjects - the cap on objects returned by one listing
+    *******************************************************************************/
+   public void setMaxListedObjects(Integer maxListedObjects)
+   {
+      this.maxListedObjects = maxListedObjects;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for maxListedObjects - the cap on objects returned by one listing
+    *******************************************************************************/
+   public S3BackendMetaData withMaxListedObjects(Integer maxListedObjects)
+   {
+      this.maxListedObjects = maxListedObjects;
+      return (this);
+   }
+
+
+
    /*******************************************************************************
     ** Called by the QInstanceEnricher - to do backend-type-specific enrichments.
     ** Original use case is:  reading secrets into fields (e.g., passwords).
@@ -198,6 +554,10 @@ public class S3BackendMetaData extends AbstractFilesystemBackendMetaData
       QMetaDataVariableInterpreter interpreter = new QMetaDataVariableInterpreter();
       accessKey = interpreter.interpret(accessKey);
       secretKey = interpreter.interpret(secretKey);
+      sessionToken = interpreter.interpret(sessionToken);
+      region = interpreter.interpret(region);
+      endpoint = interpreter.interpret(endpoint);
+      caCertificatesPem = interpreter.interpret(caCertificatesPem);
    }
 
 

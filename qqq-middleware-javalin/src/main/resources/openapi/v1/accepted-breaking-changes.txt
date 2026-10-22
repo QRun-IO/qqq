@@ -1,0 +1,3 @@
+# Breaking-change reports UiApiContractTest accepts, one substring per line (text after # is the reason).
+# Only corrections of the document to what the server always did belong here: no client could rely on
+# the old description. Cleared when the baseline is refreshed (PublishAPI --baseline). See docs/UI-API-CHANGELOG.md.

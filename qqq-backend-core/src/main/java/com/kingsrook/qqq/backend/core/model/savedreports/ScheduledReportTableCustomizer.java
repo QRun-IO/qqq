@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.model.savedreports;
@@ -32,6 +31,7 @@ import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterfa
 import com.kingsrook.qqq.backend.core.actions.processes.QProcessCallbackFactory;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -46,9 +46,12 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.scheduledjobs.ScheduledJob;
+import com.kingsrook.qqq.backend.core.model.session.QSession;
+import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 import com.kingsrook.qqq.backend.core.model.statusmessages.BadInputStatusMessage;
 import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwithfrontend.StreamedETLWithFrontendProcess;
 import com.kingsrook.qqq.backend.core.scheduler.CronDescriber;
+import com.kingsrook.qqq.backend.core.serviceidentity.ServiceIdentities;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValidationUtils;
@@ -64,6 +67,12 @@ public class ScheduledReportTableCustomizer implements TableCustomizerInterface
 {
    private static final QLogger LOG = QLogger.getLogger(ScheduledReportTableCustomizer.class);
 
+   ///////////////////////////////////////////////////////////////////////////
+   // a named permission for sessions that may create or re-assign other    //
+   // users' schedules (e.g. an admin tool); never implied by table edit    //
+   ///////////////////////////////////////////////////////////////////////////
+   public static final String PERMISSION_ASSIGN_OWNER = "scheduledReport.assignOwner";
+
 
 
    /*******************************************************************************
@@ -72,7 +81,7 @@ public class ScheduledReportTableCustomizer implements TableCustomizerInterface
    @Override
    public List<QRecord> preInsert(InsertInput insertInput, List<QRecord> records, boolean isPreview) throws QException
    {
-      preInsertOrUpdate(records, Optional.empty());
+      preInsertOrUpdate(records, Optional.empty(), true);
       return (records);
    }
 
@@ -84,7 +93,7 @@ public class ScheduledReportTableCustomizer implements TableCustomizerInterface
    @Override
    public List<QRecord> preUpdate(UpdateInput updateInput, List<QRecord> records, boolean isPreview, Optional<List<QRecord>> oldRecordList) throws QException
    {
-      preInsertOrUpdate(records, oldRecordList);
+      preInsertOrUpdate(records, oldRecordList, false);
       return (records);
    }
 
@@ -93,12 +102,42 @@ public class ScheduledReportTableCustomizer implements TableCustomizerInterface
    /*******************************************************************************
     **
     *******************************************************************************/
-   private void preInsertOrUpdate(List<QRecord> records, Optional<List<QRecord>> oldRecordList)
+   private void preInsertOrUpdate(List<QRecord> records, Optional<List<QRecord>> oldRecordList, boolean isInsert)
    {
       Optional<Map<Serializable, QRecord>> oldRecordMap = oldRecordListToMap("id", oldRecordList);
 
+      ////////////////////////////////////////////////////////////////////////////
+      // the owner is who the report runs as (on their behalf, with their      //
+      // access): a signed-in user's schedules are always their own, and the   //
+      // owner never changes afterwards - otherwise anyone who can edit a      //
+      // schedule could render reports with someone else's access and email   //
+      // the result anywhere. System and service code, and sessions holding    //
+      // PERMISSION_ASSIGN_OWNER (explicitly granted), may set it.             //
+      ////////////////////////////////////////////////////////////////////////////
+      QSession session      = QContext.getQSession();
+      boolean  userSession  = session != null && !(session instanceof QSystemUserSession) && !ServiceIdentities.isMintedServiceSession(session)
+         && !session.hasPermission(PERMISSION_ASSIGN_OWNER);
+      String   sessionOwner = userSession && session.getUser() != null ? session.getUser().getIdReference() : null;
+
       for(QRecord record : records)
       {
+         if(isInsert)
+         {
+            if(userSession)
+            {
+               record.setValue("userId", sessionOwner);
+            }
+         }
+         else if(record.getValues().containsKey("userId"))
+         {
+            QRecord old = oldRecordMap.map(m -> m.get(record.getValue("id"))).orElse(null);
+            String  was = old == null ? null : old.getValueString("userId");
+            if(userSession && (old == null || !java.util.Objects.equals(was, record.getValueString("userId"))))
+            {
+               record.addError(new BadInputStatusMessage("The owner of a scheduled report cannot be changed."));
+            }
+         }
+
          String cronExpression = ValueUtils.getValueAsString(RecordCustomizerUtilityInterface.getValueFromRecordElseFromOldRecord("cronExpression", record, record.getValue("id"), oldRecordMap));
          try
          {

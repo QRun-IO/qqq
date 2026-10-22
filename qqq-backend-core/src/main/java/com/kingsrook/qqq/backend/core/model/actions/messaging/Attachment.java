@@ -5,21 +5,25 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.model.actions.messaging;
+
+
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.util.concurrent.Callable;
 
 
 /*******************************************************************************
@@ -29,6 +33,8 @@ public class Attachment
 {
    private byte[] contents;
    private String name;
+   private Callable<InputStream> streamSupplier;
+   private String contentType = "application/octet-stream";
 
 
 
@@ -92,4 +98,54 @@ public class Attachment
       return (this);
    }
 
+
+
+   /*******************************************************************************
+    ** Stream-backed attachment; each invocation opens a fresh stream owned by the caller.
+    *******************************************************************************/
+   public Attachment withStreamSupplier(Callable<InputStream> streamSupplier)
+   {
+      this.streamSupplier = streamSupplier;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether this attachment requires streaming support from its provider.
+    *******************************************************************************/
+   public boolean isStreamBacked()
+   {
+      return (streamSupplier != null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Open the attachment without buffering storage output into memory.
+    *******************************************************************************/
+   public InputStream openStream() throws Exception
+   {
+      return (streamSupplier == null ? new ByteArrayInputStream(contents) : streamSupplier.call());
+   }
+
+
+   /*******************************************************************************
+    ** MIME type sent to the messaging transport.
+    *******************************************************************************/
+   public String getContentType()
+   {
+      return (contentType);
+   }
+
+
+
+   /*******************************************************************************
+    ** Configure the MIME type, defaulting unknown types to binary.
+    *******************************************************************************/
+   public Attachment withContentType(String contentType)
+   {
+      this.contentType = contentType == null ? "application/octet-stream" : contentType;
+      return (this);
+   }
 }

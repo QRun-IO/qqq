@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.actions.reporting;
@@ -27,6 +26,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -60,6 +60,7 @@ import org.apache.commons.io.FileUtils;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -73,6 +74,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *******************************************************************************/
 class ExportActionTest extends BaseTest
 {
+   @TempDir
+   Path temporaryDirectory;
+
 
    /*******************************************************************************
     **
@@ -81,7 +85,7 @@ class ExportActionTest extends BaseTest
    public void testCSV() throws Exception
    {
       int    recordCount = 1000;
-      String filename    = "/tmp/ReportActionTest.csv";
+      String filename    = temporaryDirectory.resolve("ReportActionTest.csv").toString();
 
       runExport(recordCount, filename, ReportFormat.CSV, false);
 
@@ -103,7 +107,7 @@ class ExportActionTest extends BaseTest
    {
       // int    recordCount = 2_000_000; // to really stress locally, use this.
       int    recordCount = 10_000;
-      String filename    = "/tmp/ReportActionTest.csv";
+      String filename    = temporaryDirectory.resolve("ReportActionTest.csv").toString();
 
       runExport(recordCount, filename, ReportFormat.CSV, false);
 
@@ -123,7 +127,7 @@ class ExportActionTest extends BaseTest
    public void testExcel() throws Exception
    {
       int    recordCount = 1000;
-      String filename    = "/tmp/ReportActionTest.xlsx";
+      String filename    = temporaryDirectory.resolve("ReportActionTest.xlsx").toString();
 
       runExport(recordCount, filename, ReportFormat.XLSX, true);
 
@@ -142,7 +146,7 @@ class ExportActionTest extends BaseTest
    public void testExcelPOI() throws Exception
    {
       int    recordCount = 1000;
-      String filename    = "/tmp/ReportActionTest-POI.xlsx";
+      String filename    = temporaryDirectory.resolve("ReportActionTest-POI.xlsx").toString();
 
       runExport(recordCount, filename, ReportFormat.XLSX, true);
 
@@ -336,7 +340,7 @@ class ExportActionTest extends BaseTest
    public void testJSON() throws Exception
    {
       int    recordCount = 1000;
-      String filename    = "/tmp/ReportActionTest.json";
+      String filename    = temporaryDirectory.resolve("ReportActionTest.json").toString();
 
       runExport(recordCount, filename, ReportFormat.JSON, false);
 
@@ -365,7 +369,7 @@ class ExportActionTest extends BaseTest
       //////////////////////////////////////////////////////////////
       // run a default export - assert it contains lastName field //
       //////////////////////////////////////////////////////////////
-      String fullFileName = "/tmp/full.csv";
+      String fullFileName = temporaryDirectory.resolve("full.csv").toString();
       runExport(TestUtils.TABLE_NAME_PERSON_MEMORY, 1, fullFileName, ReportFormat.CSV, false);
       String fullFileContent = FileUtils.readFileToString(new File(fullFileName), StandardCharsets.UTF_8.name());
       assertThat(fullFileContent)
@@ -381,7 +385,7 @@ class ExportActionTest extends BaseTest
       ExamplePersonalizer.addFieldToRemoveForUserId(TestUtils.TABLE_NAME_PERSON_MEMORY, "lastName", userId);
       QContext.getQSession().getUser().setIdReference(userId);
 
-      String limitedFileName = "/tmp/limited.csv";
+      String limitedFileName = temporaryDirectory.resolve("limited.csv").toString();
       runExport(TestUtils.TABLE_NAME_PERSON_MEMORY, 1, limitedFileName, ReportFormat.CSV, false);
       String limitedFileContent = FileUtils.readFileToString(new File(limitedFileName), StandardCharsets.UTF_8.name());
       assertThat(limitedFileContent)

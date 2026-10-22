@@ -1,0 +1,185 @@
+/*
+ * QQQ - Low-code Application Framework for Engineers.
+ * Copyright (C) 2021-2024.  Kingsrook, LLC
+ * 651 N Broad St Ste 205 # 6917 | Middletown DE 19709 | United States
+ * contact@kingsrook.com
+ * https://github.com/Kingsrook/
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.kingsrook.qqq.middleware.javalin.executors;
+
+
+import java.io.PipedInputStream;
+import java.io.PipedOutputStream;
+import java.util.Locale;
+import com.kingsrook.qqq.backend.core.actions.async.AsyncJobManager;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
+import com.kingsrook.qqq.backend.core.actions.reporting.ExportAction;
+import com.kingsrook.qqq.backend.core.context.CapturedContext;
+import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.actions.reporting.ExportInput;
+import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportDestination;
+import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportFormat;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
+import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import com.kingsrook.qqq.middleware.javalin.TableCapabilities;
+import com.kingsrook.qqq.middleware.javalin.executors.io.TableExportInput;
+import com.kingsrook.qqq.middleware.javalin.executors.io.TableExportOutputInterface;
+import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
+
+
+/*******************************************************************************
+ ** Executor for the table export endpoint. Manages the piped stream setup
+ ** and asynchronous execution of the export action.
+ *******************************************************************************/
+public class TableExportExecutor extends AbstractMiddlewareExecutor<TableExportInput, TableExportOutputInterface>
+{
+   private static final QLogger LOG = QLogger.getLogger(TableExportExecutor.class);
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @Override
+   public void execute(TableExportInput input, TableExportOutputInterface output) throws QException
+   {
+      try
+      {
+         ////////////////////////////////////////
+         // resolve the report format to use   //
+         ////////////////////////////////////////
+         ReportFormat reportFormat = ReportFormat.fromString(input.getFormat());
+
+         ////////////////////////////////////////////////////////////////////
+         // generate filename if not provided: tableName + "." + extension //
+         ////////////////////////////////////////////////////////////////////
+         String filename = input.getFilename();
+         if(!StringUtils.hasContent(filename))
+         {
+            filename = input.getTableName() + "." + reportFormat.toString().toLowerCase(Locale.ROOT);
+         }
+
+         /////////////////////////////////////////////
+         // set up the report action's input object //
+         /////////////////////////////////////////////
+         ExportInput exportInput = new ExportInput();
+         exportInput.setTableName(input.getTableName());
+         exportInput.setInputSource(QInputSource.USER);
+
+         ExecutorSessionUtils.setTableVariantInSession(input.getTableVariant());
+         PermissionsHelper.checkTablePermissionThrowing(exportInput, TablePermissionSubType.READ);
+         TableCapabilities.checkCapabilityThrowing(input.getTableName(), Capability.TABLE_EXPORT);
+
+         exportInput.setQueryFilter(input.getFilter());
+         exportInput.setFieldNames(input.getFieldNames());
+         exportInput.setLimit(input.getLimit());
+
+         if(input.getIncludeHeaderRow() != null)
+         {
+            exportInput.setIncludeHeaderRow(input.getIncludeHeaderRow());
+         }
+
+         exportInput.withReportDestination(new ReportDestination()
+            .withReportFormat(reportFormat)
+            .withFilename(filename));
+
+         ///////////////////////////////////////////////////////////////////////////////////////////////////////
+         // set up the I/O pipe streams.                                                                      //
+         // Critically, we must NOT open the outputStream in a try-with-resources. The thread that writes to  //
+         // the stream must close it when it's done writing.                                                  //
+         ///////////////////////////////////////////////////////////////////////////////////////////////////////
+         PipedOutputStream pipedOutputStream = new PipedOutputStream();
+         PipedInputStream  pipedInputStream  = new PipedInputStream();
+         pipedOutputStream.connect(pipedInputStream);
+
+         exportInput.getReportDestination().setReportOutputStream(pipedOutputStream);
+
+         /////////////////////////////////////////////////////
+         // run pre-execute synchronously for validation    //
+         /////////////////////////////////////////////////////
+         ExportAction exportAction = new ExportAction();
+         exportAction.preExecute(exportInput);
+
+         /////////////////////////////////////////////////////////////////////////////////////////////////////
+         // start the async job.                                                                            //
+         // Critically, this must happen before the pipedInputStream is passed to the javalin result method //
+         /////////////////////////////////////////////////////////////////////////////////////////////////////
+         CapturedContext capturedContext = QContext.capture();
+         new AsyncJobManager().startJob("Javalin>ExportAction", (o) ->
+         {
+            try
+            {
+               QContext.init(capturedContext);
+               exportAction.execute(exportInput);
+               return (true);
+            }
+            catch(Exception e)
+            {
+               LOG.warn("Exception in export async job", e, logPair("tableName", input.getTableName()));
+
+               ////////////////////////////////////////////////////////////////////////
+               // write the error message into the output stream so the client sees  //
+               // something meaningful rather than an empty or truncated file         //
+               ////////////////////////////////////////////////////////////////////////
+               try
+               {
+                  String message = e.getMessage();
+                  pipedOutputStream.write(("Error generating report: " + message).getBytes());
+               }
+               catch(Exception writeException)
+               {
+                  LOG.warn("Failed to write error message to export output stream", writeException);
+               }
+
+               return (false);
+            }
+            finally
+            {
+               try
+               {
+                  pipedOutputStream.close();
+               }
+               catch(Exception closeException)
+               {
+                  LOG.warn("Failed to close pipedOutputStream", closeException);
+               }
+
+               QContext.clear();
+            }
+         });
+
+         ///////////////////////////////////////////////////
+         // set the output fields for the spec to consume //
+         ///////////////////////////////////////////////////
+         output.setReportFormat(reportFormat);
+         output.setFilename(filename);
+         output.setInputStream(pipedInputStream);
+      }
+      catch(QException qe)
+      {
+         throw (qe);
+      }
+      catch(Exception e)
+      {
+         throw (new QException("Error executing table export", e));
+      }
+   }
+
+}

@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.model.actions;
@@ -27,11 +26,13 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.kingsrook.qqq.backend.core.actions.async.AsyncJobCallback;
 import com.kingsrook.qqq.backend.core.actions.async.AsyncJobStatus;
 import com.kingsrook.qqq.backend.core.actions.async.NonPersistedAsyncJobCallback;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionEnforcement;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QInstanceValidationException;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.utils.StringUtils;
 
 
 /*******************************************************************************
@@ -43,6 +44,9 @@ public class AbstractActionInput
    private static final QLogger LOG = QLogger.getLogger(AbstractActionInput.class);
 
    private AsyncJobCallback asyncJobCallback;
+
+   private PermissionEnforcement permissionEnforcement  = PermissionEnforcement.DEFAULT;
+   private String                permissionBypassReason = null;
 
 
 
@@ -119,4 +123,73 @@ public class AbstractActionInput
       this.asyncJobCallback = asyncJobCallback;
    }
 
+
+   /*******************************************************************************
+    ** Getter for permissionEnforcement - how core actions should treat permissions
+    ** for this input.  See PermissionEnforcement and CorePermissionEnforcer.
+    *******************************************************************************/
+   @JsonIgnore
+   public PermissionEnforcement getPermissionEnforcement()
+   {
+      return (this.permissionEnforcement == null ? PermissionEnforcement.DEFAULT : this.permissionEnforcement);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for permissionEnforcement.  Accepts DEFAULT or ENFORCE.  SKIP must be
+    ** requested through withPermissionBypass(reason), so that every bypass of
+    ** permission checks carries an explicit justification.
+    *******************************************************************************/
+   public void setPermissionEnforcement(PermissionEnforcement permissionEnforcement)
+   {
+      if(PermissionEnforcement.SKIP.equals(permissionEnforcement))
+      {
+         throw (new IllegalArgumentException("PermissionEnforcement.SKIP may only be set via withPermissionBypass(reason)"));
+      }
+      this.permissionEnforcement = permissionEnforcement;
+      this.permissionBypassReason = null;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for permissionEnforcement (DEFAULT or ENFORCE).
+    *******************************************************************************/
+   public AbstractActionInput withPermissionEnforcement(PermissionEnforcement permissionEnforcement)
+   {
+      setPermissionEnforcement(permissionEnforcement);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Mark this input as a trusted, framework- or system-internal call, which the
+    ** core actions will not subject to table/process permission checks or field
+    ** security locks - regardless of the instance setting.  The reason is required,
+    ** is logged when the bypass is applied, and makes bypasses easy to audit (grep
+    ** for withPermissionBypass).  Record security locks are NOT affected by this.
+    *******************************************************************************/
+   public AbstractActionInput withPermissionBypass(String reason)
+   {
+      if(!StringUtils.hasContent(reason))
+      {
+         throw (new IllegalArgumentException("A reason is required to bypass permission enforcement"));
+      }
+      this.permissionEnforcement = PermissionEnforcement.SKIP;
+      this.permissionBypassReason = reason;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for permissionBypassReason (only set when permissionEnforcement is SKIP)
+    *******************************************************************************/
+   @JsonIgnore
+   public String getPermissionBypassReason()
+   {
+      return (this.permissionBypassReason);
+   }
 }

@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.model.metadata.possiblevalues;
@@ -24,15 +23,20 @@ package com.kingsrook.qqq.backend.core.model.metadata.possiblevalues;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.exceptions.QRuntimeException;
+import com.kingsrook.qqq.backend.core.instances.QInstanceHelpContentManager;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.TopLevelMetaDataInterface;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.help.HelpRole;
+import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 
 
 /*******************************************************************************
@@ -43,6 +47,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
  *******************************************************************************/
 public class QPossibleValueSource implements TopLevelMetaDataInterface
 {
+   private Map<String, List<QHelpContent>> helpContent;
+
    private String                   name;
    private String                   label;
    private QPossibleValueSourceType type;
@@ -73,6 +79,11 @@ public class QPossibleValueSource implements TopLevelMetaDataInterface
    // for type = CUSTOM //
    ///////////////////////
    private QCodeReference customCodeReference;
+
+   ////////////////////////////////////////////////////////////////////
+   // for type = TABLE: choose with a searchable, paged record picker //
+   ////////////////////////////////////////////////////////////////////
+   private QPossibleValuePicker picker;
 
 
 
@@ -714,4 +725,102 @@ public class QPossibleValueSource implements TopLevelMetaDataInterface
    }
 
 
+
+   /*******************************************************************************
+    ** Getter for picker
+    *******************************************************************************/
+   public QPossibleValuePicker getPicker()
+   {
+      return (this.picker);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for picker
+    *******************************************************************************/
+   public void setPicker(QPossibleValuePicker picker)
+   {
+      this.picker = picker;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for picker
+    *******************************************************************************/
+   public QPossibleValueSource withPicker(QPossibleValuePicker picker)
+   {
+      this.picker = picker;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for helpContent
+    *******************************************************************************/
+   public Map<String, List<QHelpContent>> getHelpContent()
+   {
+      return (this.helpContent);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for helpContent
+    *******************************************************************************/
+   public void setHelpContent(Map<String, List<QHelpContent>> helpContent)
+   {
+      this.helpContent = helpContent;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for helpContent
+    *******************************************************************************/
+   public QPossibleValueSource withHelpContent(Map<String, List<QHelpContent>> helpContent)
+   {
+      this.helpContent = helpContent;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for adding 1 helpContent (for a slot)
+    *******************************************************************************/
+   public QPossibleValueSource withHelpContent(String slot, QHelpContent helpContent)
+   {
+      if(this.helpContent == null)
+      {
+         this.helpContent = new HashMap<>();
+      }
+
+      List<QHelpContent> listForSlot = this.helpContent.computeIfAbsent(slot, (k) -> new ArrayList<>());
+      QInstanceHelpContentManager.putHelpContentInList(helpContent, listForSlot);
+
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** remove a helpContent for a slot based on its set of roles
+    *******************************************************************************/
+   public void removeHelpContent(String slot, Set<HelpRole> roles)
+   {
+      if(this.helpContent == null)
+      {
+         return;
+      }
+
+      List<QHelpContent> listForSlot = this.helpContent.get(slot);
+      if(listForSlot == null)
+      {
+         return;
+      }
+
+      QInstanceHelpContentManager.removeHelpContentByRoleSetFromList(roles, listForSlot);
+   }
 }

@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.state;
@@ -32,6 +31,7 @@ import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.utils.PrefixedDefaultThreadFactory;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
@@ -46,11 +46,38 @@ public class InMemoryStateProvider implements StateProviderInterface
 
    private static InMemoryStateProvider instance;
 
+   ////////////////////////////////////////////////////////////////////////////
+   // qqq.state.roundTrip=true (or QQQ_STATE_ROUND_TRIP=true): serialize on //
+   // put and deserialize on get, so tests catch state that a shared       //
+   // (multi-node) provider could not store,                                //
+   // and code that relies on mutating a stored object by reference.         //
+   ////////////////////////////////////////////////////////////////////////////
+   private static final boolean ROUND_TRIP = Boolean.parseBoolean(System.getProperty("qqq.state.roundTrip", System.getenv().getOrDefault("QQQ_STATE_ROUND_TRIP", "false")));
+
+   private static final StateSerialization ROUND_TRIP_SERIALIZATION = roundTripSerialization();
+
    private final Map<AbstractStateKey, Object> map;
 
    private static int jobPeriodSeconds = 60 * 30; // 30 minutes
    private static int cleanHours       = 5;
    private static int jobInitialDelay  = 60 * 60 * cleanHours;
+
+
+
+   /*******************************************************************************
+    ** The serializer for round-trip test mode.
+    *******************************************************************************/
+   private static StateSerialization roundTripSerialization()
+   {
+      try
+      {
+         return (new StateSerialization(new StateProviderMetaData().withEncryptionKey(null)));
+      }
+      catch(QException e)
+      {
+         throw (new IllegalStateException(e));
+      }
+   }
 
 
 
@@ -102,7 +129,7 @@ public class InMemoryStateProvider implements StateProviderInterface
    /*******************************************************************************
     ** Singleton accessor
     *******************************************************************************/
-   public static InMemoryStateProvider getInstance()
+   public static synchronized InMemoryStateProvider getInstance()
    {
       if(instance == null)
       {
@@ -119,7 +146,31 @@ public class InMemoryStateProvider implements StateProviderInterface
    @Override
    public <T extends Serializable> void put(AbstractStateKey key, T data)
    {
+      if(ROUND_TRIP && data != null)
+      {
+         //////////////////////////////////////////////////////////////////////
+         // test mode: store the serialized form, as a shared provider would //
+         //////////////////////////////////////////////////////////////////////
+         try
+         {
+            map.put(key, new RoundTripped(StateSerialization.toBytes(data)));
+         }
+         catch(QException e)
+         {
+            throw (new IllegalStateException("State value is not serializable (qqq.state.roundTrip): " + data.getClass().getName(), e));
+         }
+         return;
+      }
       map.put(key, data);
+   }
+
+
+
+   /*******************************************************************************
+    ** A value stored in serialized form (round-trip test mode).
+    *******************************************************************************/
+   private record RoundTripped(byte[] bytes)
+   {
    }
 
 
@@ -132,7 +183,19 @@ public class InMemoryStateProvider implements StateProviderInterface
    {
       try
       {
-         return Optional.ofNullable(type.cast(map.get(key)));
+         Object value = map.get(key);
+         if(value instanceof RoundTripped roundTripped)
+         {
+            try
+            {
+               value = ROUND_TRIP_SERIALIZATION.fromBytes(roundTripped.bytes());
+            }
+            catch(QException e)
+            {
+               throw (new IllegalStateException("State value could not be read back (qqq.state.roundTrip)", e));
+            }
+         }
+         return Optional.ofNullable(type.cast(value));
       }
       catch(ClassCastException cce)
       {

@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.health.model.metadata;
@@ -31,6 +30,7 @@ package com.kingsrook.qqq.middleware.health.model.metadata;
  ** - DEGRADED: Component is functioning but with reduced capability
  ** - UNKNOWN: Component status could not be determined
  *******************************************************************************/
+@Deprecated(since = "4.1", forRemoval = true)
 public enum HealthStatus
 {
    UP,
@@ -50,52 +50,35 @@ public enum HealthStatus
     *******************************************************************************/
    public static HealthStatus aggregate(HealthStatus... statuses)
    {
-      if(statuses == null || statuses.length == 0)
+      if(statuses == null)
       {
-         return UNKNOWN;
+         return (UNKNOWN);
       }
+      com.kingsrook.qqq.backend.core.health.HealthStatus[] core = new com.kingsrook.qqq.backend.core.health.HealthStatus[statuses.length];
+      for(int i = 0; i < statuses.length; i++)
+      {
+         core[i] = statuses[i] == null ? null : statuses[i].toCore();
+      }
+      return (fromCore(com.kingsrook.qqq.backend.core.health.HealthStatus.aggregate(core)));
+   }
 
-      boolean hasDown     = false;
-      boolean hasDegraded = false;
-      boolean hasUnknown  = false;
 
-      for(HealthStatus status : statuses)
-      {
-         if(status == null)
-         {
-            hasUnknown = true;
-            continue;
-         }
 
-         switch(status)
-         {
-            case DOWN -> hasDown = true;
-            case DEGRADED -> hasDegraded = true;
-            case UNKNOWN -> hasUnknown = true;
-            case UP ->
-            {
-               // UP is good, continue
-            }
-            default ->
-            {
-               // Should never happen, but include default for Checkstyle
-            }
-         }
-      }
+   /*******************************************************************************
+    ** Convert without changing the legacy enum's public constants.
+    *******************************************************************************/
+   public com.kingsrook.qqq.backend.core.health.HealthStatus toCore()
+   {
+      return (com.kingsrook.qqq.backend.core.health.HealthStatus.valueOf(name()));
+   }
 
-      if(hasDown)
-      {
-         return DOWN;
-      }
-      if(hasDegraded)
-      {
-         return DEGRADED;
-      }
-      if(hasUnknown)
-      {
-         return UNKNOWN;
-      }
-      return UP;
+
+
+   /*******************************************************************************
+    ** Convert a core status for legacy callers.
+    *******************************************************************************/
+   public static HealthStatus fromCore(com.kingsrook.qqq.backend.core.health.HealthStatus status)
+   {
+      return (status == null ? UNKNOWN : valueOf(status.name()));
    }
 }
-

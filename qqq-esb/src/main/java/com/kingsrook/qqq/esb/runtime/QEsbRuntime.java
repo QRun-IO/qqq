@@ -1,0 +1,317 @@
+/*
+ * QQQ - Low-code Application Framework for Engineers.
+ * Copyright (C) 2021-2026.  Kingsrook, LLC
+ * 651 N Broad St Ste 205 # 6917 | Middletown DE 19709 | United States
+ * contact@kingsrook.com
+ * https://github.com/Kingsrook/
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.kingsrook.qqq.esb.runtime;
+
+
+import java.time.Instant;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import com.kingsrook.qqq.backend.core.cluster.QNodeRoles;
+import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
+import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
+import com.kingsrook.qqq.esb.connection.EsbConnectionManager;
+import com.kingsrook.qqq.esb.model.EsbInstanceMetaData;
+import com.kingsrook.qqq.esb.model.EsbProcessMetaData;
+import com.kingsrook.qqq.esb.model.EsbTrigger;
+import com.kingsrook.qqq.esb.model.QEsbDestinationMetaData;
+import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
+
+
+/*******************************************************************************
+ * The ESB trigger runtime on this node: one EsbTriggerRunner for each trigger
+ * (EsbProcessMetaData.triggers) in an instance.  An app starts it at startup
+ * and stops it at shutdown, as it does the scheduler:
+ *
+ *    QEsbRuntime.getInstance().start(qInstance);
+ *    ...
+ *    QEsbRuntime.getInstance().stop();
+ *
+ * getInstance is the node's usual runtime.  More can be made with the
+ * constructor (e.g., tests that act as two nodes on one broker).
+ *
+ * start takes a validated instance, as an app has at boot (as with the
+ * scheduler): the runtime's threads each put it in their QContext, which
+ * would otherwise validate it on each of them at once.  An unvalidated one is
+ * refused (IllegalArgumentException).  EsbInstanceMetaData.enrich registers
+ * EsbRuntimeService, so an application launcher starts and stops the node's
+ * runtime (getInstance) along with its server.
+ *
+ * Each start also opens an EsbControlChannel, which listens on the control
+ * topic of each provider its triggers use, and applies the pause, resume and
+ * restart messages that EsbTriggerControl sends (from any node) to this
+ * runtime's runners.
+ *
+ * start never blocks, even with the broker down: the runners connect on their
+ * own threads, wait in CONNECTING while they can't, and rebuild their consumers
+ * when EsbConnectionManager reports a reconnect.  Triggers with startPaused
+ * start PAUSED.  A trigger whose destination isn't in the instance's ESB
+ * meta-data (which validation reports) is skipped, with a warning.
+ *
+ * stop interrupts runs in progress and rolls their messages back (see
+ * EsbTriggerRunner), and waits up to 10 s for the consumers to close.  The
+ * runners stay available (getRunner, getRunners), STOPPED, until the next
+ * start, which makes new ones.  The provider connections stay open: they
+ * belong to EsbConnectionManager, and publishing shares them.
+ *******************************************************************************/
+public class QEsbRuntime
+{
+   private static final QLogger LOG = QLogger.getLogger(QEsbRuntime.class);
+
+   static final Long STOP_TIMEOUT_MS = 10_000L;
+
+   private static final QEsbRuntime INSTANCE = new QEsbRuntime();
+
+   private volatile Map<String, EsbTriggerRunner> runners = Map.of();
+
+   ///////////////////////////////////////////////////////////////////////
+   // guarded by this.  startCount lets a connection listener from an   //
+   // earlier start (they can't be removed) know that it's out of date  //
+   ///////////////////////////////////////////////////////////////////////
+   private Boolean           running        = false;
+   private Long              startCount     = 0L;
+   private EsbControlChannel controlChannel = null;
+   private Set<String>        providerNames  = Set.of();
+
+
+
+   /*******************************************************************************
+    ** Constructor - for a runtime of your own; most apps use getInstance.
+    *******************************************************************************/
+   public QEsbRuntime()
+   {
+   }
+
+
+
+   /*******************************************************************************
+    ** This node's usual runtime.
+    *******************************************************************************/
+   public static QEsbRuntime getInstance()
+   {
+      return (INSTANCE);
+   }
+
+
+
+   /*******************************************************************************
+    ** Start a runner for each trigger in the (validated) instance, and the
+    ** control channel.  Doesn't block.  Ignored (with a warning) if this runtime
+    ** is already running.
+    *******************************************************************************/
+   public synchronized void start(QInstance qInstance)
+   {
+      if(qInstance == null || !qInstance.getHasBeenValidated())
+      {
+         throw (new IllegalArgumentException("The ESB runtime must be started with a validated QInstance"));
+      }
+
+      if(running)
+      {
+         LOG.warn("The ESB runtime is already running; ignoring start");
+         return;
+      }
+
+      ////////////////////////////////////////////////////////////////////////
+      // trigger consumers run only on nodes with the esb role (or with     //
+      // QQQ_ESB_TRIGGERS_ENABLED=true); every node can still publish       //
+      // (QNodeRoles, spec 2026-10-15-cluster-ha-design section A)          //
+      ////////////////////////////////////////////////////////////////////////
+      if(!QNodeRoles.get().esbTriggers())
+      {
+         LOG.info("Not starting the ESB trigger runtime: this node does not run ESB triggers (standby)");
+         return;
+      }
+
+      Map<String, EsbTriggerRunner> newRunners = buildRunners(qInstance);
+      runners = Collections.unmodifiableMap(newRunners);
+      running = true;
+      startCount++;
+
+      Long        thisStart        = startCount;
+      Set<String> activeProviders = new LinkedHashSet<>();
+      newRunners.values().forEach(runner -> activeProviders.add(runner.getDestination().getProviderName()));
+      providerNames = Set.copyOf(activeProviders);
+      for(String providerName : providerNames)
+      {
+         EsbConnectionManager.getInstance().addConnectionListener(providerName, () -> onReconnect(thisStart, providerName));
+      }
+
+      controlChannel = new EsbControlChannel(this, qInstance);
+      controlChannel.start(providerNames);
+      newRunners.values().forEach(EsbTriggerRunner::start);
+      LOG.info("Started the ESB runtime", logPair("triggerCount", newRunners.size()));
+   }
+
+
+
+   /*******************************************************************************
+    ** Stop every runner: runs in progress are interrupted and their messages
+    ** rolled back.  Waits (up to 10 s) for the consumers to close.  No-op if not
+    ** running.
+    *******************************************************************************/
+   public void stop()
+   {
+      List<EsbTriggerRunner> runnersToStop;
+      EsbControlChannel      channelToClose;
+      synchronized(this)
+      {
+         if(!running)
+         {
+            return;
+         }
+
+         running = false;
+         channelToClose = controlChannel;
+         controlChannel = null;
+         providerNames = Set.of();
+         runnersToStop = List.copyOf(runners.values());
+         runnersToStop.forEach(EsbTriggerRunner::requestStop);
+      }
+
+      channelToClose.close();
+
+      Instant deadline = Instant.now().plusMillis(STOP_TIMEOUT_MS);
+      for(EsbTriggerRunner runner : runnersToStop)
+      {
+         runner.awaitStopped(deadline);
+      }
+
+      LOG.info("Stopped the ESB runtime");
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether this runtime is started and its control subscriptions are ready.
+    ** A non-durable command sent before a subscription exists would be lost, so
+    ** startup and a disconnected provider do not report RUNNING.
+    *******************************************************************************/
+   public synchronized Boolean isRunning()
+   {
+      return (running && controlChannel != null && providerNames.stream().allMatch(controlChannel::isListening));
+   }
+
+
+
+   /*******************************************************************************
+    ** The runner for a trigger (by its name, processName.destinationName) - or
+    ** null if the last start had no such trigger.
+    *******************************************************************************/
+   public EsbTriggerRunner getRunner(String triggerName)
+   {
+      return (triggerName == null ? null : runners.get(triggerName));
+   }
+
+
+
+   /*******************************************************************************
+    ** All the runners from the last start (in process, then trigger, order).
+    *******************************************************************************/
+   public List<EsbTriggerRunner> getRunners()
+   {
+      return (List.copyOf(runners.values()));
+   }
+
+
+
+   /*******************************************************************************
+    ** The control channel of the current start - or null when not running.
+    *******************************************************************************/
+   synchronized EsbControlChannel getControlChannel()
+   {
+      return (controlChannel);
+   }
+
+
+
+   /*******************************************************************************
+    ** A provider reconnected: pass it on to its runners and the control channel
+    ** - if this listener is from the current start.  Runs on the connection
+    ** manager's thread.
+    *******************************************************************************/
+   private void onReconnect(Long fromStart, String providerName)
+   {
+      Map<String, EsbTriggerRunner> currentRunners;
+      EsbControlChannel             currentChannel;
+      synchronized(this)
+      {
+         if(!running || !fromStart.equals(startCount))
+         {
+            return;
+         }
+         currentRunners = runners;
+         currentChannel = controlChannel;
+      }
+
+      currentChannel.onReconnect(providerName);
+
+      for(EsbTriggerRunner runner : currentRunners.values())
+      {
+         if(providerName.equals(runner.getDestination().getProviderName()))
+         {
+            runner.onReconnect();
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A (not started) runner for each trigger whose destination is known.
+    *******************************************************************************/
+   private static Map<String, EsbTriggerRunner> buildRunners(QInstance qInstance)
+   {
+      Map<String, EsbTriggerRunner> result              = new LinkedHashMap<>();
+      EsbInstanceMetaData           esbInstanceMetaData = QSupplementalInstanceMetaData.of(qInstance, EsbInstanceMetaData.NAME);
+
+      for(QProcessMetaData process : CollectionUtils.nonNullMap(qInstance.getProcesses()).values())
+      {
+         EsbProcessMetaData esbProcessMetaData = EsbProcessMetaData.of(process);
+         if(esbProcessMetaData == null)
+         {
+            continue;
+         }
+
+         for(EsbTrigger trigger : CollectionUtils.nonNullList(esbProcessMetaData.getTriggers()))
+         {
+            QEsbDestinationMetaData destination = esbInstanceMetaData == null ? null : esbInstanceMetaData.getDestination(trigger.getDestinationName());
+            if(destination == null)
+            {
+               LOG.warn("Not starting an ESB trigger whose destination is unknown", logPair("triggerName", trigger.getName(process.getName())));
+               continue;
+            }
+
+            EsbTriggerRunner runner = new EsbTriggerRunner(qInstance, process.getName(), trigger, destination);
+            result.put(runner.getTriggerName(), runner);
+         }
+      }
+
+      return (result);
+   }
+
+}

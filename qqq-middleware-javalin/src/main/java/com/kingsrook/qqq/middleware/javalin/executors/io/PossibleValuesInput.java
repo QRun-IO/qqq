@@ -1,0 +1,585 @@
+/*
+ * QQQ - Low-code Application Framework for Engineers.
+ * Copyright (C) 2021-2025.  Kingsrook, LLC
+ * 651 N Broad St Ste 205 # 6917 | Middletown DE 19709 | United States
+ * contact@kingsrook.com
+ * https://github.com/Kingsrook/
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.kingsrook.qqq.middleware.javalin.executors.io;
+
+
+import java.io.Serializable;
+import java.util.List;
+import java.util.Map;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+
+
+/*******************************************************************************
+ ** Input for the possible values middleware executor.
+ *******************************************************************************/
+public class PossibleValuesInput extends AbstractMiddlewareInput
+{
+   private boolean missingDependency;
+
+   private String                    possibleValueSourceName;
+   private String                    tableName;
+   private String                    processName;
+   private String                    fieldName;
+   private String                    searchTerm;
+   private List<String>              idList;
+   private List<String>              labelList;
+   private Map<String, Serializable> otherValues;
+   private QQueryFilter              defaultFilter;
+   private Map<String, String>       pathParams;
+   private Map<String, List<String>> queryParams;
+
+   //////////////////////////////////////////////////////////////////
+   // record picker request (body "picker" object): see the source //
+   // picker metadata, QPossibleValuePicker.                       //
+   //////////////////////////////////////////////////////////////////
+   private boolean      pickerRequest = false;
+   private QQueryFilter pickerFilter;
+   private Serializable afterId;
+   private Integer      skip;
+   private Integer      limit;
+
+
+
+   /*******************************************************************************
+    ** Getter for possibleValueSourceName
+    *******************************************************************************/
+   public String getPossibleValueSourceName()
+   {
+      return (this.possibleValueSourceName);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for possibleValueSourceName
+    *******************************************************************************/
+   public void setPossibleValueSourceName(String possibleValueSourceName)
+   {
+      this.possibleValueSourceName = possibleValueSourceName;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for possibleValueSourceName
+    *******************************************************************************/
+   public PossibleValuesInput withPossibleValueSourceName(String possibleValueSourceName)
+   {
+      this.possibleValueSourceName = possibleValueSourceName;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for tableName
+    *******************************************************************************/
+   public String getTableName()
+   {
+      return (this.tableName);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for tableName
+    *******************************************************************************/
+   public void setTableName(String tableName)
+   {
+      this.tableName = tableName;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for tableName
+    *******************************************************************************/
+   public PossibleValuesInput withTableName(String tableName)
+   {
+      this.tableName = tableName;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for processName
+    *******************************************************************************/
+   public String getProcessName()
+   {
+      return (this.processName);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for processName
+    *******************************************************************************/
+   public void setProcessName(String processName)
+   {
+      this.processName = processName;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for processName
+    *******************************************************************************/
+   public PossibleValuesInput withProcessName(String processName)
+   {
+      this.processName = processName;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for fieldName
+    *******************************************************************************/
+   public String getFieldName()
+   {
+      return (this.fieldName);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for fieldName
+    *******************************************************************************/
+   public void setFieldName(String fieldName)
+   {
+      this.fieldName = fieldName;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for fieldName
+    *******************************************************************************/
+   public PossibleValuesInput withFieldName(String fieldName)
+   {
+      this.fieldName = fieldName;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for searchTerm
+    *******************************************************************************/
+   public String getSearchTerm()
+   {
+      return (this.searchTerm);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for searchTerm
+    *******************************************************************************/
+   public void setSearchTerm(String searchTerm)
+   {
+      this.searchTerm = searchTerm;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for searchTerm
+    *******************************************************************************/
+   public PossibleValuesInput withSearchTerm(String searchTerm)
+   {
+      this.searchTerm = searchTerm;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for idList
+    *******************************************************************************/
+   public List<String> getIdList()
+   {
+      return (this.idList);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for idList
+    *******************************************************************************/
+   public void setIdList(List<String> idList)
+   {
+      this.idList = idList;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for idList
+    *******************************************************************************/
+   public PossibleValuesInput withIdList(List<String> idList)
+   {
+      this.idList = idList;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for otherValues
+    *******************************************************************************/
+   public Map<String, Serializable> getOtherValues()
+   {
+      return (this.otherValues);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for otherValues
+    *******************************************************************************/
+   public void setOtherValues(Map<String, Serializable> otherValues)
+   {
+      this.otherValues = otherValues;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for otherValues
+    *******************************************************************************/
+   public PossibleValuesInput withOtherValues(Map<String, Serializable> otherValues)
+   {
+      this.otherValues = otherValues;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for defaultFilter
+    *******************************************************************************/
+   public QQueryFilter getDefaultFilter()
+   {
+      return (this.defaultFilter);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for defaultFilter
+    *******************************************************************************/
+   public void setDefaultFilter(QQueryFilter defaultFilter)
+   {
+      this.defaultFilter = defaultFilter;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for defaultFilter
+    *******************************************************************************/
+   public PossibleValuesInput withDefaultFilter(QQueryFilter defaultFilter)
+   {
+      this.defaultFilter = defaultFilter;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for labelList
+    *******************************************************************************/
+   public List<String> getLabelList()
+   {
+      return (this.labelList);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for labelList
+    *******************************************************************************/
+   public void setLabelList(List<String> labelList)
+   {
+      this.labelList = labelList;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for labelList
+    *******************************************************************************/
+   public PossibleValuesInput withLabelList(List<String> labelList)
+   {
+      this.labelList = labelList;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for pathParams
+    *******************************************************************************/
+   public Map<String, String> getPathParams()
+   {
+      return (this.pathParams);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for pathParams
+    *******************************************************************************/
+   public void setPathParams(Map<String, String> pathParams)
+   {
+      this.pathParams = pathParams;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for pathParams
+    *******************************************************************************/
+   public PossibleValuesInput withPathParams(Map<String, String> pathParams)
+   {
+      this.pathParams = pathParams;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for queryParams
+    *******************************************************************************/
+   public Map<String, List<String>> getQueryParams()
+   {
+      return (this.queryParams);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for queryParams
+    *******************************************************************************/
+   public void setQueryParams(Map<String, List<String>> queryParams)
+   {
+      this.queryParams = queryParams;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for queryParams
+    *******************************************************************************/
+   public PossibleValuesInput withQueryParams(Map<String, List<String>> queryParams)
+   {
+      this.queryParams = queryParams;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for pickerRequest
+    *******************************************************************************/
+   public boolean getPickerRequest()
+   {
+      return (pickerRequest);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for pickerRequest
+    *******************************************************************************/
+   public void setPickerRequest(boolean pickerRequest)
+   {
+      this.pickerRequest = pickerRequest;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for pickerRequest
+    *******************************************************************************/
+   public PossibleValuesInput withPickerRequest(boolean pickerRequest)
+   {
+      this.pickerRequest = pickerRequest;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for pickerFilter
+    *******************************************************************************/
+   public QQueryFilter getPickerFilter()
+   {
+      return (pickerFilter);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for pickerFilter
+    *******************************************************************************/
+   public void setPickerFilter(QQueryFilter pickerFilter)
+   {
+      this.pickerFilter = pickerFilter;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for pickerFilter
+    *******************************************************************************/
+   public PossibleValuesInput withPickerFilter(QQueryFilter pickerFilter)
+   {
+      this.pickerFilter = pickerFilter;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for afterId
+    *******************************************************************************/
+   public Serializable getAfterId()
+   {
+      return (afterId);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for afterId
+    *******************************************************************************/
+   public void setAfterId(Serializable afterId)
+   {
+      this.afterId = afterId;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for afterId
+    *******************************************************************************/
+   public PossibleValuesInput withAfterId(Serializable afterId)
+   {
+      this.afterId = afterId;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for skip
+    *******************************************************************************/
+   public Integer getSkip()
+   {
+      return (skip);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for skip
+    *******************************************************************************/
+   public void setSkip(Integer skip)
+   {
+      this.skip = skip;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for skip
+    *******************************************************************************/
+   public PossibleValuesInput withSkip(Integer skip)
+   {
+      this.skip = skip;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for limit
+    *******************************************************************************/
+   public Integer getLimit()
+   {
+      return (limit);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for limit
+    *******************************************************************************/
+   public void setLimit(Integer limit)
+   {
+      this.limit = limit;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for limit
+    *******************************************************************************/
+   public PossibleValuesInput withLimit(Integer limit)
+   {
+      this.limit = limit;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for missingDependency
+    *******************************************************************************/
+   public boolean getMissingDependency()
+   {
+      return (this.missingDependency);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for missingDependency
+    *******************************************************************************/
+   public void setMissingDependency(boolean missingDependency)
+   {
+      this.missingDependency = missingDependency;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for missingDependency
+    *******************************************************************************/
+   public PossibleValuesInput withMissingDependency(boolean missingDependency)
+   {
+      this.missingDependency = missingDependency;
+      return (this);
+   }
+}

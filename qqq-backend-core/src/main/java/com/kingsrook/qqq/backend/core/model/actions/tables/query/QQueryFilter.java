@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.model.actions.tables.query;
@@ -35,6 +34,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.expressions.AbstractFilterExpression;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.expressions.CurrentUser;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.expressions.FilterVariableExpression;
 import com.kingsrook.qqq.backend.core.model.metadata.QMetaDataObject;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
@@ -584,7 +584,7 @@ public class QQueryFilter implements Serializable, Cloneable, QMetaDataObject
       ////////////////////////////////////////////////////////////////////////////
       // if process values were passed in, add those to the interpreter as well //
       ////////////////////////////////////////////////////////////////////////////
-      QMetaDataVariableInterpreter variableInterpreter = new QMetaDataVariableInterpreter();
+      QMetaDataVariableInterpreter variableInterpreter = new QMetaDataVariableInterpreter().withTrustedInput(false);
       for(String mapName : valueMap.keySet())
       {
          variableInterpreter.addValueMap(mapName, valueMap.get(mapName));
@@ -603,7 +603,11 @@ public class QQueryFilter implements Serializable, Cloneable, QMetaDataObject
                   Serializable interpretedValue = value;
                   Exception    caughtException  = null;
 
-                  if(value instanceof AbstractFilterExpression<?>)
+                  if("${currentUser}".equals(value))
+                  {
+                     interpretedValue = new CurrentUser();
+                  }
+                  else if(value instanceof AbstractFilterExpression<?>)
                   {
                      ///////////////////////////////////////////////////////////////////////
                      // if a filter variable expression, evaluate the input values, which //
@@ -642,7 +646,7 @@ public class QQueryFilter implements Serializable, Cloneable, QMetaDataObject
                   // Note: questionable, using "" here, but that's what reality is passing a lot //
                   // for cases we want to treat as missing...                                    //
                   /////////////////////////////////////////////////////////////////////////////////
-                  if(interpretedValue == InputNotFound.instance || "".equals(interpretedValue))
+                  if(interpretedValue == InputNotFound.instance || "".equals(interpretedValue) || (interpretedValue instanceof Collection<?> collection && collection.isEmpty()))
                   {
                      CriteriaMissingInputValueBehavior missingInputValueBehavior = getMissingInputValueBehavior(useCase);
 
@@ -660,7 +664,17 @@ public class QQueryFilter implements Serializable, Cloneable, QMetaDataObject
                   }
                   else
                   {
-                     newValues.add(interpretedValue);
+                     if(interpretedValue instanceof Collection<?> collection)
+                     {
+                        for(Object element : collection)
+                        {
+                           newValues.add((Serializable) element);
+                        }
+                     }
+                     else
+                     {
+                        newValues.add(interpretedValue);
+                     }
                   }
                }
                catch(Exception e)

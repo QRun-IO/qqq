@@ -28,7 +28,7 @@ These objects will have some common attributes, but many different attributes ba
 Basic rules that apply to all tables in the backend, describing what actions (such as Delete, or Count) are supported in the backend.
 ** By default, QQQ assumes that a backend supports _most_ capabilities, with one exception being `QUERY_STATS`.
 ** When the backend disables a capability, a table-level enabled entry overrides that exclusion. Otherwise, a table-level disabled entry disables it. Avoid contradictory enabled and disabled entries. A flag cannot add an operation that the selected backend implementation does not implement.
-** Capability flags control the operations exposed in frontend metadata. Direct table HTTP operations do not enforce these flags; use `permissionRules` to deny access. New runtime capability enforcement is deferred in https://github.com/QRun-IO/qqq/issues/546[issue #546].
+** Capability flags control the operations exposed in frontend metadata. The count and export HTTP routes refuse tables without `TABLE_COUNT` or `TABLE_EXPORT`; other direct table HTTP operations do not enforce these flags, so use `permissionRules` to deny access. Broader runtime capability enforcement is deferred in https://github.com/QRun-IO/qqq/issues/546[issue #546].
 * `usesVariants` - *Boolean, default false* - Control whether or not the backend supports the concept of "Variants".
 ** Supporting variants means that tables within the backend can exist in alternative "variants" of the backend.
 For example, this might mean a sharded or multi-tenant database backend (perhaps a different server or database name per-client).
@@ -93,16 +93,38 @@ public class ExampleDatabaseBackendMetaDataProducer extends MetaDataProducer<QBa
 }
 ----
 
+===== Secret references
+`QMetaDataVariableInterpreter` resolves these references (several may be chained with `??`; the first that resolves wins):
+
+* `${env.NAME}` - an environment variable (or a `.env` file entry).
+* `${prop.NAME}` - a Java system property.
+* `${file./absolute/path}` - the trimmed contents of a secret file mounted by the orchestrator, such as a Kubernetes secret volume (`${file./var/run/secrets/storage/access-key}`) or a Docker secret (`${file./run/secrets/db-password}`).
+The file is only read, never written, and is re-read on every interpretation, so a rotated secret is picked up when the value is next interpreted.
+The path must be absolute and inside an allowed root after symbolic links are resolved.
+The roots default to `/var/run/secrets` and `/run/secrets`; set the `qqq.fileReference.roots` system property or the `QQQ_FILE_REFERENCE_ROOTS` environment variable (comma-separated) to change them.
+Files over 1 MiB are refused, and file contents are never logged.
+An interpreter that has value maps (one that resolves user-supplied values such as `${input.X}` in query filters or report formulas) does not read files unless `setFileReferencesEnabled(true)` is called on it.
+Prefer environment variables or a secret manager where they fit; file references exist for orchestrator-mounted secrets, not for application data.
+* `${literal.TEXT}` - the literal `TEXT`.
+
 ==== S3BackendMetaData
 The meta data required for working with tables in an Amazon S3 backend are defined in an instance of the `*S3BackendMetaData*` class.
 
 *S3BackendMetaData Properties:*
 
 * `bucketName` - *String, Required* - Bucket name to connect to inside AWS S3.
-* `accessKey` - *String, Required* - Access key for connecting to S3 inside AWS S3.
-* `secretKey` - *String, Required* - Secret key for connecting to S3 inside AWS S3.
+* `accessKey` - *String* - Access key for connecting to S3.
+* `secretKey` - *String* - Secret key for connecting to S3.
+* `sessionToken` - *String* - Session token of temporary (STS) credentials, used with `accessKey` and `secretKey`.
+A session token without both keys is an error.
+The token is fixed once set: when it expires, give the backend the new credentials (a new client is built and cached for them).
+* `credentialsProviderCode` - *QCodeReference* - A class implementing the AWS SDK's `AwsCredentialsProvider` (with a no-arg constructor), for credentials that refresh themselves, such as an STS assume-role provider.
+When set, it takes precedence over the keys and the session token.
+With neither keys nor a provider, the AWS SDK's default credentials chain applies (environment, profile, web identity, container and instance roles), which refreshes its own temporary credentials.
 * `region` - *String, Required* - AWS region containing the Bucket in S3.
 * `basePath` - *String, Required* - Base path to the files within the S3 bucket.
+
+`accessKey`, `secretKey`, `sessionToken`, `region`, `endpoint` and `caCertificatesPem` accept the secret references described above, for example `.withSessionToken("${file./var/run/secrets/storage/session-token}")`.
 
 ==== FilesystemBackendMetaData
 The meta data required for working with tables in a (local) filesystem backend are defined in an instance of the `*FilesystemBackendMetaData*` class.

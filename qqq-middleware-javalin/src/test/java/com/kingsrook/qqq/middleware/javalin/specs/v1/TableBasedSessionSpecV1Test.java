@@ -1,0 +1,412 @@
+/*
+ * QQQ - Low-code Application Framework for Engineers.
+ * Copyright (C) 2021-2026.  Kingsrook, LLC
+ * 651 N Broad St Ste 205 # 6917 | Middletown DE 19709 | United States
+ * contact@kingsrook.com
+ * https://github.com/Kingsrook/
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.kingsrook.qqq.middleware.javalin.specs.v1;
+
+
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.List;
+import com.kingsrook.qqq.backend.core.actions.tables.CountAction;
+import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountInput;
+import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.TableBasedAuthenticationMetaData;
+import com.kingsrook.qqq.backend.core.model.session.QSession;
+import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
+import com.kingsrook.qqq.backend.core.modules.authentication.implementations.TableBasedAuthenticationModule;
+import com.kingsrook.qqq.backend.core.utils.JsonUtils;
+import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
+import com.kingsrook.qqq.middleware.javalin.TestUtils;
+import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
+import com.kingsrook.qqq.middleware.javalin.specs.SpecTestBase;
+import kong.unirest.HttpRequestWithBody;
+import kong.unirest.HttpResponse;
+import kong.unirest.Unirest;
+import org.json.JSONObject;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+
+
+/*******************************************************************************
+ ** TABLE_BASED sessions over v1 (QRun-IO/qqq#700): manageSession takes the
+ ** username and password as an `Authorization: Basic` header, its sessionUUID
+ ** cookie authenticates secured routes, and logout deletes the session row.
+ *******************************************************************************/
+class TableBasedSessionSpecV1Test extends SpecTestBase
+{
+   private static final String USERNAME  = "tess.table";
+   private static final String PASSWORD  = "table:pass-2026";
+   private static final String FULL_NAME = "Tess Table";
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @Override
+   protected AbstractEndpointSpec<?, ?, ?> getSpec()
+   {
+      return new ManageSessionSpecV1();
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @Override
+   protected List<AbstractEndpointSpec<?, ?, ?>> getAdditionalSpecs()
+   {
+      return (List.of(new TableCountSpecV1(), new LogoutSpecV1()));
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @Override
+   protected String getVersion()
+   {
+      return "v1";
+   }
+
+
+
+   /***************************************************************************
+    ** the standard user and session tables (authentication is switched to
+    ** TABLE_BASED once they are primed)
+    ***************************************************************************/
+   @Override
+   protected QInstance defineQInstance() throws QException
+   {
+      QInstance                        qInstance      = TestUtils.defineInstance();
+      TableBasedAuthenticationMetaData authentication = new TableBasedAuthenticationMetaData();
+      qInstance.addTable(authentication.defineStandardUserTable(TestUtils.BACKEND_NAME_MEMORY));
+      qInstance.addTable(authentication.defineStandardSessionTable(TestUtils.BACKEND_NAME_MEMORY));
+      return (qInstance);
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @Override
+   protected void primeTestData(QInstance qInstance) throws Exception
+   {
+      super.primeTestData(qInstance);
+      QContext.init(qInstance, new QSession());
+      TestUtils.insertRecords(qInstance, qInstance.getTable("user"), List.of(new QRecord()
+         .withValue("username", USERNAME)
+         .withValue("fullName", FULL_NAME)
+         .withValue("passwordHash", TableBasedAuthenticationModule.PasswordHasher.createHashedPassword(PASSWORD))));
+
+      ///////////////////////////////////////////////////////////////////////
+      // table-based authentication from here on (the data above is primed //
+      // under the test instance's default authentication)                //
+      ///////////////////////////////////////////////////////////////////////
+      qInstance.registerAuthenticationProvider(AuthScope.instanceDefault(), new TableBasedAuthenticationMetaData());
+   }
+
+
+
+   /***************************************************************************
+    ** cookies are sent explicitly, so no test sees another test's session
+    ***************************************************************************/
+   @BeforeEach
+   void disableCookieManagement()
+   {
+      Unirest.config().reset().enableCookieManagement(false);
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @AfterAll
+   static void resetUnirest()
+   {
+      Unirest.config().reset();
+   }
+
+
+
+   /*******************************************************************************
+    ** Sign in, use the session on a secured route, log out, and replay the ended
+    ** session.
+    *******************************************************************************/
+   @Test
+   void testSignInUseAndLogout() throws QException
+   {
+      HttpResponse<String> signIn = Unirest.post(getBaseUrlAndPath() + "/manageSession")
+         .header("Authorization", "Basic " + basic(USERNAME, PASSWORD))
+         .header("Content-Type", "application/json")
+         .body("{}")
+         .asString();
+      assertEquals(200, signIn.getStatus());
+      JSONObject body = JsonUtils.toJSONObject(signIn.getBody());
+      String     uuid = body.getString("uuid");
+      assertEquals(FULL_NAME, body.getJSONObject("values").getJSONObject("user").getString("name"));
+      assertEquals(USERNAME, body.getJSONObject("values").getJSONObject("user").getString("username"));
+      assertFalse(signIn.getBody().contains("passwordHash"));
+      assertEquals(uuid, signIn.getCookies().getNamed("sessionUUID").getValue());
+      assertEquals(1, sessionCount());
+
+      HttpResponse<String> count = Unirest.post(getBaseUrlAndPath() + "/table/person/count")
+         .header("Cookie", "sessionUUID=" + uuid)
+         .asString();
+      assertEquals(200, count.getStatus());
+
+      HttpResponse<String> logout = Unirest.post(getBaseUrlAndPath() + "/logout")
+         .header("Cookie", "sessionUUID=" + uuid)
+         .asString();
+      assertEquals(200, logout.getStatus());
+      assertEquals(0, sessionCount());
+
+      for(String cookie : List.of("sessionUUID=" + uuid, "sessionId=" + uuid))
+      {
+         HttpResponse<String> replay = Unirest.post(getBaseUrlAndPath() + "/table/person/count")
+            .header("Cookie", cookie)
+            .asString();
+         assertEquals(401, replay.getStatus());
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** An empty manageSession request resumes the session named by the
+    ** sessionUUID cookie, without echoing its uuid, so a dashboard can resume an
+    ** HttpOnly session; without a valid cookie it is refused (QRun-IO/qqq#733).
+    *******************************************************************************/
+   @Test
+   void testResumeFromCookie() throws QException
+   {
+      String uuid = JsonUtils.toJSONObject(signIn(basic(USERNAME, PASSWORD)).getBody()).getString("uuid");
+
+      HttpResponse<String> resumed = resume("sessionUUID=" + uuid);
+      assertEquals(200, resumed.getStatus());
+      JSONObject body = JsonUtils.toJSONObject(resumed.getBody());
+      assertEquals(FULL_NAME, body.getJSONObject("values").getJSONObject("user").getString("name"));
+      assertFalse(body.has("uuid"), "a cookie resume must not hand the session token to script");
+      assertFalse(resumed.getBody().contains(uuid));
+      assertEquals(uuid, resumed.getCookies().getNamed("sessionUUID").getValue());
+      assertEquals(1, sessionCount());
+
+      ///////////////////////////////////////////////////////////////////////
+      // an explicit sessionUUID in the body is still resumed and echoed,  //
+      // and wins over the cookie                                          //
+      ///////////////////////////////////////////////////////////////////////
+      HttpResponse<String> explicit = Unirest.post(getBaseUrlAndPath() + "/manageSession")
+         .header("Content-Type", "application/json")
+         .header("Cookie", "sessionUUID=not-a-session")
+         .body(new JSONObject().put("sessionUUID", uuid).toString())
+         .asString();
+      assertEquals(200, explicit.getStatus());
+      assertEquals(uuid, JsonUtils.toJSONObject(explicit.getBody()).getString("uuid"));
+
+      ///////////////////////////////////////////////////////////////////
+      // no cookie, an unknown one, or a logged-out one: nothing to    //
+      // resume, and no session cookie is issued                       //
+      ///////////////////////////////////////////////////////////////////
+      assertEquals(401, resume(null).getStatus());
+      assertEquals(401, resume("sessionUUID=not-a-session").getStatus());
+      assertEquals(200, Unirest.post(getBaseUrlAndPath() + "/logout").header("Cookie", "sessionUUID=" + uuid).asString().getStatus());
+      HttpResponse<String> afterLogout = resume("sessionUUID=" + uuid);
+      assertEquals(401, afterLogout.getStatus());
+      assertThat(afterLogout.getHeaders().get("Set-Cookie")).noneMatch(cookie -> cookie.startsWith("sessionUUID=" + uuid));
+      assertEquals(0, sessionCount());
+   }
+
+
+
+   /*******************************************************************************
+    ** A password sign-in points both session cookies at the new session, so a
+    ** sessionId left from an earlier session (which the browser cannot clear
+    ** when it is HttpOnly) cannot shadow it (QRun-IO/qqq#733).
+    *******************************************************************************/
+   @Test
+   void testSignInReplacesEarlierSessionCookies() throws QException
+   {
+      String earlier = JsonUtils.toJSONObject(signIn(basic(USERNAME, PASSWORD)).getBody()).getString("uuid");
+
+      HttpResponse<String> signIn = Unirest.post(getBaseUrlAndPath() + "/manageSession")
+         .header("Authorization", "Basic " + basic(USERNAME, PASSWORD))
+         .header("Content-Type", "application/json")
+         .header("Cookie", "sessionId=" + earlier + "; sessionUUID=" + earlier)
+         .body("{}")
+         .asString();
+      assertEquals(200, signIn.getStatus());
+      String next = JsonUtils.toJSONObject(signIn.getBody()).getString("uuid");
+      assertThat(next).isNotEqualTo(earlier);
+      assertEquals(next, signIn.getCookies().getNamed("sessionUUID").getValue());
+      assertEquals(next, signIn.getCookies().getNamed("sessionId").getValue());
+      assertEquals(2, sessionCount());
+
+      ///////////////////////////////////////////////////
+      // an empty (resume) request leaves sessionId be //
+      ///////////////////////////////////////////////////
+      assertThat(resume("sessionUUID=" + next).getHeaders().get("Set-Cookie")).noneMatch(cookie -> cookie.startsWith("sessionId="));
+   }
+
+
+
+   /*******************************************************************************
+    ** Session cookies set by sign-in and resume are HttpOnly when configured.
+    *******************************************************************************/
+   @Test
+   void testHttpOnlySessionCookies()
+   {
+      try
+      {
+         QJavalinImplementation.setSessionCookieHttpOnly(true);
+         HttpResponse<String> signIn = signIn(basic(USERNAME, PASSWORD));
+         assertEquals(200, signIn.getStatus());
+         assertThat(signIn.getHeaders().get("Set-Cookie"))
+            .anyMatch(cookie -> cookie.startsWith("sessionUUID=") && cookie.contains("; HttpOnly"))
+            .anyMatch(cookie -> cookie.startsWith("sessionId=") && cookie.contains("; HttpOnly"));
+
+         assertFalse(JsonUtils.toJSONObject(signIn.getBody()).has("uuid"));
+         String uuid = signIn.getCookies().getNamed("sessionUUID").getValue();
+         assertThat(resume("sessionUUID=" + uuid).getHeaders().get("Set-Cookie"))
+            .anyMatch(cookie -> cookie.startsWith("sessionUUID=" + uuid) && cookie.contains("; HttpOnly"));
+      }
+      finally
+      {
+         QJavalinImplementation.setSessionCookieHttpOnly(false);
+      }
+   }
+
+
+
+   /***************************************************************************
+    ** POST manageSession with an empty body and the given Cookie header (or none)
+    ***************************************************************************/
+   private HttpResponse<String> resume(String cookie)
+   {
+      HttpRequestWithBody request = Unirest.post(getBaseUrlAndPath() + "/manageSession")
+         .header("Content-Type", "application/json");
+      if(cookie != null)
+      {
+         request = request.header("Cookie", cookie);
+      }
+      return (request.body("{}").asString());
+   }
+
+
+
+   /*******************************************************************************
+    ** Wrong, malformed and missing credentials are refused with a 401 and create
+    ** no session.
+    *******************************************************************************/
+   @Test
+   void testRefusedCredentials() throws QException
+   {
+      for(String authorization : List.of("Basic " + basic(USERNAME, "table"), "Basic " + basic("nobody", PASSWORD), "Basic " + Base64.getEncoder().encodeToString("no-colon".getBytes(StandardCharsets.UTF_8))))
+      {
+         HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/manageSession")
+            .header("Authorization", authorization)
+            .header("Content-Type", "application/json")
+            .body("{}")
+            .asString();
+         assertEquals(401, response.getStatus());
+         assertEquals("Incorrect username or password.", JsonUtils.toJSONObject(response.getBody()).getString("error"));
+         assertThat(response.getHeaders().get("Set-Cookie")).noneMatch(cookie -> cookie.startsWith("sessionUUID=") && !cookie.startsWith("sessionUUID=;"));
+      }
+
+      HttpResponse<String> noCredentials = Unirest.post(getBaseUrlAndPath() + "/manageSession")
+         .header("Content-Type", "application/json")
+         .body("{}")
+         .asString();
+      assertEquals(401, noCredentials.getStatus());
+      assertEquals(0, sessionCount());
+   }
+
+
+
+   /***************************************************************************
+    ** rows in the session table
+    ***************************************************************************/
+   private int sessionCount() throws QException
+   {
+      QContext.init(serverQInstance, new QSystemUserSession());
+      return (new CountAction().execute(new CountInput("session")).getCount());
+   }
+
+
+
+   /*******************************************************************************
+    ** Repeated wrong passwords lock the username out over v1 manageSession, even
+    ** for the right password afterwards; no session is created (QRun-IO/qqq#696).
+    *******************************************************************************/
+   @Test
+   void testRepeatedFailuresLockTheUsernameOut() throws QException
+   {
+      for(int i = 0; i < 5; i++)
+      {
+         HttpResponse<String> wrong = signIn(basic("lockout.user", "wrong-" + i));
+         assertEquals(401, wrong.getStatus());
+         assertEquals("Incorrect username or password.", JsonUtils.toJSONObject(wrong.getBody()).getString("error"));
+      }
+      HttpResponse<String> locked = signIn(basic("lockout.user", PASSWORD));
+      assertEquals(401, locked.getStatus());
+      assertEquals("Too many failed sign-in attempts. Try again later.", JsonUtils.toJSONObject(locked.getBody()).getString("error"));
+      assertEquals(0, sessionCount());
+
+      ////////////////////////////////////////
+      // other usernames are not affected   //
+      ////////////////////////////////////////
+      assertEquals(200, signIn(basic(USERNAME, PASSWORD)).getStatus());
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   private HttpResponse<String> signIn(String basicCredentials)
+   {
+      return (Unirest.post(getBaseUrlAndPath() + "/manageSession")
+         .header("Authorization", "Basic " + basicCredentials)
+         .header("Content-Type", "application/json")
+         .body("{}")
+         .asString());
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   private static String basic(String username, String password)
+   {
+      return (Base64.getEncoder().encodeToString((username + ":" + password).getBytes(StandardCharsets.UTF_8)));
+   }
+}

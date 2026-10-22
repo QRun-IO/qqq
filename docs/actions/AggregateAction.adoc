@@ -32,7 +32,7 @@ for(AggregateResult result : output.getResults())
 === Descriptors and result values
 
 Select the `Aggregate` and `GroupBy` descriptors needed for the computation. Use an empty `aggregates` list for group-only requests on RDBMS and MongoDB; null-list handling is backend-dependent.
-Each aggregate requires an available field name and one of `COUNT`, `COUNT_DISTINCT`, `SUM`, `MIN`, `MAX` or `AVG`.
+Each aggregate requires an available field name and an operator. The original operators are `COUNT`, `COUNT_DISTINCT`, `SUM`, `MIN`, `MAX` and `AVG`; analysis extensions are listed below.
 Each group requires an available field name and a result `QFieldType`; `new GroupBy(fieldMetaData)` derives both from the field.
 Use complete descriptors and non-negative limits. Unavailable fields fail common selection validation; malformed requests and invalid limits retain backend-specific behavior.
 
@@ -52,7 +52,7 @@ These maps are not complete QRecords; Query READ behaviors, display formatting, 
 
 `filter` restricts source rows. RDBMS and MongoDB ignore Query-style `skip`/`limit` for aggregation. Memory applies those windows to source rows before grouping.
 RDBMS applies `AggregateInput.limit` to result rows; Memory and MongoDB retain their existing ignored-result-limit behavior. Without supported ordering, result order is not guaranteed.
-Use `QFilterOrderByAggregate` and `QFilterOrderByGroupBy` for supported provider ordering. RDBMS typed aggregate ordering is limited to its existing root physical-field/operator handling; qualified/virtual operands and COUNT_DISTINCT ordering have compatibility gaps. MongoDB supports its existing selected aggregate and typed group ordering; plain group and unselected aggregate sorting remain limited. Memory retains its own grouping and comparison rules.
+Use `QFilterOrderByAggregate` and `QFilterOrderByGroupBy` for supported provider ordering. RDBMS resolves typed aggregate ordering through selected positions or complete dialect expressions, including qualified and virtual operands. MongoDB supports its existing selected aggregate and typed group ordering; plain group and unselected aggregate sorting remain limited. Memory retains its own grouping and comparison rules.
 
 Use unqualified names for selected base-table operands, including virtual fields. Explicit or supported inferred joins can supply `tableOrAlias.field` operands. Aggregate joins need not set `select=true`; join multiplicity affects counts and other aggregates.
 Selectable virtual fields require a supported field-function implementation. Memory evaluates base and joined virtual operands in their own table or alias scope, including local field arguments; an unmatched LEFT child supplies null local fields and each function retains its null behavior. RDBMS requires a native adapter, whose parameters are bound for expression occurrences in SELECT, GROUP BY and ORDER BY; native functions and ordering expressions remain dialect-dependent.
@@ -94,8 +94,6 @@ Two-dimensional tables retain their existing column naming: null and text-null v
 
 === Transactions, cancellation and providers
 
-RDBMS joined column-statistics requests can fail when the count operand's physical column name is present in multiple joined tables, because the existing aggregate sort leaves that column unqualified.
-
 RDBMS uses the supplied `RDBMSTransaction` connection, including its pending data, and never commits, rolls back or closes that caller transaction.
 Without that transaction, `MAY_USE_READ_ONLY_BACKEND` can select a configured read-only backend; otherwise routing falls back to the normal backend. A supplied transaction takes precedence over the hint.
 Positive RDBMS timeouts and `cancel()` on the executing AggregateAction request native statement cancellation; completion and error recovery depend on the driver/backend. Cancellation is not transaction rollback or an end-to-end deadline covering connection acquisition.
@@ -104,3 +102,109 @@ RDBMS cancels its timeout task when execution ends. MongoDB Aggregate retains it
 
 RDBMS, Memory and MongoDB provide aggregate implementations; support for the declared operators, types, functions, joins, nulls, ordering and limits differs by adapter/dialect. MongoDB COUNT currently counts input rows, and COUNT_DISTINCT is explicitly unsupported. Its result conversion does not establish the RDBMS/Memory count defaults above.
 A backend without an aggregate implementation rejects the operation. The common input/visibility checks do not certify all-provider parity, distributed transactions or portability of custom expressions.
+
+
+=== Analysis operators
+
+`STDDEV_SAMP`, `STDDEV_POP`, `VAR_SAMP`, `VAR_POP`, `PERCENTILE_CONT`, `CORR` and `AVG_LENGTH` return DECIMAL by default.
+`COUNT_NULL`, `COUNT_BLANK`, `MIN_LENGTH` and `MAX_LENGTH` return INTEGER. `PERCENTILE_DISC` preserves the operand type.
+An explicit `Aggregate.fieldType` still overrides result conversion.
+`COUNT_BLANK` counts nulls and strings whose SQL `TRIM` is empty; lengths exclude nulls and count characters.
+`COUNT_BLANK`, `MIN_LENGTH`, `MAX_LENGTH` and `AVG_LENGTH` require a STRING, TEXT or HTML operand; other field types are rejected before backend execution.
+Sample variance/deviation require two non-null values; population variants return zero for one value. Correlation uses only pairs with both values present and returns null for zero variance.
+
+Percentiles require `0 <= percentile <= 1`. Continuous percentiles interpolate at `p * (n - 1)` in sorted non-null values.
+Discrete percentiles return the first value with cumulative distribution at least `p` (the minimum at `p = 0`).
+Both `percentile` and `otherFieldName` participate in aggregate result-key equality.
+
+[source,java]
+----
+Aggregate median = Aggregate.percentile("amount", 0.5);
+Aggregate correlation = AggregateOperator.CORR.of("amount").withOtherFieldName("quantity");
+AggregateOutput statistics = new AggregateAction().execute(new AggregateInput("orders")
+   .withAggregate(median).withAggregate(correlation)
+   .withAggregate(AggregateOperator.STDDEV_SAMP.of("amount"))
+   .withAggregate(AggregateOperator.COUNT_NULL.of("amount")));
+----
+
+=== Bucketed grouping
+
+`GroupBy.bucket` and `formatString` are mutually exclusive. Bucket descriptors participate in group result-key equality.
+`DateBucketUnit` supports YEAR, QUARTER, MONTH, WEEK (ISO Monday), DAY, HOUR, DAY_OF_WEEK (Monday = 1), and HOUR_OF_DAY (0–23).
+DATE_TIME uses `ValueUtils.getSessionOrInstanceZoneId()`; DATE is a civil date.
+Calendar bucket starts return LocalDate; HOUR returns an Instant at the session-local hour start; cyclic buckets return Integer.
+Numeric buckets return Integer: 0 below min, 1 through count inside the range, count+1 above max.
+Intervals are half-open except the final interval, which includes max: *x == max returns count*, including on PostgreSQL where native width_bucket would return count+1.
+Null operands remain a null group.
+
+[source,java]
+----
+GroupBy month = new GroupBy(QFieldType.DATE_TIME, "createdAt")
+   .withBucket(new DateBucket(DateBucketUnit.MONTH));
+GroupBy histogram = new GroupBy(QFieldType.DECIMAL, "amount")
+   .withBucket(new NumericBucket(BigDecimal.ZERO, new BigDecimal("100"), 10));
+AggregateOutput buckets = new AggregateAction().execute(new AggregateInput("orders")
+   .withGroupBy(histogram).withAggregate(AggregateOperator.COUNT.of("id")));
+----
+
+=== Capabilities and streamed fallback
+
+`AggregateInterface.getSupportedCapabilities(input)` defaults to the empty set for existing backend implementations.
+Memory and PostgreSQL support all extensions. Base RDBMS identifies H2 from backend vendor metadata and supports all extensions there;
+MySQL supports all except PERCENTILE and CORRELATION. Other dialects must explicitly advertise supported features.
+MySQL date buckets with named zones require the database's timezone tables to be populated.
+Date-bucket requests probe MySQL's `CONVERT_TZ` once per backend metadata instance and zone, caching availability for that instance's lifetime.
+If the conversion returns NULL, DATE_BUCKET is not advertised for that request, allowing the capability error or streamed fallback.
+After loading timezone tables, recreate the backend metadata (or restart) to clear the cached result.
+Fixed session offsets are bound as ISO offsets (including `+00:00`); PostgreSQL uses interval parameters to avoid POSIX text-zone sign reversal.
+Unsupported requested operators/buckets produce a `QUserFacingException` naming the missing capabilities unless fallback is enabled.
+Sampling alone never causes a capability error.
+
+[source,java]
+----
+Set<AggregateCapability> capabilities = new QBackendModuleDispatcher()
+   .getQBackendModule(input.getBackend()).getAggregateInterface().getSupportedCapabilities(input);
+AggregateOutput output = new AggregateAction().execute(new AggregateInput("orders")
+   .withAggregate(Aggregate.percentile("amount", 0.95))
+   .withAllowStreamedFallback(true).withStreamedRowLimit(100_000));
+----
+
+Fallback evaluates the whole request using paged `QueryAction` reads with the same context, filter, joins, transaction and permission policy.
+Aggregate/group operands, including CORR's second field, pass the existing core read-permission and field-lock checks first.
+The evaluator retains running state per group; exact percentiles and distinct counts retain values up to the row limit (default 1,000,000).
+`rowsScanned` counts consumed source rows. `truncated` is true when the limit is reached, even if it happens to equal the table size; label such results partial.
+Paging requires stable primary keys; callers needing a stable view during concurrent writes should supply a consistent-read transaction.
+The new memory path shares this evaluator without the fallback row cap. Legacy memory requests retain their existing behavior.
+
+=== Sampling
+
+`samplePercent` must be greater than zero and at most 100. PostgreSQL uses `TABLESAMPLE SYSTEM (?)` on the main table.
+Base H2/MySQL samples the main relation with `RAND() < p/100` before joining; joined tables are not sampled independently.
+Memory uses every k-th main record in primary-key order, with `k = max(1, round(100/p))`; the requested percentage is approximate.
+An unsupported backend ignores sampling and returns `sampled = false`. Otherwise `sampled = true` and `samplePercent` records the requested percentage.
+A PostgreSQL block sample can be empty, especially for small tables. Counts are counts of sampled rows and are not automatically extrapolated.
+
+[source,java]
+----
+AggregateOutput estimate = new AggregateAction().execute(new AggregateInput("orders")
+   .withAggregate(AggregateOperator.COUNT.of("id"))
+   .withSamplePercent(new BigDecimal("10")));
+if(estimate.getSampled())
+{
+   // Label this result as an estimate from a sample.
+}
+----
+
+=== Top-N
+
+Top-N distinct values use the existing group, count, aggregate order and limit; request COUNT_DISTINCT separately for the total distinct count.
+
+[source,java]
+----
+Aggregate count = AggregateOperator.COUNT.of("id");
+AggregateInput topValues = new AggregateInput("orders")
+   .withGroupBy(new GroupBy(QFieldType.STRING, "status")).withAggregate(count)
+   .withFilter(new QQueryFilter().withOrderBy(new QFilterOrderByAggregate(count).withIsAscending(false)))
+   .withLimit(10);
+----
+

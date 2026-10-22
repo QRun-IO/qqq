@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin;
@@ -25,6 +24,7 @@ package com.kingsrook.qqq.middleware.javalin;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.function.Consumer;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.instances.AbstractQQQApplication;
 import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
@@ -38,6 +38,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryBackendModule;
 import com.kingsrook.qqq.middleware.javalin.TestUtils;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.IsolatedSpaRouteProvider;
+import com.kingsrook.qqq.middleware.javalin.routeproviders.NextDashboardSecurityHeaders;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.SimpleFileSystemDirectoryRouter;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.MiddlewareVersionV1;
 import io.javalin.http.HttpStatus;
@@ -50,6 +51,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 /*******************************************************************************
@@ -60,6 +66,39 @@ class QApplicationJavalinServerTest
    private static final int PORT = 6265;
 
    private QApplicationJavalinServer javalinServer;
+
+
+
+   /***************************************************************************
+    ** Standalone branding remains available without enabling either Java UI.
+    ***************************************************************************/
+   @Test
+   void testDeclaredBrandingAssetsWithoutDashboard() throws Exception
+   {
+      QInstance instance = createMinimalApplication().defineQInstance();
+      instance.setBranding(new com.kingsrook.qqq.backend.core.model.metadata.branding.QBrandingMetaData()
+         .withLogo("/branding1009/logo.png?version=1")
+         .withIcon("/branding1009/icon.svg"));
+      javalinServer = new QApplicationJavalinServer(new AbstractQQQApplication()
+      {
+         @Override
+         public QInstance defineQInstance()
+         {
+            return instance;
+         }
+      }).withPort(PORT).withServeFrontendNext(false).withServeFrontendMaterialDashboard(false);
+      javalinServer.start();
+      HttpResponse<byte[]> logo = Unirest.get("http://localhost:" + PORT + "/qqq/branding/logo").asBytes();
+      assertEquals(200, logo.getStatus());
+      assertArrayEquals(getClass().getResourceAsStream("/material-dashboard-overlay/branding1009/logo.png").readAllBytes(), logo.getBody());
+      assertEquals("image/png", logo.getHeaders().getFirst("Content-Type").split(";")[0]);
+      assertEquals("nosniff", logo.getHeaders().getFirst("X-Content-Type-Options"));
+      assertEquals(200, Unirest.head("http://localhost:" + PORT + "/qqq/branding/icon").asString().getStatus());
+      for(String path : List.of("/login", "/index.html", "/branding1009/index.html", "/branding1009/private.js", "/branding1009/logo.png", "/qqq/branding/unknown", "/qqq/branding/logo/extra"))
+      {
+         assertEquals(404, Unirest.get("http://localhost:" + PORT + path).asString().getStatus(), path);
+      }
+   }
 
 
 
@@ -85,6 +124,8 @@ class QApplicationJavalinServerTest
       }
       TestApplication.callCount = 0;
       System.clearProperty("qqq.javalin.enableStaticFilesFromJar");
+      System.clearProperty("qqq.javalin.sessionCookieHttpOnly");
+      QJavalinImplementation.setSessionCookieHttpOnly(false);
       Unirest.config().reset();
 
 
@@ -146,6 +187,25 @@ class QApplicationJavalinServerTest
 
 
    /*******************************************************************************
+    ** getQInstance is null until start, then the one instance the server built
+    ** from the application.
+    *******************************************************************************/
+   @Test
+   void testGetQInstance() throws QException
+   {
+      javalinServer = new QApplicationJavalinServer(getQqqApplication())
+         .withPort(PORT)
+         .withServeFrontendMaterialDashboard(false);
+      assertNull(javalinServer.getQInstance());
+
+      javalinServer.start();
+      assertThat(TestApplication.callCount).isEqualTo(1);
+      assertThat(javalinServer.getQInstance().getTables().values()).isNotEmpty().allMatch(t -> t.getLabel().endsWith("1"));
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    @Test
@@ -196,11 +256,13 @@ class QApplicationJavalinServerTest
       {
          assertThat(aTable.getString("label")).doesNotEndWith("1");
          assertThat(TestApplication.callCount).isGreaterThanOrEqualTo(1);
+         assertThat(javalinServer.getQInstance().getTable(aTableName).getLabel()).doesNotEndWith("1");
       }
       else
       {
          assertThat(aTable.getString("label")).endsWith("1");
          assertThat(TestApplication.callCount).isEqualTo(1);
+         assertThat(javalinServer.getQInstance().getTable(aTableName).getLabel()).endsWith("1");
       }
    }
 
@@ -776,6 +838,160 @@ class QApplicationJavalinServerTest
       assertEquals(404, missingTableResponse.getStatus());
       assertThat(missingTableResponse.getBody()).contains("\"error\"").contains("not found");
       assertThat(missingTableResponse.getBody()).doesNotContainIgnoringCase("<!doctype html");
+   }
+
+
+
+   /*******************************************************************************
+    ** The Next dashboard security headers customizer is kept for the provider.
+    *******************************************************************************/
+   @Test
+   void testNextDashboardSecurityHeadersCustomizer()
+   {
+      QApplicationJavalinServer server = new QApplicationJavalinServer(getQqqApplication());
+      assertNull(server.getNextDashboardSecurityHeadersCustomizer());
+
+      Consumer<NextDashboardSecurityHeaders> customizer = headers -> headers.withSources("img-src", "https://cdn.example.com");
+      assertSame(customizer, server.withNextDashboardSecurityHeadersCustomizer(customizer).getNextDashboardSecurityHeadersCustomizer());
+      server.setNextDashboardSecurityHeadersCustomizer(null);
+      assertNull(server.getNextDashboardSecurityHeadersCustomizer());
+   }
+
+
+
+   /*******************************************************************************
+    ** Dashboard selection: explicit settings win, then qqq.javalin.frontend, then
+    ** the classpath (the Next export is not on this module's test classpath).
+    *******************************************************************************/
+   @Test
+   void testFrontendSelection()
+   {
+      String original = System.getProperty("qqq.javalin.frontend");
+      try
+      {
+         System.clearProperty("qqq.javalin.frontend");
+         QApplicationJavalinServer server = new QApplicationJavalinServer(getQqqApplication());
+         assertFalse(server.getServeFrontendNext());
+         assertTrue(server.getServeFrontendMaterialDashboard());
+
+         server.setServeFrontendNext(true);
+         assertTrue(server.getServeFrontendNext());
+         assertFalse(server.getServeFrontendMaterialDashboard());
+
+         server.setServeFrontendMaterialDashboard(true);
+         assertTrue(server.getServeFrontendMaterialDashboard());
+
+         System.setProperty("qqq.javalin.frontend", "next");
+         QApplicationJavalinServer byProperty = new QApplicationJavalinServer(getQqqApplication());
+         assertTrue(byProperty.getServeFrontendNext());
+         assertFalse(byProperty.getServeFrontendMaterialDashboard());
+         assertFalse(byProperty.withServeFrontendMaterialDashboard(true).getServeFrontendNext());
+
+         System.setProperty("qqq.javalin.frontend", "Material");
+         byProperty = new QApplicationJavalinServer(getQqqApplication());
+         assertFalse(byProperty.getServeFrontendNext());
+         assertTrue(byProperty.getServeFrontendMaterialDashboard());
+
+         System.setProperty("qqq.javalin.frontend", "none");
+         byProperty = new QApplicationJavalinServer(getQqqApplication());
+         assertFalse(byProperty.getServeFrontendNext());
+         assertFalse(byProperty.getServeFrontendMaterialDashboard());
+
+         System.setProperty("qqq.javalin.frontend", "angular");
+         QApplicationJavalinServer invalid = new QApplicationJavalinServer(getQqqApplication());
+         assertThrows(IllegalArgumentException.class, invalid::getServeFrontendNext);
+      }
+      finally
+      {
+         if(original == null)
+         {
+            System.clearProperty("qqq.javalin.frontend");
+         }
+         else
+         {
+            System.setProperty("qqq.javalin.frontend", original);
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Session cookies are HttpOnly unless the Material Dashboard (which reads
+    ** sessionUUID in the browser) is served; the explicit setting wins, then the
+    ** qqq.javalin.sessionCookieHttpOnly property; start() applies the choice to
+    ** the cookies QJavalinImplementation sets (QRun-IO/qqq#733).
+    *******************************************************************************/
+   @Test
+   void testSessionCookieHttpOnlySelection() throws QException
+   {
+      String original = System.getProperty("qqq.javalin.frontend");
+      try
+      {
+         System.clearProperty("qqq.javalin.frontend");
+         assertFalse(new QApplicationJavalinServer(getQqqApplication()).getSessionCookieHttpOnly(), "Material is served (no Next jar on this classpath)");
+         assertTrue(new QApplicationJavalinServer(getQqqApplication()).withServeFrontendNext(true).getSessionCookieHttpOnly());
+         assertTrue(new QApplicationJavalinServer(getQqqApplication()).withServeFrontendMaterialDashboard(false).getSessionCookieHttpOnly());
+         assertFalse(new QApplicationJavalinServer(getQqqApplication()).withServeFrontendNext(true).withServeFrontendMaterialDashboard(true).getSessionCookieHttpOnly());
+
+         System.setProperty("qqq.javalin.frontend", "next");
+         assertTrue(new QApplicationJavalinServer(getQqqApplication()).getSessionCookieHttpOnly());
+         System.setProperty("qqq.javalin.frontend", "none");
+         assertTrue(new QApplicationJavalinServer(getQqqApplication()).getSessionCookieHttpOnly());
+
+         System.setProperty("qqq.javalin.sessionCookieHttpOnly", "false");
+         assertFalse(new QApplicationJavalinServer(getQqqApplication()).getSessionCookieHttpOnly());
+         assertTrue(new QApplicationJavalinServer(getQqqApplication()).withSessionCookieHttpOnly(true).getSessionCookieHttpOnly());
+         System.setProperty("qqq.javalin.frontend", "material");
+         System.setProperty("qqq.javalin.sessionCookieHttpOnly", "true");
+         assertTrue(new QApplicationJavalinServer(getQqqApplication()).getSessionCookieHttpOnly());
+         assertFalse(new QApplicationJavalinServer(getQqqApplication()).withSessionCookieHttpOnly(false).getSessionCookieHttpOnly());
+         System.clearProperty("qqq.javalin.sessionCookieHttpOnly");
+
+         //////////////////////////////////////////////////////////////////
+         // start() applies it: the v1 manageSession cookie is HttpOnly  //
+         //////////////////////////////////////////////////////////////////
+         System.clearProperty("qqq.javalin.frontend");
+         QJavalinImplementation.setSessionCookieHttpOnly(false);
+         javalinServer = new QApplicationJavalinServer(getQqqApplication())
+            .withPort(PORT)
+            .withServeFrontendMaterialDashboard(false);
+         javalinServer.start();
+         assertTrue(QJavalinImplementation.getSessionCookieHttpOnly());
+         HttpResponse<String> response = Unirest.post("http://localhost:" + PORT + "/qqq/v1/manageSession")
+            .header("Content-Type", "application/json")
+            .body("{\"accessToken\": \"abcdefg\"}")
+            .asString();
+         assertEquals(200, response.getStatus());
+         assertThat(response.getHeaders().get("Set-Cookie")).anyMatch(cookie -> cookie.startsWith("sessionUUID=") && cookie.contains("; HttpOnly"));
+      }
+      finally
+      {
+         if(original == null)
+         {
+            System.clearProperty("qqq.javalin.frontend");
+         }
+         else
+         {
+            System.setProperty("qqq.javalin.frontend", original);
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Both dashboards cannot share the root path.
+    *******************************************************************************/
+   @Test
+   void testBothDashboardsAtRootRejected()
+   {
+      QApplicationJavalinServer server = new QApplicationJavalinServer(getQqqApplication())
+         .withPort(PORT)
+         .withServeFrontendNext(true)
+         .withServeFrontendMaterialDashboard(true);
+      QException exception = assertThrows(QException.class, server::start);
+      assertThat(exception.getMessage()).contains("withFrontendMaterialDashboardHostedPath");
    }
 
 
@@ -2199,6 +2415,13 @@ class QApplicationJavalinServerTest
       HttpResponse<String> rootDeepLink = Unirest.get("http://localhost:" + PORT + "/users/list").asString();
       assertEquals(200, rootDeepLink.getStatus());
       assertThat(rootDeepLink.getBody()).containsIgnoringCase("<base href=\"/\"");
+
+      //////////////////////////////////////////////////////////////////
+      // an unknown UI API path is a JSON 404, never the SPA's page   //
+      //////////////////////////////////////////////////////////////////
+      HttpResponse<String> unknownApi = Unirest.get("http://localhost:" + PORT + "/qqq/v1/no/such/operation").asString();
+      assertEquals(404, unknownApi.getStatus());
+      assertThat(unknownApi.getBody()).contains("\"code\":\"NOT_FOUND\"");
 
       /////////////////////////////////////
       // Root SPA's /api exclusion works //

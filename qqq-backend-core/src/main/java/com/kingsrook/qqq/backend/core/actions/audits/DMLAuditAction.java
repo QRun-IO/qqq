@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.actions.audits;
@@ -36,7 +35,11 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.actions.AbstractQActionFunction;
+import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.ClassifiedValueTokens;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.ClassifiedValues;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
 import com.kingsrook.qqq.backend.core.actions.values.QPossibleValueTranslator;
 import com.kingsrook.qqq.backend.core.actions.values.QValueFormatter;
@@ -50,6 +53,7 @@ import com.kingsrook.qqq.backend.core.model.actions.audits.DMLAuditHandlerInput;
 import com.kingsrook.qqq.backend.core.model.actions.audits.DMLAuditInput;
 import com.kingsrook.qqq.backend.core.model.actions.audits.DMLAuditOutput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.WipeAuditFlag;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
@@ -121,6 +125,8 @@ public class DMLAuditAction extends AbstractQActionFunction<DMLAuditInput, DMLAu
       QTableMetaData           table            = tableActionInput.getTable();
       long                     start            = System.currentTimeMillis();
       DMLType                  dmlType          = getDMLType(tableActionInput);
+      QBackendTransaction previousTransaction = QContext.getQBackendTransaction();
+      QContext.setTransaction(input.getTransaction());
 
       try
       {
@@ -172,7 +178,7 @@ public class DMLAuditAction extends AbstractQActionFunction<DMLAuditInput, DMLAu
 
          AuditInput auditInput = new AuditInput();
          auditInput.setTransaction(input.getTransaction());
-         if(auditLevel.equals(AuditLevel.RECORD) || (auditLevel.equals(AuditLevel.FIELD) && !dmlType.supportsFields))
+         if(auditLevel.equals(AuditLevel.RECORD) || (auditLevel.equals(AuditLevel.FIELD) && !dmlType.supportsFields && !DMLType.DELETE.equals(dmlType)))
          {
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
             // make many simple audits (no details) for RECORD level                                                  //
@@ -191,7 +197,7 @@ public class DMLAuditAction extends AbstractQActionFunction<DMLAuditInput, DMLAu
             // do many audits, all with field level details, for FIELD level //
             ///////////////////////////////////////////////////////////////////
             QPossibleValueTranslator qPossibleValueTranslator = new QPossibleValueTranslator(QContext.getQInstance(), QContext.getQSession());
-            qPossibleValueTranslator.translatePossibleValuesInRecords(table, CollectionUtils.mergeLists(recordList, oldRecordList));
+            qPossibleValueTranslator.translatePossibleValuesInRecords(table, CollectionUtils.mergeLists(recordList, oldRecordList), List.of(), table.getFields().keySet().stream().filter(name -> !ClassifiedValues.isClassified(table, name)).collect(Collectors.toSet()));
 
             //////////////////////////////////////////
             // sort the field names by their labels //
@@ -210,7 +216,7 @@ public class DMLAuditAction extends AbstractQActionFunction<DMLAuditInput, DMLAu
                List<QRecord> details = new ArrayList<>();
                for(String fieldName : sortedFieldNames)
                {
-                  makeAuditDetailRecordForField(fieldName, table, dmlType, record, oldRecord)
+                  makeAuditDetailRecordForField(fieldName, table, dmlType, record, oldRecord, tableActionInput instanceof UpdateInput update && update.getFlags() != null ? update.getFlags().stream().filter(WipeAuditFlag.class::isInstance).map(WipeAuditFlag.class::cast).findFirst().orElse(null) : null)
                      .ifPresent(details::add);
                }
 
@@ -234,6 +240,10 @@ public class DMLAuditAction extends AbstractQActionFunction<DMLAuditInput, DMLAu
       catch(Exception e)
       {
          LOG.warn("Error performing DML audit", e, logPair("type", String.valueOf(dmlType)), logPair("table", table.getName()));
+      }
+      finally
+      {
+         QContext.setTransaction(previousTransaction);
       }
 
       //////////////////////////
@@ -387,6 +397,16 @@ public class DMLAuditAction extends AbstractQActionFunction<DMLAuditInput, DMLAu
     *******************************************************************************/
    static Optional<QRecord> makeAuditDetailRecordForField(String fieldName, QTableMetaData table, DMLType dmlType, QRecord record, QRecord oldRecord)
    {
+      return makeAuditDetailRecordForField(fieldName, table, dmlType, record, oldRecord, null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Build a detail before insertion, including policy wipes and classified deletions.
+    *******************************************************************************/
+   private static Optional<QRecord> makeAuditDetailRecordForField(String fieldName, QTableMetaData table, DMLType dmlType, QRecord record, QRecord oldRecord, WipeAuditFlag wipe)
+   {
       if(!record.getValues().containsKey(fieldName))
       {
          ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -401,9 +421,44 @@ public class DMLAuditAction extends AbstractQActionFunction<DMLAuditInput, DMLAu
          return (Optional.empty());
       }
 
+      QFieldMetaData protectedField = table.getField(fieldName);
+      if(wipe != null && !fieldName.equals(table.getPrimaryKeyField()) && (oldRecord == null || !Objects.equals(record.getValue(fieldName), oldRecord.getValue(fieldName))))
+      {
+         return Optional.of(new QRecord().withValue("fieldName", fieldName).withValue("newValue", "wiped:v1:" + wipe.ruleId()).withValue("message", "Wiped " + protectedField.getLabel() + " per policy"));
+      }
+      if(ClassifiedValues.isClassified(table, fieldName))
+      {
+         Serializable oldValue = dmlType == DMLType.DELETE ? record.getValue(fieldName) : oldRecord == null ? null : oldRecord.getValue(fieldName);
+         Serializable newValue = dmlType == DMLType.DELETE ? null : record.getValue(fieldName);
+         if(Objects.equals(oldValue, newValue))
+         {
+            return Optional.empty();
+         }
+         Serializable pk = record.getValue(table.getPrimaryKeyField());
+         String message = (oldValue == null ? "Set " : newValue == null ? "Removed " : "Changed ") + protectedField.getLabel();
+         AuditValueProtectorInterface protector = ClassifiedValues.protector();
+         ProtectedAuditValues protectedValues = protector == null
+            ? new ProtectedAuditValues(ClassifiedValueTokens.forRecordField(table, protectedField, pk, oldValue), ClassifiedValueTokens.forRecordField(table, protectedField, pk, newValue), message)
+            : protector.protect(table, protectedField, pk, oldValue, newValue, dmlType);
+         QRecord detail = new QRecord().withValue("fieldName", fieldName).withValue("message", message);
+         if(oldValue != null)
+         {
+            detail.setValue("oldValue", protectedValues.oldToken());
+         }
+         if(newValue != null)
+         {
+            detail.setValue("newValue", protectedValues.newToken());
+         }
+         return Optional.of(detail);
+      }
+      if(dmlType == DMLType.DELETE)
+      {
+         return Optional.empty();
+      }
+
       QFieldMetaData field        = table.getField(fieldName);
-      Serializable   value        = ValueUtils.getValueAsFieldType(field.getType(), record.getValue(fieldName));
-      Serializable   oldValue     = oldRecord == null ? null : ValueUtils.getValueAsFieldType(field.getType(), oldRecord.getValue(fieldName));
+      Serializable   value        = ValueUtils.getValueAsFieldType(table, field, record.getValue(fieldName));
+      Serializable   oldValue     = oldRecord == null ? null : ValueUtils.getValueAsFieldType(table, field, oldRecord.getValue(fieldName));
       QRecord        detailRecord = null;
 
       if(oldRecord == null)
@@ -605,6 +660,10 @@ public class DMLAuditAction extends AbstractQActionFunction<DMLAuditInput, DMLAu
     *******************************************************************************/
    private static String getFormattedValueForAuditDetail(QTableMetaData table, QRecord record, String fieldName, QFieldMetaData field, Serializable value)
    {
+      if(ClassifiedValues.isClassified(table, fieldName))
+      {
+         return ClassifiedValueTokens.forRecordField(table, field, record.getValue(table.getPrimaryKeyField()), value);
+      }
       String formattedValue = null;
       if(value != null)
       {
@@ -618,7 +677,16 @@ public class DMLAuditAction extends AbstractQActionFunction<DMLAuditInput, DMLAu
          }
          else
          {
-            QValueFormatter.setDisplayValuesInRecord(table, table.getFields(), record);
+            Map<String, QFieldMetaData> publicFields = table.getFields().entrySet().stream()
+               .filter(entry -> !ClassifiedValues.isClassified(table, entry.getKey()))
+               .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+            QTableMetaData formattingTable = table;
+            if(publicFields.size() != table.getFields().size())
+            {
+               formattingTable = table.clone();
+               formattingTable.setFields(publicFields);
+            }
+            QValueFormatter.setDisplayValuesInRecord(formattingTable, publicFields, record);
             formattedValue = record.getDisplayValue(fieldName);
          }
       }
@@ -750,7 +818,7 @@ public class DMLAuditAction extends AbstractQActionFunction<DMLAuditInput, DMLAu
    /*******************************************************************************
     ** Enumeration of DML operation types that can be audited.
     *******************************************************************************/
-   enum DMLType
+   public enum DMLType
    {
       INSERT("Inserted", true),
       UPDATE("Edited", true),

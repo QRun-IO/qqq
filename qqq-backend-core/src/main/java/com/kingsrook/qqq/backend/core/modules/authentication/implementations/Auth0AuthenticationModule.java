@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.modules.authentication.implementations;
@@ -47,18 +46,22 @@ import com.auth0.jwt.exceptions.JWTDecodeException;
 import com.auth0.jwt.exceptions.JWTVerificationException;
 import com.auth0.jwt.exceptions.TokenExpiredException;
 import com.auth0.jwt.interfaces.DecodedJWT;
+import com.auth0.jwt.interfaces.Verification;
 import com.auth0.net.Response;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
+import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
+import com.kingsrook.qqq.backend.core.cluster.ClusterCaches;
 import com.kingsrook.qqq.backend.core.context.CapturedContext;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.AccessTokenException;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
@@ -144,9 +147,9 @@ public class Auth0AuthenticationModule implements QAuthenticationModuleInterface
 
    private static boolean mayMemoize = true;
 
-   private static final Memoization<String, String> getAccessTokenFromSessionUUIDMemoization = new Memoization<String, String>()
+   private static final Memoization<String, String> getAccessTokenFromSessionUUIDMemoization = ClusterCaches.sessionKeyed("auth0.accessTokenBySession", new Memoization<String, String>()
       .withTimeout(Duration.of(1, ChronoUnit.MINUTES))
-      .withMaxSize(1000);
+      .withMaxSize(1000));
 
    ////////////////////////////////////////////////////////////////////////////////////////////////////////////
    // this is how we allow the actions within this class to work without themselves having a logged-in user. //
@@ -392,7 +395,12 @@ public class Auth0AuthenticationModule implements QAuthenticationModuleInterface
             .withUserId(qSession.getUser().getIdReference())
             .withAccessToken(accessToken);
 
-         new InsertAction().execute(new InsertInput(UserSession.TABLE_NAME).withRecordEntity(userSession));
+         ///////////////////////////////////////////////////////////////////
+         // the userSession table is locked to every user (it holds tokens) //
+         ///////////////////////////////////////////////////////////////////
+         InsertInput insertInput = new InsertInput(UserSession.TABLE_NAME).withRecordEntity(userSession);
+         insertInput.withPermissionBypass("authentication internals: store the user session");
+         new InsertAction().execute(insertInput);
       }
       finally
       {
@@ -428,7 +436,7 @@ public class Auth0AuthenticationModule implements QAuthenticationModuleInterface
          // put now into state so we don't check until next interval passes //
          /////////////////////////////////////////////////////////////////////
          StateProviderInterface spi = getStateProvider();
-         SimpleStateKey<String> key = new SimpleStateKey<>(qSession.getIdReference());
+         SimpleStateKey<?> key = tokenValidationKey(qInstance, qSession.getIdReference());
          spi.put(key, Instant.now());
 
          return (qSession);
@@ -495,6 +503,42 @@ public class Auth0AuthenticationModule implements QAuthenticationModuleInterface
 
 
    /*******************************************************************************
+    ** Invalidate a session at logout: delete its userSession record and forget the
+    ** cached access-token lookup, so the session UUID cannot be resumed.
+    *******************************************************************************/
+   @Override
+   public void logout(QInstance qInstance, String sessionUUID)
+   {
+      if(sessionUUID == null)
+      {
+         return;
+      }
+
+      QSession beforeSession = QContext.getQSession();
+      try
+      {
+         QContext.setQSession(new QSystemUserSession());
+         if(qInstance.getTable(UserSession.TABLE_NAME) != null)
+         {
+            new DeleteAction().execute(new DeleteInput(UserSession.TABLE_NAME)
+               .withQueryFilter(new QQueryFilter(new QFilterCriteria("uuid", QCriteriaOperator.EQUALS, sessionUUID))));
+         }
+         getAccessTokenFromSessionUUIDMemoization.clearKey(sessionUUID);
+         LOG.debug("Logged out session", logPair("sessionUUID", maskForLog(sessionUUID)));
+      }
+      catch(Exception e)
+      {
+         LOG.warn("Error during logout", e, logPair("sessionUUID", maskForLog(sessionUUID)));
+      }
+      finally
+      {
+         QContext.setQSession(beforeSession);
+      }
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    @Override
@@ -524,7 +568,7 @@ public class Auth0AuthenticationModule implements QAuthenticationModuleInterface
       }
 
       StateProviderInterface spi                     = getStateProvider();
-      SimpleStateKey<String> key                     = new SimpleStateKey<>(session.getIdReference());
+      SimpleStateKey<?> key                         = tokenValidationKey(instance, session.getIdReference());
       Optional<Instant>      lastTimeCheckedOptional = spi.get(Instant.class, key);
       if(lastTimeCheckedOptional.isPresent())
       {
@@ -537,7 +581,22 @@ public class Auth0AuthenticationModule implements QAuthenticationModuleInterface
          ///////////////////////////////////////////////////////////////////////////////////////////////////
          if(Duration.between(lastTimeChecked, Instant.now()).compareTo(Duration.ofSeconds(ID_TOKEN_VALIDATION_INTERVAL_SECONDS)) < 0)
          {
-            return (true);
+            // Cached signature verification does not extend the token's lifetime.
+            try
+            {
+               Instant expiresAt = JWT.decode(session.getIdReference()).getExpiresAtAsInstant();
+               if(expiresAt != null && !Instant.now().isBefore(expiresAt))
+               {
+                  spi.remove(key);
+                  return (false);
+               }
+               return (true);
+            }
+            catch(JWTDecodeException e)
+            {
+               spi.remove(key);
+               return (false);
+            }
          }
 
          try
@@ -591,10 +650,47 @@ public class Auth0AuthenticationModule implements QAuthenticationModuleInterface
       JwkProvider provider  = new UrlJwkProvider(metaData.getBaseUrl());
       Jwk         jwk       = provider.get(idToken.getKeyId());
       Algorithm   algorithm = Algorithm.RSA256((RSAPublicKey) jwk.getPublicKey(), null);
-      JWT.require(algorithm)
-         .withIssuer(idToken.getIssuer())
-         .build()
-         .verify(idToken);
+      Verification verification = JWT.require(algorithm)
+         .withIssuer(normalizeAuth0Issuer(metaData.getBaseUrl()));
+      if(StringUtils.hasContent(metaData.getAudience()))
+      {
+         verification.withAudience(metaData.getAudience());
+      }
+      verification.build().verify(idToken);
+   }
+
+
+
+   /*******************************************************************************
+    ** A successful validation may only be reused under the same trust settings.
+    *******************************************************************************/
+   static SimpleStateKey<?> tokenValidationKey(QInstance instance, String token)
+   {
+      Auth0AuthenticationMetaData authentication = (Auth0AuthenticationMetaData) instance.getAuthentication();
+      String baseUrl = authentication.getBaseUrl();
+      return new SimpleStateKey<>(new TokenValidationKey(baseUrl == null ? null : normalizeAuth0Issuer(baseUrl),
+         baseUrl, authentication.getAudience(), token));
+   }
+
+
+
+   /*******************************************************************************
+    ** Structural equality avoids ambiguous delimiter-based cache identities.
+    *******************************************************************************/
+   private record TokenValidationKey(String issuer, String jwksBaseUrl, String audience, String token) implements Serializable
+   {
+   }
+
+
+
+   /*******************************************************************************
+    ** Match the configured Auth0 domain, including custom domains. Like the JWKS
+    ** provider, a bare domain defaults to HTTPS; Auth0 issuer URLs end in a slash.
+    *******************************************************************************/
+   static String normalizeAuth0Issuer(String baseUrl)
+   {
+      String issuer = baseUrl.startsWith("http") ? baseUrl : "https://" + baseUrl;
+      return issuer.endsWith("/") ? issuer : issuer + "/";
    }
 
 
@@ -617,6 +713,7 @@ public class Auth0AuthenticationModule implements QAuthenticationModuleInterface
       // create user object.  look for multiple possible keys in the jwt payload where the name & email may be //
       ///////////////////////////////////////////////////////////////////////////////////////////////////////////
       QUser qUser = new QUser();
+      qUser.setEmail(payload.optString("email", payload.optString("com.kingsrook.qqq.email", null)));
       qUser.setFullName("Unknown");
       for(String key : List.of("name", "com.kingsrook.qqq.name", "com.kingsrook.qqq.client_name"))
       {
@@ -952,10 +1049,12 @@ public class Auth0AuthenticationModule implements QAuthenticationModuleInterface
          ///////////////////////////////////////
          // query for the user session record //
          ///////////////////////////////////////
-         QRecord userSessionRecord = new GetAction().executeForRecord(new GetInput(UserSession.TABLE_NAME)
+         GetInput getInput = new GetInput(UserSession.TABLE_NAME)
             .withUniqueKey(Map.of("uuid", sessionUUID))
             .withShouldMaskPasswords(false)
-            .withShouldOmitHiddenFields(false));
+            .withShouldOmitHiddenFields(false);
+         getInput.withPermissionBypass("authentication internals: look up the user session");
+         QRecord userSessionRecord = new GetAction().executeForRecord(getInput);
 
          if(userSessionRecord != null)
          {

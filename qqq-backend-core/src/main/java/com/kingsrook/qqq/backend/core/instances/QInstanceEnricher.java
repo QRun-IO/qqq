@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.instances;
@@ -40,11 +39,15 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import com.kingsrook.qqq.backend.core.actions.collaboration.RecordFeaturePermissionsRegistrar;
+import com.kingsrook.qqq.backend.core.actions.collaboration.RecordFeaturesResolver;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.metadata.JoinGraph;
 import com.kingsrook.qqq.backend.core.actions.permissions.BulkTableActionProcessPermissionChecker;
+import com.kingsrook.qqq.backend.core.actions.permissions.SystemTablePermissions;
 import com.kingsrook.qqq.backend.core.actions.values.QCustomPossibleValueProvider;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QModuleDispatchException;
 import com.kingsrook.qqq.backend.core.exceptions.QRuntimeException;
 import com.kingsrook.qqq.backend.core.instances.enrichment.plugins.QInstanceEnricherPluginInterface;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -55,6 +58,8 @@ import com.kingsrook.qqq.backend.core.model.bulk.TableKeyFieldsPossibleValueSour
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.TableBasedAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaDataInterface;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.AdornmentType;
@@ -72,7 +77,9 @@ import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppChildMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppSection;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.DenyBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.MetaDataWithPermissionRules;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSourceType;
@@ -93,6 +100,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QFieldSection;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QSupplementalTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Tier;
+import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleDispatcher;
+import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleInterface;
 import com.kingsrook.qqq.backend.core.processes.implementations.bulk.delete.BulkDeleteLoadStep;
 import com.kingsrook.qqq.backend.core.processes.implementations.bulk.delete.BulkDeleteTransformStep;
 import com.kingsrook.qqq.backend.core.processes.implementations.bulk.edit.BulkEditLoadStep;
@@ -108,6 +117,9 @@ import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.Bulk
 import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.BulkInsertTransformStep;
 import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwithfrontend.ExtractViaQueryStep;
 import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwithfrontend.StreamedETLWithFrontendProcess;
+import com.kingsrook.qqq.backend.core.realtime.RealtimeMetaData;
+import com.kingsrook.qqq.backend.core.realtime.RealtimeRuntimeService;
+import com.kingsrook.qqq.backend.core.realtime.RecordChangeListener;
 import com.kingsrook.qqq.backend.core.scheduler.QScheduleManager;
 import com.kingsrook.qqq.backend.core.utils.ClassPathUtils;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
@@ -131,6 +143,7 @@ public class QInstanceEnricher
 
    private boolean configRemoveIdFromNameWhenCreatingPossibleValueFieldLabels        = true;
    private boolean configAddDynamicDefaultValuesToFieldsNamedCreateDateAndModifyDate = true;
+   private boolean configMakeSystemDateFieldsNonEditable                             = true;
 
    //////////////////////////////////////////////////////////////////////////////////////////////////
    // let an instance define mappings to be applied during name-to-label enrichments,              //
@@ -159,6 +172,17 @@ public class QInstanceEnricher
 
 
    /*******************************************************************************
+    ** The instance being enriched - for supplemental meta-data whose enrich
+    ** needs to add to the instance (e.g. AlertProcessMetaData declaring types).
+    *******************************************************************************/
+   public QInstance getQInstance()
+   {
+      return (this.qInstance);
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    public void enrich()
@@ -177,7 +201,24 @@ public class QInstanceEnricher
 
       if(qInstance.getTables() != null)
       {
+         if(qInstance.getBackends() != null)
+         {
+            qInstance.getBackends().values().forEach(this::disableCapabilitiesUnsupportedByModule);
+         }
+         protectTableBasedAuthenticationTables();
+         SystemTablePermissions.lockConfiguredAuthenticationTables(qInstance);
          qInstance.getTables().values().forEach(this::enrichTable);
+         if((RecordFeaturesResolver.hasAnyMetaData(qInstance)
+            || qInstance.getSupplementalMetaData(RealtimeMetaData.NAME) != null)
+            && CollectionUtils.nonNullList(qInstance.getRuntimeServices()).stream().noneMatch(reference -> RealtimeRuntimeService.class.getName().equals(reference.getName())))
+         {
+            qInstance.withRuntimeService(new QCodeReference(RealtimeRuntimeService.class));
+         }
+         if(RecordFeaturesResolver.hasAnyMetaData(qInstance)
+            && CollectionUtils.nonNullList(qInstance.getRecordChangeListeners()).stream().noneMatch(reference -> RecordChangeListener.class.getName().equals(reference.getName())))
+         {
+            qInstance.withRecordChangeListener(new QCodeReference(RecordChangeListener.class));
+         }
          defineTableBulkProcesses(qInstance);
       }
 
@@ -208,6 +249,7 @@ public class QInstanceEnricher
 
       enrichJoins();
       enrichInstance();
+      RecordFeaturePermissionsRegistrar.register(qInstance);
 
       //////////////////////////////////////////////////////////////////////////////
       // if the instance DOES have 1 or more scheduler, but no schedulable types, //
@@ -362,6 +404,38 @@ public class QInstanceEnricher
    /*******************************************************************************
     **
     *******************************************************************************/
+   private void disableCapabilitiesUnsupportedByModule(QBackendMetaData backend)
+   {
+      if(backend == null || backend.getBackendType() == null)
+      {
+         return;
+      }
+
+      try
+      {
+         QBackendModuleInterface module = new QBackendModuleDispatcher().getQBackendModule(backend);
+         for(Capability capability : CollectionUtils.nonNullCollection(module.getUnsupportedCapabilities()))
+         {
+            if(!CollectionUtils.nonNullCollection(backend.getEnabledCapabilities()).contains(capability))
+            {
+               backend.withoutCapability(capability);
+            }
+         }
+      }
+      catch(QModuleDispatchException e)
+      {
+         ///////////////////////////////////////////////////////////
+         // unknown backend types are reported by the validator //
+         ///////////////////////////////////////////////////////////
+         LOG.debug("Could not dispatch backend module while checking its capabilities", e, logPair("backendName", backend.getName()));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
    private void enrichBackend(QBackendMetaData qBackendMetaData)
    {
       qBackendMetaData.enrich();
@@ -373,7 +447,7 @@ public class QInstanceEnricher
    /*******************************************************************************
     **
     *******************************************************************************/
-   private void enrichTable(QTableMetaData table)
+   public void enrichTable(QTableMetaData table)
    {
       if(!StringUtils.hasContent(table.getLabel()))
       {
@@ -396,7 +470,15 @@ public class QInstanceEnricher
             }
 
             enrichField(field);
+            enrichSystemDateField(field);
          }
+      }
+
+      if(table.getRecordVersionField() == null && table.getFields() != null)
+      {
+         table.getFields().values().stream()
+            .filter(field -> DynamicDefaultValueBehavior.MODIFY_DATE.equals(field.getBehaviorOnlyIfSet(DynamicDefaultValueBehavior.class)))
+            .findFirst().ifPresent(field -> table.setRecordVersionField(field.getName()));
       }
 
       if(table.getVirtualFields() != null)
@@ -452,6 +534,44 @@ public class QInstanceEnricher
       if(table.getAuditRules() == null && qInstance.getDefaultAuditRules() != null)
       {
          table.setAuditRules(qInstance.getDefaultAuditRules());
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Secure defaults for TABLE_BASED authentication (QRun-IO/qqq#696): its user
+    ** table holds password hashes and its session table holds the session ids
+    ** that authenticate requests, so unless the application set permission rules
+    ** on them, they require read/insert/edit/delete permissions (granted to no
+    ** session by default) and are hidden from users without them. The password
+    ** hash field is always hidden, so it is never returned by the API. The
+    ** authentication module itself works on these tables as a system user.
+    *******************************************************************************/
+   private void protectTableBasedAuthenticationTables()
+   {
+      List<QAuthenticationMetaData> providers = new ArrayList<>();
+      providers.add(qInstance.getAuthentication());
+      providers.addAll(CollectionUtils.nonNullMap(qInstance.getScopedAuthenticationProviders()).values());
+      for(QAuthenticationMetaData provider : providers)
+      {
+         if(!(provider instanceof TableBasedAuthenticationMetaData tableBased))
+         {
+            continue;
+         }
+         for(String tableName : List.of(tableBased.getUserTableName(), tableBased.getSessionTableName()))
+         {
+            QTableMetaData table = qInstance.getTable(tableName);
+            if(table != null && table.getPermissionRules() == null)
+            {
+               table.setPermissionRules(new QPermissionRules().withLevel(PermissionLevel.READ_INSERT_EDIT_DELETE_PERMISSIONS).withDenyBehavior(DenyBehavior.HIDDEN));
+            }
+         }
+         QTableMetaData userTable = qInstance.getTable(tableBased.getUserTableName());
+         if(userTable != null && userTable.getFields() != null && userTable.getFields().containsKey(tableBased.getUserTablePasswordHashField()))
+         {
+            userTable.getField(tableBased.getUserTablePasswordHashField()).setIsHidden(true);
+         }
       }
    }
 
@@ -662,6 +782,29 @@ public class QInstanceEnricher
       }
 
       runPlugins(QFieldMetaData.class, field, qInstance);
+   }
+
+
+
+   /*******************************************************************************
+    ** A table field whose value QQQ maintains (the CREATE_DATE or MODIFY_DATE
+    ** dynamic default value behavior) is not editable by people: QQQ sets it on
+    ** insert (and MODIFY_DATE on every update), so frontends leave it off create
+    ** forms and show it read-only on edit. Off when
+    ** configMakeSystemDateFieldsNonEditable is false.
+    *******************************************************************************/
+   private void enrichSystemDateField(QFieldMetaData field)
+   {
+      if(!configMakeSystemDateFieldsNonEditable)
+      {
+         return;
+      }
+
+      DynamicDefaultValueBehavior behavior = field.getBehaviorOnlyIfSet(DynamicDefaultValueBehavior.class);
+      if(DynamicDefaultValueBehavior.CREATE_DATE.equals(behavior) || DynamicDefaultValueBehavior.MODIFY_DATE.equals(behavior))
+      {
+         field.setIsEditable(false);
+      }
    }
 
 
@@ -1883,6 +2026,37 @@ public class QInstanceEnricher
    public QInstanceEnricher withConfigAddDynamicDefaultValuesToFieldsNamedCreateDateAndModifyDate(boolean configAddDynamicDefaultValuesToFieldsNamedCreateDateAndModifyDate)
    {
       this.configAddDynamicDefaultValuesToFieldsNamedCreateDateAndModifyDate = configAddDynamicDefaultValuesToFieldsNamedCreateDateAndModifyDate;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for configMakeSystemDateFieldsNonEditable
+    *******************************************************************************/
+   public boolean getConfigMakeSystemDateFieldsNonEditable()
+   {
+      return (this.configMakeSystemDateFieldsNonEditable);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for configMakeSystemDateFieldsNonEditable
+    *******************************************************************************/
+   public void setConfigMakeSystemDateFieldsNonEditable(boolean configMakeSystemDateFieldsNonEditable)
+   {
+      this.configMakeSystemDateFieldsNonEditable = configMakeSystemDateFieldsNonEditable;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for configMakeSystemDateFieldsNonEditable
+    *******************************************************************************/
+   public QInstanceEnricher withConfigMakeSystemDateFieldsNonEditable(boolean configMakeSystemDateFieldsNonEditable)
+   {
+      this.configMakeSystemDateFieldsNonEditable = configMakeSystemDateFieldsNonEditable;
       return (this);
    }
 

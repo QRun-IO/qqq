@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
@@ -29,29 +28,118 @@ import com.kingsrook.qqq.middleware.javalin.specs.AbstractMiddlewareVersion;
 
 
 /*******************************************************************************
- **
+ ** Version 1 of the QQQ UI API (`/qqq/v1`).  Its semantic version (see
+ ** docs/UI-API-CHANGELOG.md) is published as the OpenAPI info.version and by
+ ** GET /qqq/v1/version.
  *******************************************************************************/
 public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
 {
-   private static List<AbstractEndpointSpec<?, ?, ?>> list = new ArrayList<>();
+   /***************************************************************************
+    ** The semantic version of the v1 UI API.  Bump MINOR for additive changes
+    ** and PATCH for fixes (UiApiContractTest enforces it); a breaking change
+    ** needs a new URL version (/qqq/v2).
+    ***************************************************************************/
+   public static final String SEMANTIC_VERSION = "1.8.0";
 
-   static
+   /***************************************************************************
+    ** Optional core features, published by GET /version.
+    ***************************************************************************/
+   public static final List<String> FEATURES = List.of(
+      "metaData", "tables", "recordSearch", "tableVariants", "recordDeveloper", "possibleValues",
+      "widgets", "processes", "processCancel", "reports", "exports", "downloads", "version", "extensions", "recordFeatures", "realtime",
+      "help", "preferences", "durableJobs", "delivery", "avatars");
+
+   private final List<AbstractEndpointSpec<?, ?, ?>> list = new ArrayList<>();
+
+
+
+   /***************************************************************************
+    ** Subclasses (e.g. the API-aware version) share this version's components.
+    ***************************************************************************/
+   @Override
+   protected String getComponentsBasePackage()
    {
+      return (MiddlewareVersionV1.class.getPackageName());
+   }
+
+   {
+      list.add(new VersionSpecV1());
+      RealtimeStreamSpecV1 realtime = new RealtimeStreamSpecV1();
+      list.add(realtime);
+      list.add(new RealtimeSubscriptionsSpecV1(realtime::getHub));
       list.add(new AuthenticationMetaDataSpecV1());
+      list.add(new BrandingAssetSpecV1());
+      list.add(new AvatarLookupSpecV1());
+      list.add(new AvatarGetSpecV1());
       list.add(new ManageSessionSpecV1());
       list.add(new LogoutSpecV1());
       list.add(new BackChannelLogoutSpecV1());
 
       list.add(new MetaDataSpecV1());
+      list.add(new PreferencesSpecV1());
+      list.add(new DeliveryDestinationsSpecV1());
+      list.add(new DeliveryTargetsSpecV1());
+      list.add(new DeliveryOutputSpecV1());
+      list.add(new PreferenceSectionGetSpecV1());
+      list.add(new PreferenceSectionPatchSpecV1());
+      list.add(new PreferenceSectionActionSpecV1());
 
       list.add(new TableMetaDataSpecV1());
       list.add(new TableQuerySpecV1());
       list.add(new TableCountSpecV1());
+      list.add(new RecordSearchSpecV1());
+      list.add(new HelpSearchSpecV1());
+      list.add(new HelpCoverageSpecV1());
+
+      ///////////////////////////////////////////////////////////////////////////
+      // before TableGetSpecV1: GET /table/{t}/variants and /apis would match  //
+      // GET /table/{t}/{primaryKey} (routes match in registration order)     //
+      ///////////////////////////////////////////////////////////////////////////
+      list.add(new TableVariantsSpecV1());
+      list.add(new TableApisSpecV1());
+      list.add(new TableGetSpecV1());
+      list.add(new TableRecordFeaturesSpecV1());
+      list.add(new TableFormAdjusterSpecV1());
+      list.add(new TableApiDocumentSpecV1());
+      list.add(new TableInsertSpecV1());
+      list.add(new TableUpdateSpecV1());
+      list.add(new TableDeleteSpecV1());
+
+      list.add(new RelatedRecordPickerQuerySpecV1());
+      list.add(new RelatedRecordPickerPrepareSpecV1());
+      list.add(new RelatedRecordPickerAddSpecV1());
+      list.add(new RelatedRecordPickerRemoveSpecV1());
+
+      list.add(new RecordDeveloperModeSpecV1());
+      list.add(new RecordDeveloperPanelsSpecV1());
+      list.add(new RecordAssociatedScriptStoreSpecV1());
+      list.add(new RecordAssociatedScriptLogsSpecV1());
+
+      list.add(new TablePossibleValuesSpecV1());
+      list.add(new ProcessPossibleValuesSpecV1());
+      list.add(new StandalonePossibleValuesSpecV1());
+
+      list.add(new WidgetSpecV1());
 
       list.add(new ProcessMetaDataSpecV1());
       list.add(new ProcessInitSpecV1());
       list.add(new ProcessStepSpecV1());
       list.add(new ProcessStatusSpecV1());
+      list.add(new ProcessRecordsSpecV1());
+      list.add(new ProcessCancelSpecV1());
+      list.add(new ProcessJobLaunchSpecV1());
+      list.addAll(JobsSpecV1.all());
+      list.add(new UploadsSpecV1());
+
+      list.add(new TableExportSpecV1());
+
+      list.add(new RecordFieldDownloadSpecV1());
+      list.add(new GeneralDownloadSpecV1());
+      list.add(new ReportRunSpecV1());
+
+      list.add(new BulkLoadUploadProfileSpecV1());
+      list.add(new BulkLoadSuggestMappingSpecV1());
+      list.add(new BulkLoadValidateSpecV1());
    }
 
    /***************************************************************************
@@ -61,6 +149,28 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
    public String getVersion()
    {
       return "v1";
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @Override
+   public String getSemanticVersion()
+   {
+      return (SEMANTIC_VERSION);
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @Override
+   public List<String> getFeatures()
+   {
+      return (FEATURES);
    }
 
 

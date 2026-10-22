@@ -187,6 +187,7 @@ public abstract class AbstractEndpointSpec<
    {
       try
       {
+         ExecutorSessionUtils.rejectMixedBearerCookies(context);
          if(isSecured())
          {
             ExecutorSessionUtils.setupSession(context, qInstance);
@@ -196,7 +197,7 @@ public abstract class AbstractEndpointSpec<
             QContext.setQInstance(qInstance);
          }
 
-         checkCredentialScopeOperation();
+         checkCredentialScopeOperation(context);
          abstractMiddlewareVersion.preExecute(context);
 
          INPUT    input    = buildInput(context);
@@ -253,9 +254,25 @@ public abstract class AbstractEndpointSpec<
     ***************************************************************************/
    protected void checkCredentialScopeOperation() throws QPermissionDeniedException
    {
+      checkCredentialScopeOperation(null);
+   }
+
+
+
+   /***************************************************************************
+    ** Match operation-specific objects only at the HTTP boundary. The legacy
+    ** overload cannot evaluate path constraints and therefore fails closed.
+    ***************************************************************************/
+   protected void checkCredentialScopeOperation(Context context) throws QPermissionDeniedException
+   {
       QSession         session = QContext.getQSession();
       QCredentialScope scope   = session == null ? null : session.getCredentialScope();
       if(scope != null && !QCredentialScope.allows(scope.getOperationIds(), getOperationId()) && !QCredentialScope.allows(scope.getOperationIds(), getOpenApiOperationId()))
+      {
+         throw (new QPermissionDeniedException("Permission denied."));
+      }
+      if(scope != null && scope.getOperationPathParameters() != null
+         && (context == null || !scope.allowsOperationPathParameters(getOperationId(), context.pathParamMap())))
       {
          throw (new QPermissionDeniedException("Permission denied."));
       }

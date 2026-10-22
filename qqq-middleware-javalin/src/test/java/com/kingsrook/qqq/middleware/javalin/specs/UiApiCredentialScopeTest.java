@@ -24,11 +24,21 @@ package com.kingsrook.qqq.middleware.javalin.specs;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
+import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.instances.AbstractQQQApplication;
+import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
+import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReferenceLambda;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QBackendStepMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QCredentialScope;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
@@ -58,6 +68,7 @@ class UiApiCredentialScopeTest
    private static final int    PORT   = 6275;
    private static final String NOTES  = "scopedNote";
    private static final String OTHER  = "otherNote";
+   private static final AtomicBoolean USER_CAN_READ = new AtomicBoolean(true);
 
    private QApplicationJavalinServer javalinServer;
 
@@ -74,6 +85,17 @@ class UiApiCredentialScopeTest
       @Override
       public void customizeSession(QInstance qInstance, QSession qSession, Map<String, Object> context)
       {
+         qSession.withPermission(OTHER + ".read").withPermission(OTHER + ".write");
+         if(USER_CAN_READ.get())
+         {
+            qSession.withPermission(NOTES + ".read");
+         }
+         if("boundary-session".equals(qSession.getUuid()))
+         {
+            qSession.withCredentialScope(new QCredentialScope().withCredentialId("boundary-token")
+               .withOperationPathParameters(Map.of("POST /table/{tableName}/query", Map.of("tableName", Set.of(NOTES)),
+                  "POST /processes/{processName}/init", Map.of("processName", Set.of("publishNote")))));
+         }
          if(qSession.getUuid() != null && qSession.getUuid().startsWith("scoped-"))
          {
             qSession.withCredentialScope(new QCredentialScope()
@@ -106,10 +128,15 @@ class UiApiCredentialScopeTest
             qInstance.addTable(new QTableMetaData()
                .withName(name)
                .withBackendName(TestUtils.BACKEND_NAME_MEMORY)
+               .withPermissionRules(new QPermissionRules().withLevel(PermissionLevel.READ_WRITE_PERMISSIONS))
                .withPrimaryKeyField("id")
                .withField(new QFieldMetaData("id", QFieldType.INTEGER))
                .withField(new QFieldMetaData("title", QFieldType.STRING)));
          }
+         qInstance.addProcess(new QProcessMetaData().withName("publishNote")
+            .withStep(new QBackendStepMetaData().withName("writeInternal")
+               .withCode(new QCodeReferenceLambda<BackendStep>((input, output) ->
+                  new InsertAction().execute(new InsertInput(OTHER).withRecord(new QRecord().withValue("id", 42).withValue("title", "published")))))));
          return (qInstance);
       }
    }
@@ -129,6 +156,7 @@ class UiApiCredentialScopeTest
       QJavalinImplementation.setSessionCookieHttpOnly(false);
       MemoryRecordStore.fullReset();
       Unirest.config().reset();
+      USER_CAN_READ.set(true);
    }
 
 
@@ -145,6 +173,54 @@ class UiApiCredentialScopeTest
          case "DELETE" -> Unirest.delete(url).header("Cookie", "sessionUUID=" + session).asString();
          default -> Unirest.post(url).header("Cookie", "sessionUUID=" + session).header("Content-Type", "application/json").body(body == null ? "{}" : body).asString();
       });
+   }
+
+
+
+   /***************************************************************************
+    ** Legacy routes cannot bypass an operation boundary; unscoped users work.
+    ***************************************************************************/
+   @Test
+   void legacyRoutesRejectOperationScopes() throws Exception
+   {
+      javalinServer = new QApplicationJavalinServer(new ScopeApplication()).withPort(PORT)
+         .withServeFrontendNext(false).withServeFrontendMaterialDashboard(false).withServeLegacyUnversionedMiddlewareAPI(true);
+      javalinServer.start();
+      String url = "http://localhost:" + PORT + "/data/" + NOTES + "/query";
+      assertEquals(200, Unirest.post(url).header("Cookie", "sessionUUID=plain-session").asString().getStatus());
+      for(String session : List.of("boundary-session", "scoped-1"))
+      {
+         HttpResponse<String> denied = Unirest.post(url).header("Cookie", "sessionUUID=" + session).asString();
+         assertEquals(403, denied.getStatus(), denied.getBody());
+      }
+      HttpResponse<String> mixed = Unirest.post(url).header("Cookie", "sessionId=plain-session").header("Authorization", "Bearer opaque").asString();
+      assertEquals(403, mixed.getStatus(), mixed.getBody());
+      assertTrue(mixed.getHeaders().get("Set-Cookie").isEmpty());
+      assertEquals(403, call("POST", "/logout", "boundary-session", null).getStatus());
+      String logoutUrl = "http://localhost:" + PORT + "/qqq/v1/logout";
+      HttpResponse<String> bearerLogout = Unirest.post(logoutUrl).header("Authorization", "Bearer opaque").asString();
+      assertEquals(200, bearerLogout.getStatus(), bearerLogout.getBody());
+      assertTrue(bearerLogout.getHeaders().get("Set-Cookie").isEmpty());
+      HttpResponse<String> mixedLogout = Unirest.post(logoutUrl).header("Authorization", "Bearer opaque")
+         .header("Cookie", "sessionUUID=plain-session").asString();
+      assertEquals(403, mixedLogout.getStatus(), mixedLogout.getBody());
+      assertTrue(mixedLogout.getHeaders().get("Set-Cookie").isEmpty());
+      for(String path : List.of("/manageSession", "/qqq/v1/manageSession"))
+      {
+         String sessionUrl = "http://localhost:" + PORT + path;
+         HttpResponse<String> bearer = Unirest.post(sessionUrl).header("Authorization", "Bearer opaque")
+            .header("Content-Type", "application/json").body("{}").asString();
+         assertEquals(401, bearer.getStatus(), bearer.getBody());
+         assertTrue(bearer.getHeaders().get("Set-Cookie").isEmpty());
+         HttpResponse<String> mixedSession = Unirest.post(sessionUrl).header("Authorization", "Bearer opaque")
+            .header("Cookie", "sessionUUID=plain-session").header("Content-Type", "application/json").body("{}").asString();
+         assertEquals(403, mixedSession.getStatus(), mixedSession.getBody());
+         assertTrue(mixedSession.getHeaders().get("Set-Cookie").isEmpty());
+         HttpResponse<String> conversion = Unirest.post(sessionUrl).header("Content-Type", "application/json")
+            .body("{\"sessionUUID\":\"boundary-session\"}").asString();
+         assertEquals(403, conversion.getStatus(), conversion.getBody());
+         assertTrue(conversion.getHeaders().get("Set-Cookie").isEmpty());
+      }
    }
 
 
@@ -175,6 +251,33 @@ class UiApiCredentialScopeTest
       JSONObject plainTables = new JSONObject(call("GET", "/metaData", "plain-session", null).getBody()).getJSONObject("tables");
       assertTrue(plainTables.has(NOTES) && plainTables.has(OTHER));
       assertEquals(200, call("POST", "/table/" + OTHER + "/query", "plain-session", null).getStatus());
+      assertEquals(200, call("POST", "/table/" + NOTES + "/query", "boundary-session", null).getStatus());
+      assertEquals(403, call("POST", "/table/" + OTHER + "/query", "boundary-session", null).getStatus());
+      assertEquals(403, call("POST", "/table/" + NOTES + "/count", "boundary-session", null).getStatus());
+      assertEquals(403, call("POST", "/table/%6ftherNote/query", "boundary-session", null).getStatus());
+      HttpResponse<String> published = Unirest.post("http://localhost:" + PORT + "/qqq/v1/processes/publishNote/init")
+         .header("Cookie", "sessionUUID=boundary-session").multiPartContent().field("values", "{}").asString();
+      assertEquals(200, published.getStatus(), published.getBody());
+      assertTrue(call("POST", "/table/" + OTHER + "/query", "plain-session", null).getBody().contains("published"));
+      assertEquals(403, call("POST", "/table/" + OTHER + "/query", "boundary-session", null).getStatus());
+      USER_CAN_READ.set(false);
+      assertEquals(403, call("POST", "/table/" + NOTES + "/query", "boundary-session", null).getStatus());
+      USER_CAN_READ.set(true);
+      for(String cookie : List.of("sessionUUID=plain-session", "sessionId=plain-session", "sessionUUID="))
+      {
+         HttpResponse<String> mixed = Unirest.post("http://localhost:" + PORT + "/qqq/v1/table/" + NOTES + "/query")
+            .header("Cookie", cookie).header("Authorization", "bEaReR opaque-token")
+            .header("Content-Type", "application/json").body("{}").asString();
+         assertEquals(403, mixed.getStatus(), mixed.getBody());
+         assertTrue(mixed.getHeaders().get("Set-Cookie").isEmpty());
+      }
+      for(String token : List.of("opaque-token", "Deny"))
+      {
+         HttpResponse<String> bearer = Unirest.post("http://localhost:" + PORT + "/qqq/v1/table/" + NOTES + "/query")
+            .header("Authorization", "Bearer " + token).header("Content-Type", "application/json").body("{}").asString();
+         assertEquals("Deny".equals(token) ? 401 : 200, bearer.getStatus(), bearer.getBody());
+         assertTrue(bearer.getHeaders().get("Set-Cookie").isEmpty());
+      }
 
       ////////////////////////////////////////////////////////////////////
       // the scoped session: only its table, read-only, only its ops    //

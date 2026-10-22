@@ -42,6 +42,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QInstanceValidationException;
 import com.kingsrook.qqq.backend.core.exceptions.QModuleDispatchException;
+import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -698,7 +699,7 @@ public class QSlackImplementation
    /*******************************************************************************
     **
     *******************************************************************************/
-   public static void setupSession(Context context, AbstractActionInput input) throws QModuleDispatchException, QAuthenticationException
+   public static void setupSession(Context context, AbstractActionInput input) throws QModuleDispatchException, QAuthenticationException, QPermissionDeniedException
    {
       QJavalinImplementation.setupSession(context, input);
       /*

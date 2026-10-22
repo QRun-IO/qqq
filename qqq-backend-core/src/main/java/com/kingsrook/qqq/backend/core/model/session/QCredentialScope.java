@@ -24,7 +24,10 @@ package com.kingsrook.qqq.backend.core.model.session;
 import java.io.Serial;
 import java.io.Serializable;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 
@@ -58,6 +61,7 @@ public class QCredentialScope implements Serializable, Cloneable
    private Set<String> reports;
    private Set<String> widgets;
    private Set<String> operationIds;
+   private Map<String, Map<String, Set<String>>> operationPathParameters;
 
 
 
@@ -96,6 +100,7 @@ public class QCredentialScope implements Serializable, Cloneable
          clone.reports = copy(reports);
          clone.widgets = copy(widgets);
          clone.operationIds = copy(operationIds);
+         clone.withOperationPathParameters(operationPathParameters);
          return (clone);
       }
       catch(CloneNotSupportedException e)
@@ -291,5 +296,61 @@ public class QCredentialScope implements Serializable, Cloneable
    {
       this.operationIds = copy(operationIds);
       return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** HTTP boundary allowlist keyed by canonical METHOD /template. A null map
+    ** adds no restriction; an empty map denies every operation. Each operation
+    ** maps parameter names to allowed decoded values; an empty parameter map
+    ** allows that operation without object restrictions. Internal actions retain
+    ** normal user permissions and the existing global object scope.
+    *******************************************************************************/
+   public QCredentialScope withOperationPathParameters(Map<String, Map<String, Set<String>>> operations)
+   {
+      if(operations == null)
+      {
+         operationPathParameters = null;
+         return (this);
+      }
+      Map<String, Map<String, Set<String>>> copied = new LinkedHashMap<>();
+      operations.forEach((operation, parameters) ->
+      {
+         Objects.requireNonNull(operation, "operation");
+         Map<String, Set<String>> copiedParameters = new LinkedHashMap<>();
+         Objects.requireNonNull(parameters, "parameters").forEach((name, values) ->
+            copiedParameters.put(Objects.requireNonNull(name, "parameter"), Set.copyOf(values)));
+         copied.put(operation, Collections.unmodifiableMap(copiedParameters));
+      });
+      operationPathParameters = Collections.unmodifiableMap(copied);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Immutable operation and parameter allowlists, or null when unrestricted.
+    *******************************************************************************/
+   public Map<String, Map<String, Set<String>>> getOperationPathParameters()
+   {
+      return (operationPathParameters);
+   }
+
+
+
+   /*******************************************************************************
+    ** Match exact route parameters supplied by the router; missing names fail
+    ** closed. This is additional to operationIds, never an alternate grant.
+    *******************************************************************************/
+   public boolean allowsOperationPathParameters(String operation, Map<String, String> parameters)
+   {
+      if(operationPathParameters == null)
+      {
+         return (true);
+      }
+      Map<String, Set<String>> allowed = operationPathParameters.get(operation);
+      return (allowed != null && parameters != null && allowed.entrySet().stream().allMatch(entry -> parameters.get(entry.getKey()) != null
+         && entry.getValue().contains(parameters.get(entry.getKey()))));
    }
 }

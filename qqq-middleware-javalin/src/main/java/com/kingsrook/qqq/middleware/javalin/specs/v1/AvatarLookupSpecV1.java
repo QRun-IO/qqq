@@ -143,7 +143,7 @@ public class AvatarLookupSpecV1 extends AbstractEndpointSpec<AbstractMiddlewareI
       try
       {
          ExecutorSessionUtils.setupSession(context, qInstance);
-         checkCredentialScopeOperation();
+         checkCredentialScopeOperation(context);
          abstractMiddlewareVersion.preExecute(context);
 
          List<String>        userIds = readUserIds(context);

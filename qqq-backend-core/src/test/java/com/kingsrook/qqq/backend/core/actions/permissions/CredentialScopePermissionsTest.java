@@ -21,6 +21,7 @@
 package com.kingsrook.qqq.backend.core.actions.permissions;
 
 
+import java.util.Map;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -114,5 +115,34 @@ class CredentialScopePermissionsTest extends BaseTest
       assertEquals("token", new QSession().withClientChannel("token:t2").getClientChannelName());
       assertTrue(QCredentialScope.allows(null, "anything"));
       assertFalse(QCredentialScope.allows(Set.of("a"), null));
+   }
+
+
+
+   /***************************************************************************
+    ** Boundary scopes are copied deeply and never imply internal permissions.
+    ***************************************************************************/
+   @Test
+   void operationPathScopeCopiesAndFailsClosed() throws Exception
+   {
+      String operation = "POST /table/{tableName}/query";
+      Set<String> names = new java.util.HashSet<>(Set.of("a"));
+      Map<String, Map<String, Set<String>>> source = new java.util.HashMap<>();
+      source.put(operation, Map.of("tableName", names));
+      QCredentialScope scope = new QCredentialScope().withOperationPathParameters(source);
+      QSession clone = new QSession().withCredentialScope(scope).clone();
+      names.add("b");
+      source.clear();
+      assertTrue(scope.allowsOperationPathParameters(operation, Map.of("tableName", "a")));
+      assertFalse(scope.allowsOperationPathParameters(operation, Map.of("tableName", "b")));
+      assertFalse(scope.allowsOperationPathParameters(operation, Map.of()));
+      assertFalse(scope.allowsOperationPathParameters(operation, null));
+      assertFalse(scope.allowsOperationPathParameters("POST /table/{tableName}", Map.of("tableName", "a")));
+      assertThrows(UnsupportedOperationException.class, () -> scope.getOperationPathParameters().get(operation).get("tableName").add("b"));
+      clone.getCredentialScope().withOperationPathParameters(Map.of());
+      assertFalse(clone.getCredentialScope().allowsOperationPathParameters(operation, Map.of("tableName", "a")));
+      assertTrue(scope.allowsOperationPathParameters(operation, Map.of("tableName", "a")));
+      assertTrue(new QCredentialScope().allowsOperationPathParameters(operation, Map.of()));
+      assertTrue(new QCredentialScope().withOperationPathParameters(Map.of(operation, Map.of())).allowsOperationPathParameters(operation, Map.of()));
    }
 }

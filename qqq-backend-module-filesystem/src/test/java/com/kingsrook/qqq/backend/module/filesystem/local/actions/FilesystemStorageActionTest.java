@@ -89,7 +89,7 @@ class FilesystemStorageActionTest extends FilesystemActionTest
       Files.createSymbolicLink(base.resolve("escape.txt"), outside);
       Files.createSymbolicLink(base.resolve("outside"), directory);
       StorageAction action = new StorageAction();
-      for(String reference : Arrays.asList(null, "", ".", "..", "../private.txt", outside.toString(), "escape.txt", "outside/new.txt"))
+      for(String reference : Arrays.asList(null, "", ".", "..", "../private.txt", outside.toString(), "escape.txt", "outside/new.txt", "bad\0name"))
       {
          StorageInput input = new StorageInput(TestUtils.TABLE_NAME_BLOB_LOCAL_FS).withReference(reference);
          assertThrows(QBadRequestException.class, () -> action.getInputStream(input), "read: " + reference);

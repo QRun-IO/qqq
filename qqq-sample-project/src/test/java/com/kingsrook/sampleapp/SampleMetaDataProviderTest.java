@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.sampleapp;
@@ -28,8 +27,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
+import com.kingsrook.qqq.backend.core.actions.values.ContingentPossibleValueHelper;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
+import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
@@ -40,6 +42,7 @@ import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.processes.implementations.mock.MockBackendStep;
 import com.kingsrook.qqq.backend.module.filesystem.local.actions.FilesystemQueryAction;
 import com.kingsrook.qqq.backend.module.filesystem.local.model.metadata.FilesystemTableBackendDetails;
+import com.kingsrook.sampleapp.metadata.ContingentPlaceMetaData;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
 import org.apache.commons.io.FileUtils;
 import org.junit.jupiter.api.AfterEach;
@@ -169,4 +172,25 @@ public class SampleMetaDataProviderTest
       });
    }
 
+
+
+
+   /*******************************************************************************
+    ** The acceptance fixture is seeded and its process echoes the chosen city.
+    *******************************************************************************/
+   @Test
+   void contingentPlaceSample() throws Exception
+   {
+      Assertions.assertEquals(2, new QueryAction().execute(new QueryInput().withTableName("country")).getRecords().size());
+      Assertions.assertEquals(4, new QueryAction().execute(new QueryInput().withTableName("countryState")).getRecords().size());
+      Assertions.assertEquals(8, new QueryAction().execute(new QueryInput().withTableName("stateCity")).getRecords().size());
+      Assertions.assertEquals(2, new QueryAction().execute(new QueryInput().withTableName("placeAddress")).getRecords().size());
+      assertTrue(ContingentPossibleValueHelper.getDependencyFieldNames(QContext.getQInstance().getTable("placeAddress").getField("stateId")).contains("countryId"));
+      assertNotNull(QContext.getQInstance().getProcess("placeAddressPick"));
+      RunBackendStepInput input = new RunBackendStepInput();
+      input.addValue("cityId", 5);
+      RunBackendStepOutput output = new RunBackendStepOutput();
+      new ContingentPlaceMetaData.EchoCityStep().run(input, output);
+      Assertions.assertEquals("Toronto", output.getValue("chosenCityName"));
+   }
 }

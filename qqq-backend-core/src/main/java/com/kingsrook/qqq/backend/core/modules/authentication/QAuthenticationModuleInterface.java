@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.modules.authentication;
@@ -28,8 +27,10 @@ import java.util.Map;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.session.QUser;
+import com.kingsrook.qqq.backend.core.serviceidentity.QServiceIdentityProviderInterface;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import org.apache.commons.lang3.NotImplementedException;
@@ -46,6 +47,18 @@ public interface QAuthenticationModuleInterface
     **
     *******************************************************************************/
    QSession createSession(QInstance qInstance, Map<String, String> context) throws QAuthenticationException;
+
+
+   /*******************************************************************************
+    ** Create a session for the given (possibly scoped) authentication provider.
+    ** Callers that resolved a provider (e.g., per API) use this, so a module can
+    ** read its own provider's settings rather than the instance default.  The
+    ** default ignores the metadata, for modules that only know the instance one.
+    *******************************************************************************/
+   default QSession createSession(QInstance qInstance, QAuthenticationMetaData authenticationMetaData, Map<String, String> context) throws QAuthenticationException
+   {
+      return (createSession(qInstance, context));
+   }
 
 
    /*******************************************************************************
@@ -73,6 +86,18 @@ public interface QAuthenticationModuleInterface
       }
       return session;
    }
+
+
+   /*******************************************************************************
+    ** How this module turns a declared service principal into a session
+    ** (docs/SERVICE-IDENTITY.md), or null when it does not support service
+    ** principals.
+    *******************************************************************************/
+   default QServiceIdentityProviderInterface getServiceIdentityProvider()
+   {
+      return (null);
+   }
+
 
 
    /*******************************************************************************

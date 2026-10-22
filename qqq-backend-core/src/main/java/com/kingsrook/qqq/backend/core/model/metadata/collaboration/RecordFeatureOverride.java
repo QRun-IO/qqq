@@ -1,0 +1,238 @@
+/*
+ * QQQ - Low-code Application Framework for Engineers.
+ * Copyright (C) 2021-2026.  Kingsrook, LLC
+ * 651 N Broad St Ste 205 # 6917 | Middletown DE 19709 | United States
+ * contact@kingsrook.com
+ * https://github.com/Kingsrook/
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.kingsrook.qqq.backend.core.model.metadata.collaboration;
+
+
+import java.io.Serializable;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+
+/*******************************************************************************
+ **
+ *******************************************************************************/
+public class RecordFeatureOverride implements Serializable
+{
+   private ScopeType scopeType;
+   private String scopeName;
+   private RecordFeature feature;
+   private Boolean enabled;
+   private Map<String, Serializable> settings = new LinkedHashMap<>();
+   private FeaturePermissionMode permissionMode;
+
+
+   /*******************************************************************************
+    ** Scope of an override.
+    *******************************************************************************/
+   public enum ScopeType
+   {
+      INSTANCE,
+      APP,
+      TABLE
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for scopeType
+    *******************************************************************************/
+   public ScopeType getScopeType()
+   {
+      return (this.scopeType);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for scopeType
+    *******************************************************************************/
+   public void setScopeType(ScopeType scopeType)
+   {
+      this.scopeType = scopeType;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for scopeType
+    *******************************************************************************/
+   public RecordFeatureOverride withScopeType(ScopeType scopeType)
+   {
+      setScopeType(scopeType);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for scopeName
+    *******************************************************************************/
+   public String getScopeName()
+   {
+      return (this.scopeName);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for scopeName
+    *******************************************************************************/
+   public void setScopeName(String scopeName)
+   {
+      this.scopeName = scopeName;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for scopeName
+    *******************************************************************************/
+   public RecordFeatureOverride withScopeName(String scopeName)
+   {
+      setScopeName(scopeName);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for feature
+    *******************************************************************************/
+   public RecordFeature getFeature()
+   {
+      return (this.feature);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for feature
+    *******************************************************************************/
+   public void setFeature(RecordFeature feature)
+   {
+      this.feature = feature;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for feature
+    *******************************************************************************/
+   public RecordFeatureOverride withFeature(RecordFeature feature)
+   {
+      setFeature(feature);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for enabled
+    *******************************************************************************/
+   public Boolean getEnabled()
+   {
+      return (this.enabled);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for enabled
+    *******************************************************************************/
+   public void setEnabled(Boolean enabled)
+   {
+      this.enabled = enabled;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for enabled
+    *******************************************************************************/
+   public RecordFeatureOverride withEnabled(Boolean enabled)
+   {
+      setEnabled(enabled);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for settings
+    *******************************************************************************/
+   public Map<String, Serializable> getSettings()
+   {
+      return (this.settings);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for settings
+    *******************************************************************************/
+   public void setSettings(Map<String, Serializable> settings)
+   {
+      this.settings = settings;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for settings
+    *******************************************************************************/
+   public RecordFeatureOverride withSettings(Map<String, Serializable> settings)
+   {
+      setSettings(settings);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for permissionMode
+    *******************************************************************************/
+   public FeaturePermissionMode getPermissionMode()
+   {
+      return (this.permissionMode);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for permissionMode
+    *******************************************************************************/
+   public void setPermissionMode(FeaturePermissionMode permissionMode)
+   {
+      this.permissionMode = permissionMode;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for permissionMode
+    *******************************************************************************/
+   public RecordFeatureOverride withPermissionMode(FeaturePermissionMode permissionMode)
+   {
+      setPermissionMode(permissionMode);
+      return (this);
+   }
+
+}

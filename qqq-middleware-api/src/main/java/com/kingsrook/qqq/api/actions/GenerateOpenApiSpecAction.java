@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.api.actions;
@@ -32,6 +31,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.kingsrook.qqq.api.model.APIVersion;
 import com.kingsrook.qqq.api.model.APIVersionRange;
 import com.kingsrook.qqq.api.model.actions.GenerateOpenApiSpecInput;
@@ -66,6 +67,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.authentication.Authenticati
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValue;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSourceType;
@@ -343,7 +345,7 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
 
       for(String exampleRef : exampleRefs)
       {
-         rs.put(exampleRef, new Example().withRef("#components/examples/" + exampleRef));
+         rs.put(exampleRef, new Example().withRef("#/components/examples/" + exampleRef));
       }
 
       return (rs);
@@ -470,6 +472,7 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
          case OAUTH2, AUTH_0 -> SecuritySchemeType.OAUTH2;
          case TABLE_BASED -> SecuritySchemeType.API_KEY; // Table-based auth typically uses API keys
          case FULLY_ANONYMOUS, MOCK -> null; // No security scheme for anonymous/mock
+         case CUSTOM -> null; // an application module: declare its schemes explicitly
       };
    }
 
@@ -541,9 +544,19 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
    private static List<Map<String, List<String>>> getSecurity(ApiInstanceMetaData apiInstanceMetaData, String permissionName)
    {
       List<Map<String, List<String>>> rs = new ArrayList<>();
+
+      ///////////////////////////////////////////////////////////////////////////
+      // an API that answers anonymous callers makes credentials optional: an //
+      // empty requirement object means "no credentials" (OpenAPI 3.0 4.8.30)  //
+      ///////////////////////////////////////////////////////////////////////////
+      if(apiInstanceMetaData.getAllowsAnonymousAccess() && CollectionUtils.nullSafeHasContents(apiInstanceMetaData.getSecuritySchemes()))
+      {
+         rs.add(new LinkedHashMap<>());
+      }
+
       for(Map.Entry<String, SecurityScheme> entry : CollectionUtils.nonNullMap(apiInstanceMetaData.getSecuritySchemes()).entrySet())
       {
-         rs.add(MapBuilder.of(entry.getKey(), List.of(permissionName)));
+         rs.add(MapBuilder.of(entry.getKey(), entry.getValue().getTypeEnum() == SecuritySchemeType.OAUTH2 ? List.of(permissionName) : List.of()));
       }
       return (rs);
    }
@@ -664,7 +677,10 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
          throw (new QException("[" + version + "] is not a supported API Version."));
       }
 
-      String basePath = apiInstanceMetaData.getPath() + version + "/";
+      ///////////////////////////////////////////////////////////////////////////////
+      // paths as clients see them (publicPath when a proxy maps the mount path) //
+      ///////////////////////////////////////////////////////////////////////////////
+      String basePath = apiInstanceMetaData.getEffectivePublicPath() + version + "/";
       String apiName  = apiInstanceMetaData.getName();
 
       OpenAPI openAPI = new OpenAPI()
@@ -674,7 +690,7 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
             .withDescription(apiInstanceMetaData.getDescription())
             .withContact(new Contact()
                .withEmail(apiInstanceMetaData.getContactEmail()))
-            .withVersion(version));
+            .withVersion(apiInstanceMetaData.getSemanticVersion(version)));
 
       openAPI.withServers(apiInstanceMetaData.getServers());
 
@@ -796,9 +812,9 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
 
          boolean getEnabled                = ApiOperation.GET.isOperationEnabled(operationProviders) && getCapability;
          boolean queryByQueryStringEnabled = ApiOperation.QUERY_BY_QUERY_STRING.isOperationEnabled(operationProviders) && queryCapability;
-         boolean insertEnabled             = ApiOperation.UPDATE.isOperationEnabled(operationProviders) && insertCapability;
+         boolean insertEnabled             = ApiOperation.INSERT.isOperationEnabled(operationProviders) && insertCapability;
          boolean insertBulkEnabled         = ApiOperation.BULK_INSERT.isOperationEnabled(operationProviders) && insertCapability;
-         boolean updateEnabled             = ApiOperation.INSERT.isOperationEnabled(operationProviders) && updateCapability;
+         boolean updateEnabled             = ApiOperation.UPDATE.isOperationEnabled(operationProviders) && updateCapability;
          boolean updateBulkEnabled         = ApiOperation.BULK_UPDATE.isOperationEnabled(operationProviders) && updateCapability;
          boolean deleteEnabled             = ApiOperation.DELETE.isOperationEnabled(operationProviders) && deleteCapability;
          boolean deleteBulkEnabled         = ApiOperation.BULK_DELETE.isOperationEnabled(operationProviders) && deleteCapability;
@@ -822,7 +838,8 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
          QFieldMetaData       primaryKeyField     = table.getField(table.getPrimaryKeyField());
          String               primaryKeyLabel     = primaryKeyField.getLabel();
          String               primaryKeyApiName   = ApiFieldMetaData.getEffectiveApiFieldName(apiName, primaryKeyField);
-         List<QFieldMetaData> tableApiFields      = new GetTableApiFieldsAction().execute(new GetTableApiFieldsInput().withTableName(tableName).withVersion(version).withApiName(apiName)).getFields();
+         List<QFieldMetaData> tableApiFields      = new GetTableApiFieldsAction().execute(new GetTableApiFieldsInput().withTableName(tableName).withVersion(version).withApiName(apiName).withForSpecification(true)).getFields();
+         List<QFieldMetaData> tableOutputFields   = new GetTableApiFieldsAction().execute(new GetTableApiFieldsInput().withTableName(tableName).withVersion(version).withApiName(apiName).withIncludeVirtualFields(true).withForSpecification(true)).getFields();
 
          tagList.add(new Tag()
             .withName(tableLabel)
@@ -862,7 +879,7 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
          //////////////////////////////////////
          // build the schemas for this table //
          //////////////////////////////////////
-         Schema tableSchema = buildTableSchema(apiInstanceMetaData, version, table, tableApiFields);
+         Schema tableSchema = buildTableSchema(apiInstanceMetaData, version, table, tableOutputFields);
          componentSchemas.put(tableApiName, tableSchema);
 
          //////////////////////////////////////////////////////////////////////////////
@@ -1218,8 +1235,12 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
 
       GenerateOpenApiSpecOutput output = new GenerateOpenApiSpecOutput();
       output.setOpenAPI(openAPI);
-      output.setYaml(YamlUtils.toYaml(openAPI));
-      output.setJson(JsonUtils.toPrettyJson(openAPI));
+      output.setYaml(YamlUtils.toYamlCustomized(openAPI, builder -> builder.serializationInclusion(JsonInclude.Include.NON_NULL)));
+      output.setJson(JsonUtils.toJsonCustomized(openAPI, builder ->
+      {
+         builder.serializationInclusion(JsonInclude.Include.NON_NULL);
+         builder.enable(SerializationFeature.INDENT_OUTPUT);
+      }));
       return (output);
    }
 
@@ -1430,7 +1451,14 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
       ApiProcessOutputInterface output = apiProcessMetaData.getOutput();
       if(!ApiProcessMetaData.AsyncMode.ALWAYS.equals(apiProcessMetaData.getAsyncMode()))
       {
-         responses.putAll(output.getSpecResponses(apiName));
+         if(output == null)
+         {
+            responses.put(HttpStatus.NO_CONTENT.getCode(), new Response().withDescription("The process completed."));
+         }
+         else
+         {
+            responses.putAll(output.getSpecResponses(apiName));
+         }
       }
 
       if(!ApiProcessMetaData.AsyncMode.NEVER.equals(apiProcessMetaData.getAsyncMode()))
@@ -1646,20 +1674,25 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
          addedAny = false;
          for(String neededTableSchema : neededTableSchemas)
          {
-            if(!componentSchemas.containsKey(neededTableSchema))
+            QTableMetaData            table                     = QContext.getQInstance().getTable(neededTableSchema);
+            ApiTableMetaDataContainer apiTableMetaDataContainer = ApiTableMetaDataContainer.of(table);
+            ApiTableMetaData          apiTableMetaData          = apiTableMetaDataContainer == null ? null : apiTableMetaDataContainer.getApiTableMetaData(apiName);
+
+            //////////////////////////////////////////////////////////////////////
+            // schemas are keyed by the table's API name (not its table name), //
+            // or an association child with an apiTableName would loop forever //
+            //////////////////////////////////////////////////////////////////////
+            String tableApiName = apiTableMetaData != null && StringUtils.hasContent(apiTableMetaData.getApiTableName()) ? apiTableMetaData.getApiTableName() : table.getName();
+            if(!componentSchemas.containsKey(tableApiName))
             {
                LOG.debug("Adding needed schema: " + neededTableSchema);
-               QTableMetaData table = QContext.getQInstance().getTable(neededTableSchema);
-
-               ApiTableMetaDataContainer apiTableMetaDataContainer = ApiTableMetaDataContainer.of(table);
-               ApiTableMetaData          apiTableMetaData          = apiTableMetaDataContainer.getApiTableMetaData(apiName);
-
-               String tableApiName = StringUtils.hasContent(apiTableMetaData.getApiTableName()) ? apiTableMetaData.getApiTableName() : table.getName();
 
                List<QFieldMetaData> tableApiFields = new GetTableApiFieldsAction().execute(new GetTableApiFieldsInput()
                   .withTableName(table.getName())
                   .withVersion(version)
-                  .withApiName(apiName)).getFields();
+                  .withApiName(apiName)
+                  .withIncludeVirtualFields(true)
+                  .withForSpecification(true)).getFields();
 
                componentSchemas.put(tableApiName, buildTableSchema(apiInstanceMetaData, version, table, tableApiFields));
                addedAny = true;
@@ -1693,6 +1726,14 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
 
          String defaultDescription = fieldLabel + " for the " + table.getLabel() + ".";
          Schema fieldSchema        = getFieldSchema(field, defaultDescription, apiInstanceMetaData);
+         // TODO: Add x-qqq-access-tier when the shared OpenAPI Schema model supports vendor extensions.
+         if(field instanceof QVirtualFieldMetaData)
+         {
+            ///////////////////////////////////////////////////////////////
+            // computed by the table: in responses only, never accepted //
+            ///////////////////////////////////////////////////////////////
+            fieldSchema.setReadOnly(true);
+         }
          tableFields.put(fieldName, fieldSchema);
       }
 
@@ -1779,6 +1820,15 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
       if(!field.getIsRequired())
       {
          fieldSchema.setNullable(true);
+      }
+      else if(field.getIsEditable())
+      {
+         fieldSchema.setDescription(fieldSchema.getDescription() + "  Required when inserting.");
+      }
+
+      if(field.getFieldSecurityLock() != null)
+      {
+         fieldSchema.setDescription(fieldSchema.getDescription() + "  Returned only to callers whose session may see it (field security lock).");
       }
 
       if(field.getType().isStringLike() && field.getMaxLength() != null)

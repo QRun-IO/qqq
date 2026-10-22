@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin.executors.io;
@@ -27,6 +26,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.TableVariant;
 
 
 /*******************************************************************************
@@ -48,6 +48,9 @@ public class ProcessInitOrStepInput extends AbstractMiddlewareInput
    // todo - add (in next version?) startAtStep (for back)
 
    private RunProcessInput.FrontendStepBehavior frontendStepBehavior = RunProcessInput.FrontendStepBehavior.BREAK;
+   private String startAtStep;
+
+   private TableVariant tableVariant;
 
    // todo - file??
 
@@ -290,6 +293,68 @@ public class ProcessInitOrStepInput extends AbstractMiddlewareInput
    public ProcessInitOrStepInput withStartAfterStep(String startAfterStep)
    {
       this.startAfterStep = startAfterStep;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for startAtStep
+    *******************************************************************************/
+   public String getStartAtStep()
+   {
+      return (startAtStep);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for startAtStep
+    *******************************************************************************/
+   public void setStartAtStep(String startAtStep)
+   {
+      this.startAtStep = startAtStep;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for startAtStep
+    *******************************************************************************/
+   public ProcessInitOrStepInput withStartAtStep(String startAtStep)
+   {
+      this.startAtStep = startAtStep;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for tableVariant
+    *******************************************************************************/
+   public TableVariant getTableVariant()
+   {
+      return (this.tableVariant);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for tableVariant
+    *******************************************************************************/
+   public void setTableVariant(TableVariant tableVariant)
+   {
+      this.tableVariant = tableVariant;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for tableVariant
+    *******************************************************************************/
+   public ProcessInitOrStepInput withTableVariant(TableVariant tableVariant)
+   {
+      this.tableVariant = tableVariant;
       return (this);
    }
 

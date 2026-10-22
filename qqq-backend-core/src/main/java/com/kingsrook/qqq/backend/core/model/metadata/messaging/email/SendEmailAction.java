@@ -5,38 +5,45 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.model.metadata.messaging.email;
 
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.actions.messaging.Attachment;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.Content;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.MultiParty;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.Party;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.PartyRole;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.SendMessageInput;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.SendMessageOutput;
+import com.kingsrook.qqq.backend.core.model.actions.messaging.SendMessageStatus;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.email.EmailContentRole;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.email.EmailPartyRole;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import jakarta.activation.DataHandler;
+import jakarta.activation.DataSource;
 import jakarta.mail.Address;
 import jakarta.mail.Message;
 import jakarta.mail.Multipart;
@@ -121,6 +128,13 @@ public class SendEmailAction
             }
          }
 
+         for(Attachment attachment : sendMessageInput.getAttachmentList() == null ? List.<Attachment>of() : sendMessageInput.getAttachmentList())
+         {
+            MimeBodyPart part = new MimeBodyPart();
+            part.setFileName(attachment.getName());
+            part.setDataHandler(new DataHandler(new AttachmentDataSource(attachment)));
+            multipart.addBodyPart(part);
+         }
          emailMessage.setContent(multipart);
 
          /////////////
@@ -134,7 +148,7 @@ public class SendEmailAction
          throw (new QException("Error sending email", e));
       }
 
-      return null;
+      return (new SendMessageOutput().withStatus(SendMessageStatus.SENT));
    }
 
 
@@ -147,14 +161,19 @@ public class SendEmailAction
       if(EmailPartyRole.REPLY_TO.equals(party.getRole()))
       {
          InternetAddress internetAddress = getInternetAddressFromParty(party);
-         Address[]       replyTo         = emailMessage.getReplyTo();
+
+         /////////////////////////////////////////////////////////////////////
+         // getReplyTo otherwise supplies From, not explicit reply parties. //
+         /////////////////////////////////////////////////////////////////////
+         Address[] replyTo = emailMessage.getHeader("Reply-To") == null ? null : emailMessage.getReplyTo();
          if(replyTo == null || replyTo.length == 0)
          {
             emailMessage.setReplyTo(new Address[] { internetAddress });
          }
          else
          {
-            List<Address> replyToList = Arrays.asList(replyTo);
+            List<Address> replyToList = new ArrayList<>(Arrays.asList(replyTo));
+            replyToList.add(internetAddress);
             emailMessage.setReplyTo(replyToList.toArray(new Address[0]));
          }
       }
@@ -213,4 +232,60 @@ public class SendEmailAction
       return internetAddress;
    }
 
+
+
+   /*******************************************************************************
+    ** Read-only MIME data source; Jakarta Mail opens and closes each stream it reads.
+    *******************************************************************************/
+   private record AttachmentDataSource(Attachment attachment) implements DataSource
+   {
+      /*******************************************************************************
+       ** Open a fresh storage stream for each MIME serialization pass.
+       *******************************************************************************/
+      @Override
+      public InputStream getInputStream() throws IOException
+      {
+         try
+         {
+            return (attachment.openStream());
+         }
+         catch(Exception e)
+         {
+            throw new IOException("Could not open email attachment", e);
+         }
+      }
+
+
+
+      /*******************************************************************************
+       ** Attachments are immutable input to the transport.
+       *******************************************************************************/
+      @Override
+      public OutputStream getOutputStream() throws IOException
+      {
+         throw new IOException("Read-only email attachment");
+      }
+
+
+
+      /*******************************************************************************
+       ** Default binary MIME type avoids interpreting untrusted file content.
+       *******************************************************************************/
+      @Override
+      public String getContentType()
+      {
+         return (attachment.getContentType());
+      }
+
+
+
+      /*******************************************************************************
+       ** Suggested filename in the MIME attachment.
+       *******************************************************************************/
+      @Override
+      public String getName()
+      {
+         return (attachment.getName());
+      }
+   }
 }

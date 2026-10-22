@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin;
@@ -41,6 +40,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -62,6 +63,7 @@ import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
+import com.kingsrook.qqq.backend.core.actions.values.ContingentPossibleValueHelper;
 import com.kingsrook.qqq.backend.core.actions.values.QValueFormatter;
 import com.kingsrook.qqq.backend.core.actions.values.SearchPossibleValueSourceAction;
 import com.kingsrook.qqq.backend.core.adapters.QInstanceAdapter;
@@ -122,6 +124,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendVariant;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.PossibleValueSearchFilterUseCase;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.statusmessages.BadInputStatusMessage;
@@ -139,10 +142,15 @@ import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import com.kingsrook.qqq.backend.core.utils.collections.MapBuilder;
 import com.kingsrook.qqq.backend.core.utils.lambdas.UnsafeConsumer;
 import com.kingsrook.qqq.backend.core.utils.lambdas.UnsafeFunction;
+import com.kingsrook.qqq.middleware.javalin.executors.ExecutorSessionUtils;
+import com.kingsrook.qqq.middleware.javalin.executors.WidgetExecutor;
 import com.kingsrook.qqq.middleware.javalin.misc.DownloadFileSupplementalAction;
+import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiInProcessSessions;
 import io.javalin.Javalin;
 import io.javalin.apibuilder.EndpointGroup;
 import io.javalin.http.Context;
+import io.javalin.http.Cookie;
+import io.javalin.http.SameSite;
 import io.javalin.http.UploadedFile;
 import org.apache.commons.io.FileUtils;
 import org.eclipse.jetty.http.HttpStatus;
@@ -150,6 +158,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 import static com.kingsrook.qqq.middleware.javalin.QJavalinAccessLogger.logPairIfSlow;
+import static io.javalin.apibuilder.ApiBuilder.before;
 import static io.javalin.apibuilder.ApiBuilder.delete;
 import static io.javalin.apibuilder.ApiBuilder.get;
 import static io.javalin.apibuilder.ApiBuilder.patch;
@@ -162,9 +171,36 @@ import static io.javalin.apibuilder.ApiBuilder.put;
  ** QQQ Javalin implementation.  Given a QInstance, defines all routes needed
  ** to respond to http requests and route down into the qqq backend.
  **
+ ** DEPRECATED ROUTES: the unversioned routes defined by getRoutes() (/metaData,
+ ** /data/..., /processes/..., /widget/..., /possibleValues/..., /download/...,
+ ** /reports/..., /serverInfo, /manageSession) are the legacy API of the
+ ** Material Dashboard.  The UI API is the versioned /qqq/v1 (docs/UI-API-*.md);
+ ** Next UI makes no calls to these routes.  They stay served (the default of
+ ** QApplicationJavalinServer.serveLegacyUnversionedMiddlewareAPI) while the
+ ** Material Dashboard uses them, and every response carries a Deprecation
+ ** header and a Link to the successor.  Sunset: they will be removed together
+ ** with the Material Dashboard; no date is set yet (docs/UI-API-CHANGELOG.md).
  *******************************************************************************/
 public class QJavalinImplementation
 {
+   /***************************************************************************
+    ** The value of the Deprecation header (RFC 9745) on legacy responses: the
+    ** date the routes were deprecated (2026-10-13), as @epoch-seconds.
+    ***************************************************************************/
+   public static final String LEGACY_DEPRECATION_HEADER_VALUE = "@1760313600";
+
+   /***************************************************************************
+    ** The Link header on legacy responses, naming the successor API.
+    ***************************************************************************/
+   public static final String LEGACY_SUCCESSOR_LINK = "</qqq/v1/openapi.html>; rel=\"successor-version\"";
+
+   /***************************************************************************
+    ** Path roots of the legacy routes (each also with /* below it).
+    ***************************************************************************/
+   private static final List<String> LEGACY_ROUTE_ROOTS = List.of("/manageSession", "/metaData", "/data", "/possibleValues", "/widget", "/serverInfo", "/processes", "/download", "/reports");
+
+   private static final Set<String> loggedLegacyRoots = ConcurrentHashMap.newKeySet();
+
    public static final  int                 SESSION_COOKIE_AGE            = 60 * 60 * 24;
    public static final  String              SESSION_ID_COOKIE_NAME        = "sessionId";
    public static final  String              SESSION_UUID_COOKIE_NAME      = "sessionUUID";
@@ -185,6 +221,66 @@ public class QJavalinImplementation
    private static List<EndpointGroup> endpointGroups;
 
    private static long startTime = 0;
+
+   private static boolean sessionCookieHttpOnly = false;
+
+
+
+   /*******************************************************************************
+    ** Set a session cookie (sessionUUID, sessionId) for the whole site with
+    ** SameSite=Lax, so other sites cannot send it with cross-site POSTs, and
+    ** Secure when the request arrived over HTTPS (directly or through a proxy
+    ** that sets X-Forwarded-Proto) (QRun-IO/qqq#696). HttpOnly, so script in
+    ** the page cannot read the session token, when setSessionCookieHttpOnly is
+    ** on (QRun-IO/qqq#733).
+    **
+    ** @param context the request whose response sets the cookie
+    ** @param name cookie name
+    ** @param value session value
+    *******************************************************************************/
+   public static void setSessionCookie(Context context, String name, String value)
+   {
+      context.cookie(new Cookie(name, value, "/", SESSION_COOKIE_AGE, isSecureRequest(context), sessionCookieHttpOnly, null, SameSite.LAX));
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether session cookies are set HttpOnly (see setSessionCookieHttpOnly).
+    *******************************************************************************/
+   public static boolean getSessionCookieHttpOnly()
+   {
+      return (sessionCookieHttpOnly);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set whether session cookies (sessionUUID, sessionId) are HttpOnly. The Next
+    ** dashboard resumes sessions through v1 manageSession without reading the
+    ** cookie, so it works either way; the Material Dashboard reads sessionUUID in
+    ** the browser, so leave this off while it is in use. Off by default here;
+    ** QApplicationJavalinServer turns it on unless it serves the Material
+    ** Dashboard (QRun-IO/qqq#733).
+    **
+    ** @param sessionCookieHttpOnly true to set session cookies HttpOnly
+    *******************************************************************************/
+   public static void setSessionCookieHttpOnly(boolean sessionCookieHttpOnly)
+   {
+      QJavalinImplementation.sessionCookieHttpOnly = sessionCookieHttpOnly;
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether the request came over HTTPS (the connection, or X-Forwarded-Proto).
+    *******************************************************************************/
+   static boolean isSecureRequest(Context context)
+   {
+      String forwardedProto = context.header("X-Forwarded-Proto");
+      String firstProto     = StringUtils.hasContent(forwardedProto) ? forwardedProto.split(",")[0].trim() : "";
+      return ("https".equalsIgnoreCase(context.scheme()) || "https".equalsIgnoreCase(firstProto));
+   }
 
 
 
@@ -353,16 +449,32 @@ public class QJavalinImplementation
             authContext.put(ValueUtils.getValueAsString(entry.getKey()), ValueUtils.getValueAsString(entry.getValue()));
          }
 
+         ///////////////////////////////////////////////////////////////////////////////////
+         // Only an empty resume request (optionally with the existing storage control) //
+         // may use the cookie. Explicit or custom authentication input takes priority. //
+         ///////////////////////////////////////////////////////////////////////////////////
+         boolean resumedFromCookie = false;
+         boolean resumeRequest = map.isEmpty() || (map.size() == 1 && map.containsKey(Auth0AuthenticationModule.DO_STORE_USER_SESSION_KEY));
+         String cookieSessionUUID = context.cookie(SESSION_UUID_COOKIE_NAME);
+         if(resumeRequest && context.header("Authorization") == null && StringUtils.hasContent(cookieSessionUUID))
+         {
+            authContext.put(Auth0AuthenticationModule.SESSION_UUID_KEY, cookieSessionUUID);
+            resumedFromCookie = true;
+         }
+
          /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
          // put the qInstance into context - but no session yet (since, the whole point of this call is to manage the session!) //
          /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
          QContext.init(qInstance, null);
          QSession session = authenticationModule.createSession(qInstance, authContext);
 
-         context.cookie(SESSION_UUID_COOKIE_NAME, session.getUuid(), SESSION_COOKIE_AGE);
+         setSessionCookie(context, SESSION_UUID_COOKIE_NAME, session.getUuid());
 
          Map<String, Serializable> resultMap = new HashMap<>();
-         resultMap.put("uuid", session.getUuid());
+         if(!getSessionCookieHttpOnly() && !resumedFromCookie)
+         {
+            resultMap.put("uuid", session.getUuid());
+         }
 
          if(session.getValuesForFrontend() != null)
          {
@@ -432,83 +544,111 @@ public class QJavalinImplementation
     *******************************************************************************/
    public static QSession setupSession(Context context, AbstractActionInput input, QAuthenticationMetaData authMetaData) throws QModuleDispatchException, QAuthenticationException
    {
+      return setupSession(context, input, authMetaData, qInstance);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setup a session using an explicit instance, independent of legacy routes.
+    **
+    ** @param context The Javalin context
+    ** @param input The action input (may be null)
+    ** @param authMetaData The resolved authentication metadata
+    ** @param sessionInstance The instance owning the request
+    ** @return The created session
+    ** @throws QModuleDispatchException If module dispatch fails
+    ** @throws QAuthenticationException If authentication fails
+    *******************************************************************************/
+   public static QSession setupSession(Context context, AbstractActionInput input, QAuthenticationMetaData authMetaData, QInstance sessionInstance) throws QModuleDispatchException, QAuthenticationException
+   {
       QAuthenticationModuleDispatcher qAuthenticationModuleDispatcher = new QAuthenticationModuleDispatcher();
       QAuthenticationModuleInterface  authenticationModule            = qAuthenticationModuleDispatcher.getQModule(authMetaData);
 
+      String inProcessToken = context.header(UiApiInProcessSessions.HEADER);
       try
       {
          ///////////////////////////////////////////////
          // note:  duplicated in ExecutorSessionUtils //
          ///////////////////////////////////////////////
-         Map<String, String> authenticationContext = new HashMap<>();
-
-         String sessionIdCookieValue     = context.cookie(SESSION_ID_COOKIE_NAME);
-         String sessionUuidCookieValue   = context.cookie(Auth0AuthenticationModule.SESSION_UUID_KEY);
-         String authorizationHeaderValue = context.header("Authorization");
-         String apiKeyHeaderValue        = context.header("x-api-key");
-         String codeQueryParamValue      = context.queryParam("code");
-         String stateQueryParamValue     = context.queryParam("state");
-
-         if(StringUtils.hasContent(codeQueryParamValue) && StringUtils.hasContent(stateQueryParamValue))
+         QSession session;
+         if(inProcessToken != null)
          {
-            authenticationContext.put("code", codeQueryParamValue);
-            authenticationContext.put("state", stateQueryParamValue);
-         }
-         else if(StringUtils.hasContent(sessionIdCookieValue))
-         {
-            ///////////////////////////////////////////////////////
-            // sessionId - maybe used by table-based auth module //
-            ///////////////////////////////////////////////////////
-            authenticationContext.put(SESSION_ID_COOKIE_NAME, sessionIdCookieValue);
-         }
-         else if(StringUtils.hasContent(sessionUuidCookieValue))
-         {
-            ///////////////////////////////////////////////////////////////////////////
-            // session UUID - used by auth0 module and fully anonymous module       //
-            ///////////////////////////////////////////////////////////////////////////
-            authenticationContext.put(Auth0AuthenticationModule.SESSION_UUID_KEY, sessionUuidCookieValue);
-            // Also pass as sessionUUID for fully anonymous module
-            authenticationContext.put("sessionUUID", sessionUuidCookieValue);
-         }
-         else if(apiKeyHeaderValue != null)
-         {
-            /////////////////////////////////////////////////////////////////
-            // next, look for an api key header:                           //
-            // this will be used to look up auth0 values via an auth table //
-            /////////////////////////////////////////////////////////////////
-            authenticationContext.put(API_KEY_NAME, apiKeyHeaderValue);
-         }
-         else if(authorizationHeaderValue != null)
-         {
-            /////////////////////////////////////////////////////////////////////////////////////////////////
-            // second, look for the authorization header:                                                  //
-            // either with a "Basic " prefix (for a username:password pair)                                //
-            // or with a "Bearer " prefix (for a token that can be handled the same as a sessionId cookie) //
-            /////////////////////////////////////////////////////////////////////////////////////////////////
-            processAuthorizationValue(authenticationContext, authorizationHeaderValue);
+            session = ExecutorSessionUtils.resolveInProcessSession(context.req().getRemoteAddr(), inProcessToken);
          }
          else
          {
-            try
+            Map<String, String> authenticationContext = new HashMap<>();
+
+            String sessionIdCookieValue     = context.cookie(SESSION_ID_COOKIE_NAME);
+            String sessionUuidCookieValue   = context.cookie(Auth0AuthenticationModule.SESSION_UUID_KEY);
+            String authorizationHeaderValue = context.header("Authorization");
+            String apiKeyHeaderValue        = context.header("x-api-key");
+            String codeQueryParamValue      = context.queryParam("code");
+            String stateQueryParamValue     = context.queryParam("state");
+
+            if(StringUtils.hasContent(codeQueryParamValue) && StringUtils.hasContent(stateQueryParamValue))
             {
-               String authorizationFormValue = context.formParam("Authorization");
-               if(StringUtils.hasContent(authorizationFormValue))
+               authenticationContext.put("code", codeQueryParamValue);
+               authenticationContext.put("state", stateQueryParamValue);
+            }
+            else if(StringUtils.hasContent(sessionIdCookieValue))
+            {
+               ///////////////////////////////////////////////////////
+               // sessionId - maybe used by table-based auth module //
+               ///////////////////////////////////////////////////////
+               authenticationContext.put(SESSION_ID_COOKIE_NAME, sessionIdCookieValue);
+            }
+            else if(StringUtils.hasContent(sessionUuidCookieValue))
+            {
+               ///////////////////////////////////////////////////////////////////////////
+               // session UUID - used by auth0 module and fully anonymous module       //
+               ///////////////////////////////////////////////////////////////////////////
+               authenticationContext.put(Auth0AuthenticationModule.SESSION_UUID_KEY, sessionUuidCookieValue);
+               // Also pass as sessionUUID for fully anonymous module
+               authenticationContext.put("sessionUUID", sessionUuidCookieValue);
+            }
+            else if(apiKeyHeaderValue != null)
+            {
+               /////////////////////////////////////////////////////////////////
+               // next, look for an api key header:                           //
+               // this will be used to look up auth0 values via an auth table //
+               /////////////////////////////////////////////////////////////////
+               authenticationContext.put(API_KEY_NAME, apiKeyHeaderValue);
+            }
+            else if(authorizationHeaderValue != null)
+            {
+               /////////////////////////////////////////////////////////////////////////////////////////////////
+               // second, look for the authorization header:                                                  //
+               // either with a "Basic " prefix (for a username:password pair)                                //
+               // or with a "Bearer " prefix (for a token that can be handled the same as a sessionId cookie) //
+               /////////////////////////////////////////////////////////////////////////////////////////////////
+               processAuthorizationValue(authenticationContext, authorizationHeaderValue);
+            }
+            else
+            {
+               try
                {
-                  processAuthorizationValue(authenticationContext, authorizationFormValue);
+                  String authorizationFormValue = context.formParam("Authorization");
+                  if(StringUtils.hasContent(authorizationFormValue))
+                  {
+                     processAuthorizationValue(authenticationContext, authorizationFormValue);
+                  }
+               }
+               catch(Exception e)
+               {
+                  LOG.info("Exception looking for Authorization formParam", e);
                }
             }
-            catch(Exception e)
-            {
-               LOG.info("Exception looking for Authorization formParam", e);
-            }
-         }
 
-         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-         // put the qInstance into context - but no session yet (since, the whole point of this call is to setup the session!) //
-         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-         QContext.init(qInstance, null);
-         QSession session = authenticationModule.createSession(qInstance, authenticationContext);
-         QContext.init(qInstance, session, null, input);
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // put the sessionInstance into context - but no session yet (since, the whole point of this call is to setup the session!) //
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            QContext.init(sessionInstance, null);
+            session = authenticationModule.createSession(sessionInstance, authMetaData, authenticationContext);
+         }
+         com.kingsrook.qqq.backend.core.actions.profile.UserProfiles.applyIfInstalled(sessionInstance, session);
+         QContext.init(sessionInstance, session, null, input);
 
          String tableVariant = QJavalinUtils.getFormParamOrQueryParam(context, "tableVariant");
          if(StringUtils.hasContent(tableVariant))
@@ -518,11 +658,11 @@ public class QJavalinImplementation
          }
 
          /////////////////////////////////////////////////////////////////////////////////
-         // if we got a session id cookie in, then send it back with updated cookie age //
+         // refresh cookies only for sessions created by the authentication module    //
          /////////////////////////////////////////////////////////////////////////////////
-         if(authenticationModule.usesSessionIdCookie())
+         if(inProcessToken == null && authenticationModule.usesSessionIdCookie())
          {
-            context.cookie(SESSION_ID_COOKIE_NAME, session.getUuid(), SESSION_COOKIE_AGE);
+            setSessionCookie(context, SESSION_ID_COOKIE_NAME, session.getUuid());
          }
 
          setUserTimezoneOffsetMinutesInSession(context, session);
@@ -535,7 +675,7 @@ public class QJavalinImplementation
          ////////////////////////////////////////////////////////////////////////////////
          // if exception caught, clear out the cookie so the frontend will reauthorize //
          ////////////////////////////////////////////////////////////////////////////////
-         if(authenticationModule.usesSessionIdCookie())
+         if(inProcessToken == null && authenticationModule.usesSessionIdCookie())
          {
             context.removeCookie(SESSION_ID_COOKIE_NAME);
          }
@@ -715,9 +855,12 @@ public class QJavalinImplementation
 
 
    /*******************************************************************************
-    **
+    ** Read the values of a record insert or update request into a record: a JSON
+    ** object body, or multipart form fields (with uploaded files for blob fields,
+    ** and an `associations` field in the legacy or record-v1 format).  Shared by
+    ** the legacy data routes and the v1 table insert and update specs.
     *******************************************************************************/
-   private static void setRecordValuesForInsertOrUpdate(Context context, QTableMetaData tableMetaData, QRecord record, AbstractTableActionInput input) throws IOException, QException
+   public static void setRecordValuesForInsertOrUpdate(Context context, QTableMetaData tableMetaData, QRecord record, AbstractTableActionInput input) throws IOException, QException
    {
       String  contentType       = Objects.requireNonNullElse(context.header("content-type"), "");
       boolean isContentTypeJson = contentType.toLowerCase().contains("json");
@@ -1216,6 +1359,7 @@ public class QJavalinImplementation
          QJavalinAccessLogger.logStartSilent("count");
 
          PermissionsHelper.checkTablePermissionThrowing(countInput, TablePermissionSubType.READ);
+         TableCapabilities.checkCapabilityThrowing(table, Capability.TABLE_COUNT);
 
          filter = QJavalinUtils.getQueryParamOrFormParam(context, "filter");
          if(filter != null)
@@ -1525,6 +1669,7 @@ public class QJavalinImplementation
          }
 
          RenderWidgetOutput output = new RenderWidgetAction().execute(input);
+         WidgetExecutor.applyFieldAccess(output.getWidgetData(), ValueUtils.getValueAsString(input.getWidgetMetaData().getDefaultValues().get("tableName")));
          QJavalinAccessLogger.logEndSuccessIfSlow(SLOW_LOG_THRESHOLD_MS, logPair("widgetName", widgetName), logPair("inputParams", input.getQueryParams()));
          context.result(JsonUtils.toJson(output.getWidgetData()));
       }
@@ -1592,6 +1737,7 @@ public class QJavalinImplementation
          exportInput.setLimit(limit);
 
          PermissionsHelper.checkTablePermissionThrowing(exportInput, TablePermissionSubType.READ);
+         TableCapabilities.checkCapabilityThrowing(tableName, Capability.TABLE_EXPORT);
 
          String fields = QJavalinUtils.getQueryParamOrFormParam(context, "fields");
          if(StringUtils.hasContent(fields))
@@ -1837,7 +1983,7 @@ public class QJavalinImplementation
             defaultQueryFilter = JsonUtils.toObject(possibleValueSourceFilterJSON, QQueryFilter.class);
 
             String                           useCaseParam = QJavalinUtils.getQueryParamOrFormParam(context, "useCase");
-            PossibleValueSearchFilterUseCase useCase      = ObjectUtils.tryElse(() -> PossibleValueSearchFilterUseCase.valueOf(useCaseParam.toUpperCase()), PossibleValueSearchFilterUseCase.FORM);
+            PossibleValueSearchFilterUseCase useCase      = ContingentPossibleValueHelper.getSearchUseCase(null, useCaseParam);
 
             defaultQueryFilter.interpretValues(MapBuilder.of("input", otherValues), useCase);
          }
@@ -1859,13 +2005,19 @@ public class QJavalinImplementation
    {
       QQueryFilter              defaultQueryFilter = null;
       Map<String, Serializable> otherValues        = getOtherValueForPossibleValueRequest(context);
+      if(ContingentPossibleValueHelper.hasMissingExplicitDependency(field, otherValues, QJavalinUtils.getQueryParamOrFormParam(context, "useCase")))
+      {
+         context.result(JsonUtils.toJson(Map.of("options", List.of())));
+         return;
+      }
+
 
       if(field.getPossibleValueSourceFilter() != null)
       {
          defaultQueryFilter = field.getPossibleValueSourceFilter().clone();
 
          String                           useCaseParam = QJavalinUtils.getQueryParamOrFormParam(context, "useCase");
-         PossibleValueSearchFilterUseCase useCase      = ObjectUtils.tryElse(() -> PossibleValueSearchFilterUseCase.valueOf(useCaseParam.toUpperCase()), PossibleValueSearchFilterUseCase.FORM);
+         PossibleValueSearchFilterUseCase useCase      = ContingentPossibleValueHelper.getSearchUseCase(field, useCaseParam);
 
          Map<String, Serializable> processValues = new HashMap<>();
          if(context.queryParamMap().containsKey("processUUID") && StringUtils.hasContent(context.queryParam("processUUID")))
@@ -1915,6 +2067,7 @@ public class QJavalinImplementation
       String labels     = context.queryParam("labels");
 
       SearchPossibleValueSourceInput input = new SearchPossibleValueSourceInput();
+      input.setInputSource(QInputSource.USER);
       setupSession(context, input);
       input.setPossibleValueSourceName(possibleValueSourceName);
       input.setSearchTerm(searchTerm);
@@ -2063,6 +2216,8 @@ public class QJavalinImplementation
             }
             config.routes.before(QJavalinImplementation::hotSwapQInstance);
             config.routes.before((Context context) -> context.header("Content-Type", "application/json"));
+            config.routes.before(UnitOfWorkJavalinHandlers::before);
+            config.routes.after(UnitOfWorkJavalinHandlers::after);
             config.routes.after(QJavalinImplementation::clearQContext);
          }
       ).start(port);
@@ -2091,12 +2246,41 @@ public class QJavalinImplementation
 
 
    /*******************************************************************************
-    **
+    ** Add the Deprecation and Link headers to a legacy response, and log the
+    ** first use of each legacy route family (so operators can see who still
+    ** calls them).
+    *******************************************************************************/
+   static void markLegacyDeprecated(Context context)
+   {
+      context.header("Deprecation", LEGACY_DEPRECATION_HEADER_VALUE);
+      context.header("Link", LEGACY_SUCCESSOR_LINK);
+
+      String path = context.path();
+      String root = path.replaceFirst("^(/[^/]*).*$", "$1");
+      if(loggedLegacyRoots.add(root))
+      {
+         LOG.info("Deprecated unversioned QQQ route called; the UI API is /qqq/v1 (docs/UI-API-CHANGELOG.md)", logPair("route", root), logPair("path", path));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** The legacy (deprecated) unversioned routes - see the class comment.
     *******************************************************************************/
    public EndpointGroup getRoutes()
    {
       return (() ->
       {
+         ////////////////////////////////////////////////////////////////////////
+         // mark every legacy response deprecated, pointing at the UI API (v1) //
+         ////////////////////////////////////////////////////////////////////////
+         for(String root : LEGACY_ROUTE_ROOTS)
+         {
+            before(root, QJavalinImplementation::markLegacyDeprecated);
+            before(root + "/*", QJavalinImplementation::markLegacyDeprecated);
+         }
+
          post("/manageSession", QJavalinImplementation::manageSession);
 
          /////////////////////

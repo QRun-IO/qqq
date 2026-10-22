@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.scheduler.quartz;
@@ -55,6 +54,7 @@ import org.quartz.Job;
 import org.quartz.JobBuilder;
 import org.quartz.JobDetail;
 import org.quartz.JobKey;
+import org.quartz.ObjectAlreadyExistsException;
 import org.quartz.ScheduleBuilder;
 import org.quartz.Scheduler;
 import org.quartz.SchedulerException;
@@ -253,19 +253,35 @@ public class QuartzScheduler implements QSchedulerInterface
    @Override
    public void setupSchedulable(SchedulableIdentity schedulableIdentity, SchedulableType schedulableType, Map<String, Serializable> parameters, QScheduleMetaData schedule, boolean allowedToStart)
    {
-      ////////////////////////////////////////////////////////////////////////////
-      // only actually schedule things if we're past the server startup routine //
-      ////////////////////////////////////////////////////////////////////////////
-      if(!pastStartup)
+      boolean replaceExisting = pastStartup;
+      if(!replaceExisting)
       {
-         return;
+         try
+         {
+            ///////////////////////////////////////////////////////////////////////////////////
+            // During startup, only bootstrap jobs that are missing from the job store, for  //
+            // both volatile (RAM) and persistent (JDBC) stores - never reconcile or replace //
+            // existing jobs here.  A persistent store keeps its jobs across restarts, so a  //
+            // restart (or another clustered node booting) finds them and leaves them alone  //
+            // but a fresh persistent store must still get its jobs (see QRun-IO/qqq#1044).  //
+            ///////////////////////////////////////////////////////////////////////////////////
+            if(scheduler.checkExists(new JobKey(schedulableIdentity.getIdentity(), schedulableType.getName())))
+            {
+               return;
+            }
+         }
+         catch(SchedulerException e)
+         {
+            LOG.warn("Error checking scheduler startup state", e);
+            return;
+         }
       }
 
       Map<String, Object> jobData = new HashMap<>();
       jobData.put("params", parameters);
       jobData.put("type", schedulableType.getName());
 
-      scheduleJob(schedulableIdentity, schedulableType.getName(), QuartzJobRunner.class, jobData, schedule, allowedToStart);
+      scheduleJob(schedulableIdentity, schedulableType.getName(), QuartzJobRunner.class, jobData, schedule, replaceExisting);
    }
 
 
@@ -354,7 +370,7 @@ public class QuartzScheduler implements QSchedulerInterface
    /*******************************************************************************
     **
     *******************************************************************************/
-   private boolean scheduleJob(SchedulableIdentity schedulableIdentity, String groupName, Class<? extends Job> jobClass, Map<String, Object> jobData, QScheduleMetaData scheduleMetaData, boolean allowedToStart)
+   private boolean scheduleJob(SchedulableIdentity schedulableIdentity, String groupName, Class<? extends Job> jobClass, Map<String, Object> jobData, QScheduleMetaData scheduleMetaData, boolean replaceExisting)
    {
       try
       {
@@ -415,13 +431,36 @@ public class QuartzScheduler implements QSchedulerInterface
             .withDescription(schedulableIdentity.getDescription() + " - " + getScheduleDescriptionForTrigger(scheduleMetaData))
             .forJob(jobKey)
             .withSchedule(scheduleBuilder)
-            // .startAt(startAt)
+            .startAt(startAt)
             .build();
 
          ///////////////////////////////////////
          // Schedule the job with the trigger //
          ///////////////////////////////////////
-         addOrReplaceJobAndTrigger(jobKey, jobDetail, trigger);
+         if(replaceExisting)
+         {
+            addOrReplaceJobAndTrigger(jobKey, jobDetail, trigger);
+         }
+         else
+         {
+            ///////////////////////////////////////////////////////////////////////////
+            // Use the non-replacing operation in case another caller added this job //
+            // after the startup existence check.                                    //
+            ///////////////////////////////////////////////////////////////////////////
+            try
+            {
+               scheduler.scheduleJob(jobDetail, trigger);
+               LOG.info("Scheduled new job during startup", logPair("jobKey", jobKey));
+            }
+            catch(ObjectAlreadyExistsException e)
+            {
+               ///////////////////////////////////////////////////////////////////////////
+               // e.g., another node sharing a clustered persistent store added it      //
+               // between our existence check and this call - keep theirs; not an error //
+               ///////////////////////////////////////////////////////////////////////////
+               LOG.info("Job was already scheduled during startup - leaving existing job in place", logPair("jobKey", jobKey));
+            }
+         }
 
          ///////////////////////////////////////////////////////////////////////////
          // if we're inside the setup event (e.g., initial startup), then capture //

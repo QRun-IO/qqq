@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin.specs.v1.responses;
@@ -26,20 +25,29 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.MetaDataOutput;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendProcessMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendReportMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendWidgetMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.middleware.javalin.executors.io.MetaDataOutputInterface;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
+import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIExclude;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIListItems;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIMapValueType;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.AppMetaData;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.AppTreeNode;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.Branding;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.HelpContentV1;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.ProcessMetaDataLight;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.ReportMetaData;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.SupplementalInstanceMetaData;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.TableMetaDataLight;
 
 
@@ -48,6 +56,24 @@ import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.TableM
  *******************************************************************************/
 public class MetaDataResponseV1 implements MetaDataOutputInterface, ToSchema
 {
+   private Long metaDataGeneration;
+
+   ///////////////////////////////////////////////////////////////////////////////
+   // the environment values published to frontends (QRun-IO/qqq#730): exactly  //
+   // these names, plus any name in the analytics namespace (ANALYTICS_*), which //
+   // analytics provider plugins and the frontends' analytics opt-ins use.       //
+   // Google Picker client IDs and browser API keys are public settings.         //
+   ///////////////////////////////////////////////////////////////////////////////
+   @OpenAPIExclude()
+   public static final Set<String> PUBLISHED_ENVIRONMENT_VALUE_NAMES = Set.of(
+      "ANALYTICS_PROVIDERS", "ANALYTICS_PLUGIN_SCRIPTS", "ANALYTICS_PLUGIN_SCRIPT_URLS",
+      "GOOGLE_ANALYTICS_ENABLED", "GOOGLE_ANALYTICS_TRACKING_ID",
+      "GOOGLE_APP_CLIENT_ID", "GOOGLE_APP_API_KEY",
+      "POSTHOG_ENABLED", "POSTHOG_API_KEY", "POSTHOG_PROJECT_API_KEY", "POSTHOG_HOST");
+
+   @OpenAPIExclude()
+   public static final String PUBLISHED_ENVIRONMENT_VALUE_PREFIX = "ANALYTICS_";
+
    @OpenAPIDescription("Map of all apps within the QQQ Instance (that the user has permission to see that they exist).")
    @OpenAPIMapValueType(value = AppMetaData.class, useRef = true)
    private Map<String, AppMetaData> apps;
@@ -65,8 +91,48 @@ public class MetaDataResponseV1 implements MetaDataOutputInterface, ToSchema
    private Map<String, ProcessMetaDataLight> processes;
 
    @OpenAPIDescription("Map of all widgets within the QQQ Instance (that the user has permission to see that they exist).")
-   @OpenAPIMapValueType(value = ProcessMetaDataLight.class, useRef = true)
+   @OpenAPIMapValueType(value = WidgetMetaData.class)
    private Map<String, WidgetMetaData> widgets;
+
+   @OpenAPIDescription("Map of all reports within the QQQ Instance (that the user has permission to see that they exist).")
+   @OpenAPIMapValueType(value = ReportMetaData.class)
+   private Map<String, ReportMetaData> reports;
+
+   @OpenAPIDescription("Application identity (names, logo, icon, accent colors and banners), when the instance defines it.")
+   private Branding branding;
+
+   @OpenAPIDescription("Settings from supplemental modules that a frontend may use (an explicit allow-list - not the supplemental meta-data objects themselves).  Omitted when the instance defines none of them.")
+   private SupplementalInstanceMetaData supplementalInstanceMetaData;
+
+   @OpenAPIDescription("Instance-level help content, by slot name (for example the query screen's bulkAddFilterValues and bulkAddFilterValuesPossibleValueSource slots).  Omitted when the instance defines none.")
+   @OpenAPIMapValueType(value = HelpContentV1.class, useRef = true, array = true)
+   private Map<String, List<HelpContentV1>> helpContents;
+   @OpenAPIDescription("Environment values a frontend may use: Google Picker public browser settings GOOGLE_APP_CLIENT_ID and GOOGLE_APP_API_KEY, and the analytics settings (ANALYTICS_PROVIDERS, ANALYTICS_PLUGIN_SCRIPTS, ANALYTICS_PLUGIN_SCRIPT_URLS, GOOGLE_ANALYTICS_ENABLED, GOOGLE_ANALYTICS_TRACKING_ID, POSTHOG_ENABLED, POSTHOG_API_KEY, POSTHOG_PROJECT_API_KEY, POSTHOG_HOST, and any other ANALYTICS_* value), from the instance's QQQ_ENV_* environment.  An explicit allow-list - never the whole environment.  Omitted when none are set.")
+   @OpenAPIMapValueType(String.class)
+   private Map<String, String> environmentValues;
+
+   @OpenAPIDescription("Name of the app whose dashboard a frontend shows as the instance's home page (for example at /app/), when the instance designates one and the user may access that app.  Omitted otherwise, in which case the frontend uses its own default home page.")
+   private String homeAppName;
+
+
+
+   /*******************************************************************************
+    ** The allow-listed environment values, sorted by name, or null when there are
+    ** none (so the property is omitted).
+    *******************************************************************************/
+   static Map<String, String> publishedEnvironmentValues(Map<String, String> environmentValues)
+   {
+      Map<String, String> published = new TreeMap<>();
+      for(Map.Entry<String, String> entry : CollectionUtils.nonNullMap(environmentValues).entrySet())
+      {
+         String name = entry.getKey();
+         if(name != null && entry.getValue() != null && (PUBLISHED_ENVIRONMENT_VALUE_NAMES.contains(name) || name.startsWith(PUBLISHED_ENVIRONMENT_VALUE_PREFIX)))
+         {
+            published.put(name, entry.getValue());
+         }
+      }
+      return (published.isEmpty() ? null : published);
+   }
 
 
 
@@ -76,6 +142,7 @@ public class MetaDataResponseV1 implements MetaDataOutputInterface, ToSchema
    @Override
    public void setMetaDataOutput(MetaDataOutput metaDataOutput)
    {
+      metaDataGeneration = metaDataOutput.getMetaDataGeneration();
       apps = new HashMap<>();
       for(QFrontendAppMetaData app : CollectionUtils.nonNullMap(metaDataOutput.getApps()).values())
       {
@@ -106,6 +173,19 @@ public class MetaDataResponseV1 implements MetaDataOutputInterface, ToSchema
          widgets.put(widget.getName(), new WidgetMetaData(widget));
       }
 
+      reports = new HashMap<>();
+      for(QFrontendReportMetaData report : CollectionUtils.nonNullMap(metaDataOutput.getReports()).values())
+      {
+         reports.put(report.getName(), new ReportMetaData(report));
+      }
+
+      branding = metaDataOutput.getBranding() == null ? null : new Branding(metaDataOutput.getBranding());
+
+      supplementalInstanceMetaData = SupplementalInstanceMetaData.of(metaDataOutput);
+
+      helpContents = CollectionUtils.nullSafeHasContents(metaDataOutput.getHelpContents()) ? HelpContentV1.of(metaDataOutput.getHelpContents()) : null;
+      environmentValues = publishedEnvironmentValues(metaDataOutput.getEnvironmentValues());
+      homeAppName = metaDataOutput.getHomeAppName();
    }
 
 
@@ -173,5 +253,103 @@ public class MetaDataResponseV1 implements MetaDataOutputInterface, ToSchema
    public Map<String, WidgetMetaData> getWidgets()
    {
       return widgets;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for reports
+    **
+    *******************************************************************************/
+   public Map<String, ReportMetaData> getReports()
+   {
+      return reports;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for branding
+    **
+    *******************************************************************************/
+   public Branding getBranding()
+   {
+      return branding;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for supplementalInstanceMetaData
+    **
+    *******************************************************************************/
+   public SupplementalInstanceMetaData getSupplementalInstanceMetaData()
+   {
+      return supplementalInstanceMetaData;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for helpContents
+    **
+    *******************************************************************************/
+   @JsonInclude(JsonInclude.Include.NON_NULL)
+   public Map<String, List<HelpContentV1>> getHelpContents()
+   {
+      return helpContents;
+   }
+
+
+   /*******************************************************************************
+    ** Getter for environmentValues
+    **
+    *******************************************************************************/
+   public Map<String, String> getEnvironmentValues()
+   {
+      return environmentValues;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for homeAppName
+    **
+    *******************************************************************************/
+   public String getHomeAppName()
+   {
+      return homeAppName;
+   }
+
+
+
+
+   /*******************************************************************************
+    ** Getter for metaDataGeneration
+    *******************************************************************************/
+   public Long getMetaDataGeneration()
+   {
+      return (this.metaDataGeneration);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for metaDataGeneration
+    *******************************************************************************/
+   public void setMetaDataGeneration(Long metaDataGeneration)
+   {
+      this.metaDataGeneration = metaDataGeneration;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for metaDataGeneration
+    *******************************************************************************/
+   public MetaDataResponseV1 withMetaDataGeneration(Long metaDataGeneration)
+   {
+      setMetaDataGeneration(metaDataGeneration);
+      return (this);
    }
 }

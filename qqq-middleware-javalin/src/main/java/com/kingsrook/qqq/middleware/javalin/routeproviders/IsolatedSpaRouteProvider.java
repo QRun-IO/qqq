@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin.routeproviders;
@@ -38,6 +37,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.middleware.javalin.QJavalinRouteProviderInterface;
+import com.kingsrook.qqq.middleware.javalin.QJavalinUtils;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.authentication.RouteAuthenticatorInterface;
 import io.javalin.config.JavalinConfig;
 import io.javalin.http.Context;
@@ -357,6 +357,17 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
    {
       String requestPath = ctx.path();
 
+      ///////////////////////////////////////////////////////////////////////////////
+      // an unknown UI API path is an API error (JSON, BasicErrorResponseV1), never //
+      // the SPA's HTML page - API clients must be able to parse every answer       //
+      ///////////////////////////////////////////////////////////////////////////////
+      if(requestPath.startsWith("/qqq/v1/") || requestPath.equals("/qqq/v1"))
+      {
+         QJavalinUtils.respondWithError(ctx, org.eclipse.jetty.http.HttpStatus.Code.NOT_FOUND, "No UI API operation " + ctx.method() + " " + requestPath);
+         ctx.contentType("application/json");
+         return;
+      }
+
       ////////////////////////////////////////////////////////////
       // For root SPAs, skip if path is excluded (e.g., /admin) //
       ////////////////////////////////////////////////////////////
@@ -649,7 +660,7 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
       //////////////////////////////////////////////
       // Set up QContext for authentication check //
       //////////////////////////////////////////////
-      QContext.init(qInstance, new QSystemUserSession());
+      QContext.init(qInstance, new QSystemUserSession(qInstance));
 
       try
       {

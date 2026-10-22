@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.model.metadata.authentication;
@@ -49,6 +48,13 @@ public class TableBasedAuthenticationMetaData extends QAuthenticationMetaData
    private String sessionTableAccessTimestampField = "accessTimestamp";
 
    private Integer inactivityTimeoutSeconds = 14_400; // 4 hours
+
+   ////////////////////////////////////////////////////////////////////////////
+   // soft lockout of password sign-in (ASVS 2.2.1): 5 failures within 15   //
+   // minutes lock the username for 15 minutes                              //
+   ////////////////////////////////////////////////////////////////////////////
+   private Integer maxFailedSignInAttempts = 5;
+   private Integer signInLockoutSeconds    = 900;
 
 
 
@@ -448,6 +454,69 @@ public class TableBasedAuthenticationMetaData extends QAuthenticationMetaData
    public TableBasedAuthenticationMetaData withInactivityTimeoutSeconds(Integer inactivityTimeoutSeconds)
    {
       this.inactivityTimeoutSeconds = inactivityTimeoutSeconds;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for maxFailedSignInAttempts: failed password attempts for a username,
+    ** within signInLockoutSeconds, before it is locked out (null or 0 disables).
+    *******************************************************************************/
+   public Integer getMaxFailedSignInAttempts()
+   {
+      return (this.maxFailedSignInAttempts);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for maxFailedSignInAttempts
+    *******************************************************************************/
+   public void setMaxFailedSignInAttempts(Integer maxFailedSignInAttempts)
+   {
+      this.maxFailedSignInAttempts = maxFailedSignInAttempts;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for maxFailedSignInAttempts
+    *******************************************************************************/
+   public TableBasedAuthenticationMetaData withMaxFailedSignInAttempts(Integer maxFailedSignInAttempts)
+   {
+      this.maxFailedSignInAttempts = maxFailedSignInAttempts;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for signInLockoutSeconds: the window failures are counted in, and how
+    ** long a locked-out username is refused (null or 0 disables the lockout).
+    *******************************************************************************/
+   public Integer getSignInLockoutSeconds()
+   {
+      return (this.signInLockoutSeconds);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for signInLockoutSeconds
+    *******************************************************************************/
+   public void setSignInLockoutSeconds(Integer signInLockoutSeconds)
+   {
+      this.signInLockoutSeconds = signInLockoutSeconds;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for signInLockoutSeconds
+    *******************************************************************************/
+   public TableBasedAuthenticationMetaData withSignInLockoutSeconds(Integer signInLockoutSeconds)
+   {
+      this.signInLockoutSeconds = signInLockoutSeconds;
       return (this);
    }
 

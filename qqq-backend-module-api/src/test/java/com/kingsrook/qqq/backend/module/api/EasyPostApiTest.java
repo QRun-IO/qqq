@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.module.api;
@@ -35,9 +34,17 @@ import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.module.api.actions.BaseAPIActionUtil;
 import com.kingsrook.qqq.backend.module.api.model.metadata.APIBackendMetaData;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.Logger;
+import org.apache.logging.log4j.core.appender.AbstractAppender;
+import org.apache.logging.log4j.core.config.Property;
+import org.apache.logging.log4j.core.layout.PatternLayout;
 import org.json.JSONObject;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -178,6 +185,54 @@ public class EasyPostApiTest extends BaseTest
 
 
    /*******************************************************************************
+    ** A provider echoing credentials cannot put its response text in row errors.
+    *******************************************************************************/
+   @Test
+   void testPostTrackerSecretEchoStaysGeneric() throws QException
+   {
+      StringBuilder events = new StringBuilder();
+      Logger logger = (Logger) LogManager.getLogger(BaseAPIActionUtil.class);
+      Level oldLevel = logger.getLevel();
+      AbstractAppender appender = new AbstractAppender("easypost-secret-echo", null,
+         PatternLayout.createDefaultLayout(), false, Property.EMPTY_ARRAY)
+      {
+         @Override
+         public void append(LogEvent event)
+         {
+            events.append(event.getMessage().getFormattedMessage());
+         }
+      };
+      appender.start();
+      logger.addAppender(appender);
+      logger.setLevel(Level.DEBUG);
+      try
+      {
+         for(String trackingNo : List.of("Echo-Secret", "Echo-With-Code"))
+         {
+            QRecord output = new InsertAction().execute(new InsertInput("easypostTracker").withRecord(
+               new QRecord().withValue("carrier", "USPS").withValue("trackingNo", trackingNo))).getRecords().get(0);
+
+            assertNull(output.getValue("id"));
+            assertThat(output.getErrorsAsString()).contains("422")
+               .doesNotContain(FIXTURE_API_KEY, EXPECTED_AUTHORIZATION, "denied");
+            if("Echo-With-Code".equals(trackingNo))
+            {
+               assertThat(output.getErrorsAsString()).contains("TRACKER.INVALID");
+            }
+         }
+         assertThat(events.toString()).doesNotContain(FIXTURE_API_KEY, EXPECTED_AUTHORIZATION, "denied");
+      }
+      finally
+      {
+         logger.setLevel(oldLevel);
+         logger.removeAppender(appender);
+         appender.stop();
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Validate captured wire data on the test thread, independent of adapter helpers.
     *******************************************************************************/
    private void assertRequest(CapturedRequest request, String trackingNumber, String authorization)
@@ -221,7 +276,20 @@ public class EasyPostApiTest extends BaseTest
          if(id == null)
          {
             status = 422;
-            response = new JSONObject().put("error", new JSONObject().put("message", "TRACKER.INVALID"));
+            JSONObject error = new JSONObject();
+            if("Echo-Secret".equals(trackingNumber) || "Echo-With-Code".equals(trackingNumber))
+            {
+               error.put("message", "denied " + EXPECTED_AUTHORIZATION + " " + FIXTURE_API_KEY);
+               if("Echo-With-Code".equals(trackingNumber))
+               {
+                  error.put("code", "TRACKER.INVALID");
+               }
+            }
+            else
+            {
+               error.put("message", "TRACKER.INVALID");
+            }
+            response = new JSONObject().put("error", error);
          }
          else
          {

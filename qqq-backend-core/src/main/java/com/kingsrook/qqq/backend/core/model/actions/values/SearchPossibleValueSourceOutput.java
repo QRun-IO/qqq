@@ -5,25 +5,26 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.model.actions.values;
 
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionOutput;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValue;
 
@@ -36,6 +37,16 @@ public class SearchPossibleValueSourceOutput extends AbstractActionOutput
    private List<QPossibleValue<?>> results = new ArrayList<>();
 
    private String warning;
+
+   ////////////////////////////////////////////////////////////////////////////
+   // for picker requests: each option's picker display values (raw, and    //
+   // formatted/translated where they differ), keyed by the option's id, and //
+   // whether another page follows.                                          //
+   ////////////////////////////////////////////////////////////////////////////
+   private Map<Serializable, Map<String, Serializable>> pickerValues;
+   private Map<Serializable, Map<String, String>>       pickerDisplayValues;
+   private Boolean                                      hasMore;
+
 
 
    /*******************************************************************************
@@ -120,4 +131,95 @@ public class SearchPossibleValueSourceOutput extends AbstractActionOutput
    }
 
 
+
+   /*******************************************************************************
+    ** Getter for pickerValues
+    *******************************************************************************/
+   public Map<Serializable, Map<String, Serializable>> getPickerValues()
+   {
+      return (pickerValues);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for pickerValues
+    *******************************************************************************/
+   public void setPickerValues(Map<Serializable, Map<String, Serializable>> pickerValues)
+   {
+      this.pickerValues = pickerValues;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for pickerValues
+    *******************************************************************************/
+   public SearchPossibleValueSourceOutput withPickerValues(Map<Serializable, Map<String, Serializable>> pickerValues)
+   {
+      this.pickerValues = pickerValues;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for pickerDisplayValues
+    *******************************************************************************/
+   public Map<Serializable, Map<String, String>> getPickerDisplayValues()
+   {
+      return (pickerDisplayValues);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for pickerDisplayValues
+    *******************************************************************************/
+   public void setPickerDisplayValues(Map<Serializable, Map<String, String>> pickerDisplayValues)
+   {
+      this.pickerDisplayValues = pickerDisplayValues;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for pickerDisplayValues
+    *******************************************************************************/
+   public SearchPossibleValueSourceOutput withPickerDisplayValues(Map<Serializable, Map<String, String>> pickerDisplayValues)
+   {
+      this.pickerDisplayValues = pickerDisplayValues;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for hasMore
+    *******************************************************************************/
+   public Boolean getHasMore()
+   {
+      return (hasMore);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for hasMore
+    *******************************************************************************/
+   public void setHasMore(Boolean hasMore)
+   {
+      this.hasMore = hasMore;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for hasMore
+    *******************************************************************************/
+   public SearchPossibleValueSourceOutput withHasMore(Boolean hasMore)
+   {
+      this.hasMore = hasMore;
+      return (this);
+   }
 }

@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert;
@@ -31,6 +30,7 @@ import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInpu
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.storage.StorageInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.assist.BulkLoadAssist;
 import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.filehandling.FileToRowsInterface;
 import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.mapping.RowsToRecordInterface;
 import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.model.BulkInsertMapping;
@@ -57,6 +57,16 @@ public class BulkInsertExtractStep extends AbstractExtractStep
    {
       int rowsAdded     = 0;
       int originalLimit = Objects.requireNonNullElse(getLimit(), Integer.MAX_VALUE);
+
+      ///////////////////////////////////////////////////////////////////////////
+      // a row limit from the process values (assisted bulk load's SAMPLE dry  //
+      // run validates only the first rows of the file - see BulkLoadAssist)   //
+      ///////////////////////////////////////////////////////////////////////////
+      Integer rowLimit = runBackendStepInput.getValueInteger(BulkLoadAssist.VALUE_ROW_LIMIT);
+      if(rowLimit != null && rowLimit > 0)
+      {
+         originalLimit = Math.min(originalLimit, rowLimit);
+      }
 
       StorageInput          storageInput      = BulkInsertStepUtils.getStorageInputForTheFile(runBackendStepInput);
       BulkInsertMapping     bulkInsertMapping = (BulkInsertMapping) runBackendStepOutput.getValue("bulkInsertMapping");

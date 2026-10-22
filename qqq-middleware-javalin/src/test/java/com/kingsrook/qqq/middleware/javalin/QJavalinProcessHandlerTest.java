@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin;
@@ -28,9 +27,15 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
 import com.kingsrook.qqq.backend.core.actions.async.AsyncJobState;
+import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReferenceLambda;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QBackendStepMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QFrontendStepMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
+import com.kingsrook.qqq.backend.core.model.secrets.OneTimeSecret;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import kong.unirest.HttpResponse;
 import kong.unirest.Unirest;
@@ -702,6 +707,30 @@ class QJavalinProcessHandlerTest extends QJavalinTestBase
       assertEquals("hadNullKey", mapWithNullKey.getString(""));
       assertTrue(mapWithNullKey.has("one"));
       assertEquals("1", mapWithNullKey.getString("one"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Legacy step responses deliver the same secret array with cache prevention.
+    *******************************************************************************/
+   @Test
+   void testOneTimeSecretStep()
+   {
+      QJavalinImplementation.getQInstance().addProcess(new QProcessMetaData().withName("legacySecret")
+         .withStep(new QFrontendStepMetaData().withName("create"))
+         .withStep(new QBackendStepMetaData().withName("createToken").withCode(new QCodeReferenceLambda<BackendStep>((input, output) ->
+            output.addOneTimeSecret(new OneTimeSecret().withLabel("Token").withValue("legacy-token-secret")
+               .withMasked("****secret").withUsageText("Copy now"))))));
+      JSONObject init = new JSONObject(Unirest.get(BASE_URL + "/processes/legacySecret/init?_qStepTimeoutMillis=10000").asString().getBody());
+      HttpResponse<String> response = Unirest.post(BASE_URL + "/processes/legacySecret/" + init.getString("processUUID") + "/step/create")
+         .multiPartContent().field("_qStepTimeoutMillis", "10000").asString();
+      assertThat(response.getStatus()).isEqualTo(200);
+      assertThat(response.getHeaders().getFirst("Cache-Control")).isEqualTo("no-store");
+      JSONObject json = new JSONObject(response.getBody());
+      assertThat(json.getJSONArray("oneTimeSecrets").length()).isEqualTo(1);
+      assertThat(json.getJSONArray("oneTimeSecrets").getJSONObject(0).getString("value")).isEqualTo("legacy-token-secret");
+      assertThat(json.getJSONObject("values").toString()).doesNotContain("legacy-token-secret");
    }
 
 }

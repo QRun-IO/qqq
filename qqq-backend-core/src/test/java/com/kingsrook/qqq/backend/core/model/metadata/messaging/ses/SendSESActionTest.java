@@ -5,27 +5,27 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.model.metadata.messaging.ses;
 
 
-import cloud.localstack.ServiceName;
-import cloud.localstack.docker.LocalstackDockerExtension;
-import cloud.localstack.docker.annotation.LocalstackDockerProperties;
+import com.amazonaws.auth.AWSStaticCredentialsProvider;
+import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.client.builder.AwsClientBuilder;
 import com.amazonaws.services.simpleemail.AmazonSimpleEmailService;
+import com.amazonaws.services.simpleemail.AmazonSimpleEmailServiceClientBuilder;
 import com.amazonaws.services.simpleemail.model.Destination;
 import com.amazonaws.services.simpleemail.model.Message;
 import com.amazonaws.services.simpleemail.model.VerifyEmailAddressRequest;
@@ -38,9 +38,13 @@ import com.kingsrook.qqq.backend.core.model.actions.messaging.SendMessageInput;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.email.EmailContentRole;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.email.EmailPartyRole;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.containers.wait.strategy.Wait;
+import org.testcontainers.utility.DockerImageName;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -48,12 +52,53 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 /*******************************************************************************
  ** Unit test for SendSESAction
  *******************************************************************************/
-@ExtendWith(LocalstackDockerExtension.class)
-@LocalstackDockerProperties(useSingleDockerContainer = true, services = { ServiceName.SES }, portEdge = "2960", portElasticSearch = "2961", imageTag = "1.4")
 class SendSESActionTest extends BaseTest
 {
    public static final String TEST_TO_EMAIL_ADDRESS   = "tim-to@coldtrack.com";
    public static final String TEST_FROM_EMAIL_ADDRESS = "tim-from@coldtrack.com";
+
+   private static final GenericContainer<?> localstack = new GenericContainer<>(DockerImageName.parse("localstack/localstack:1.4"))
+      .withEnv("SERVICES", "ses")
+      .withExposedPorts(4566)
+      .waitingFor(Wait.forLogMessage(".*Ready\\..*\\n", 1));
+   private static AmazonSimpleEmailService amazonSES;
+
+
+
+   /*******************************************************************************
+    ** Give each test run its own SES endpoint, without reserving a fixed host port.
+    *******************************************************************************/
+   @BeforeAll
+   static void startLocalstack()
+   {
+      localstack.start();
+      amazonSES = AmazonSimpleEmailServiceClientBuilder.standard()
+         .withEndpointConfiguration(new AwsClientBuilder.EndpointConfiguration(
+            "http://" + localstack.getHost() + ":" + localstack.getMappedPort(4566), "us-east-1"))
+         .withCredentials(new AWSStaticCredentialsProvider(new BasicAWSCredentials("test", "test")))
+         .build();
+   }
+
+
+
+   /*******************************************************************************
+    ** Release only the client and container owned by this test run.
+    *******************************************************************************/
+   @AfterAll
+   static void stopLocalstack()
+   {
+      try
+      {
+         if(amazonSES != null)
+         {
+            amazonSES.shutdown();
+         }
+      }
+      finally
+      {
+         localstack.stop();
+      }
+   }
 
 
 
@@ -75,7 +120,7 @@ class SendSESActionTest extends BaseTest
     *******************************************************************************/
    protected AmazonSimpleEmailService getAmazonSES()
    {
-      return (cloud.localstack.awssdkv1.TestUtils.getClientSES());
+      return (amazonSES);
    }
 
 

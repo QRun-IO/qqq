@@ -5,28 +5,31 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components;
 
 
+import java.util.List;
+import java.util.Map;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendProcessMetaData;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIExclude;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIMapKnownEntries;
+import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIMapValueType;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.utils.SemanticIcons;
 
 
 /***************************************************************************
@@ -130,10 +133,86 @@ public class ProcessMetaDataLight implements ToSchema
    /***************************************************************************
     **
     ***************************************************************************/
+   @OpenAPIDescription("True when the process can run as a durable background job (POST /processes/{processName}/jobs): clients may offer \"Run in background\".")
+   public Boolean getDurableJobEligible()
+   {
+      return (this.wrapped.getDurableJobEligible());
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @OpenAPIDescription("True when the process always runs as a durable background job (too large to run while the user waits).")
+   public Boolean getDurableJobAlways()
+   {
+      return (this.wrapped.getDurableJobAlways());
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
    @OpenAPIDescription("Boolean to indicate if the user has permission for the process.")
    public Boolean getHasPermission()
    {
       return (this.wrapped.getHasPermission());
    }
 
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @OpenAPIDescription("Material UI icon name (web); prefer iconSemanticName")
+   public String getIconName()
+   {
+      return (this.wrapped.getIconName());
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @OpenAPIDescription("Fewest input records the process runs with (for processes on a table's records).")
+   public Integer getMinInputRecords()
+   {
+      return (this.wrapped.getMinInputRecords());
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @OpenAPIDescription("Most input records the process runs with, when it has a maximum.")
+   public Integer getMaxInputRecords()
+   {
+      return (this.wrapped.getMaxInputRecords());
+   }
+
+
+
+   /*******************************************************************************
+    ** Help content by slot, filtered for the current session.
+    *******************************************************************************/
+   @OpenAPIDescription("Help entries by slot, filtered for the current session.")
+   @OpenAPIMapValueType(value = HelpContentV1.class, useRef = true, array = true)
+   public Map<String, List<HelpContentV1>> getHelpContents()
+   {
+      return (HelpContentV1.of(wrapped.getHelpContents()));
+   }
+
+
+   /*******************************************************************************
+    ** Client-neutral representation for non-web clients.
+    *******************************************************************************/
+   @OpenAPIDescription("Client-neutral kebab-case icon token; null when unmapped.")
+   public String getIconSemanticName()
+   {
+      return (SemanticIcons.semanticName(getIconName()));
+   }
 }

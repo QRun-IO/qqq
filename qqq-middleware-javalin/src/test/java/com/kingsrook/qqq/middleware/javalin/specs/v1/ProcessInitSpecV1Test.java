@@ -5,23 +5,24 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import com.kingsrook.qqq.backend.core.logging.QCollectingLogger;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -236,6 +237,43 @@ class ProcessInitSpecV1Test extends SpecTestBase
       assertEquals("hadNullKey", mapWithNullKey.getString(""));
       assertTrue(mapWithNullKey.has("one"));
       assertEquals("1", mapWithNullKey.getString("one"));
+   }
+
+
+
+   /*******************************************************************************
+    ** An uploaded file with an unsafe name is refused (400) before anything is
+    ** stored, as on the legacy route (QRun-IO/qqq#543).
+    *******************************************************************************/
+   @Test
+   void testUnsafeUploadFilenameIsRefused()
+   {
+      for(String filename : List.of("..", "a/b.txt", "c:\\d.txt"))
+      {
+         HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/processes/greet/init")
+            .field("values", "{}")
+            .field("theFile", new ByteArrayInputStream("x".getBytes(StandardCharsets.UTF_8)), filename)
+            .asString();
+         assertEquals(400, response.getStatus(), filename + ": " + response.getBody());
+         assertThat(response.getBody()).contains("Uploaded filename must be a nonempty filename");
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Without an uploaded-file archive table, a file upload is an error rather
+    ** than silently dropped.
+    *******************************************************************************/
+   @Test
+   void testUploadWithoutArchiveTableIsAnError()
+   {
+      HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/processes/greet/init")
+         .field("values", "{}")
+         .field("theFile", new ByteArrayInputStream("x".getBytes(StandardCharsets.UTF_8)), "ok.txt")
+         .asString();
+      assertThat(response.getStatus()).isGreaterThanOrEqualTo(400);
+      assertThat(response.getBody()).contains("UploadFileArchiveTableName was not specified");
    }
 
 }

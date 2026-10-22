@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin.executors;
@@ -331,4 +330,48 @@ class ExecutorSessionUtilsTest
       assertNotNull(session);
    }
 
+
+
+   /*******************************************************************************
+    ** Authorization schemes are case-insensitive; a bearer JWT is never taken
+    ** from the form-parameter fallback.
+    *******************************************************************************/
+   @Test
+   void testAuthorizationSchemes()
+   {
+      java.util.Map<String, String> context = new java.util.HashMap<>();
+      ExecutorSessionUtils.processAuthorizationValue(context, "bearer abc.def.ghi");
+      org.junit.jupiter.api.Assertions.assertEquals("abc.def.ghi", context.get(com.kingsrook.qqq.backend.core.modules.authentication.implementations.Auth0AuthenticationModule.ACCESS_TOKEN_KEY));
+
+      context.clear();
+      ExecutorSessionUtils.processAuthorizationValue(context, "BASIC dXNlcjpwYXNz");
+      org.junit.jupiter.api.Assertions.assertEquals("dXNlcjpwYXNz", context.get(com.kingsrook.qqq.backend.core.modules.authentication.implementations.Auth0AuthenticationModule.BASIC_AUTH_KEY));
+
+      context.clear();
+      ExecutorSessionUtils.processAuthorizationValue(context, "Digest something");
+      org.junit.jupiter.api.Assertions.assertTrue(context.isEmpty());
+
+      org.junit.jupiter.api.Assertions.assertTrue(ExecutorSessionUtils.isBearerJwt("Bearer a.b.c"));
+      org.junit.jupiter.api.Assertions.assertTrue(ExecutorSessionUtils.isBearerJwt("bearer a.b.c"));
+      org.junit.jupiter.api.Assertions.assertFalse(ExecutorSessionUtils.isBearerJwt("Bearer 1b4e28ba-2fa1-11d2-883f-0016d3cca427"));
+      org.junit.jupiter.api.Assertions.assertFalse(ExecutorSessionUtils.isBearerJwt("Basic a.b.c"));
+   }
+
+
+
+   /*******************************************************************************
+    ** A bearer JWT in the Authorization form parameter is ignored.
+    *******************************************************************************/
+   @Test
+   void testFormParamBearerJwtIgnored() throws Exception
+   {
+      when(mockContext.cookie(anyString())).thenReturn(null);
+      when(mockContext.header(anyString())).thenReturn(null);
+      when(mockContext.queryParam(anyString())).thenReturn(null);
+      when(mockContext.formParam("Authorization")).thenReturn("Bearer a.b.c");
+      when(mockContext.cookie(anyString(), anyString(), anyInt())).thenReturn(mockContext);
+
+      QSession session = ExecutorSessionUtils.setupSession(mockContext, qInstance);
+      assertNotNull(session);
+   }
 }

@@ -1,0 +1,88 @@
+/*
+ * QQQ - Low-code Application Framework for Engineers.
+ * Copyright (C) 2021-2026.  Kingsrook, LLC
+ * 651 N Broad St Ste 205 # 6917 | Middletown DE 19709 | United States
+ * contact@kingsrook.com
+ * https://github.com/Kingsrook/
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+
+package com.kingsrook.qqq.backend.core.jobs.effects;
+
+
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.PossibleValueEnum;
+
+
+/*******************************************************************************
+ ** Status of one outbox effect (jobs_effect.status).
+ **
+ ** PENDING (due for delivery) -> SENDING (leased by a dispatcher) -> SENT,
+ ** FAILED (definitely not delivered) or UNKNOWN (may have been delivered; it is
+ ** reconciled, or queued for review with needsReview).
+ *******************************************************************************/
+public enum EffectStatus implements PossibleValueEnum<String>
+{
+   PENDING("Pending"),
+   SENDING("Sending"),
+   SENT("Sent"),
+   FAILED("Failed"),
+   UNKNOWN("Unknown");
+
+   public static final String NAME = "jobs_effect_status";
+
+   private final String label;
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   EffectStatus(String label)
+   {
+      this.label = label;
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Override
+   public String getPossibleValueId()
+   {
+      return (name());
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Override
+   public String getPossibleValueLabel()
+   {
+      return (label);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether the effect still holds its job open (not SENT or FAILED).
+    *******************************************************************************/
+   public boolean isOutstanding()
+   {
+      return (this == PENDING || this == SENDING || this == UNKNOWN);
+   }
+}

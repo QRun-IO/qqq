@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin.executors;
@@ -33,6 +32,7 @@ import java.util.concurrent.TimeUnit;
 import com.kingsrook.qqq.backend.core.actions.async.AsyncJobManager;
 import com.kingsrook.qqq.backend.core.actions.async.JobGoingAsyncException;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.actions.processes.OneTimeSecretHandoff;
 import com.kingsrook.qqq.backend.core.actions.processes.QProcessCallback;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -75,6 +75,7 @@ public class ProcessInitOrStepExecutor extends AbstractMiddlewareExecutor<Proces
 
       String processName    = input.getProcessName();
       String startAfterStep = input.getStartAfterStep();
+      String startAtStep    = input.getStartAtStep();
       String processUUID    = input.getProcessUUID();
 
       if(processUUID == null)
@@ -82,11 +83,23 @@ public class ProcessInitOrStepExecutor extends AbstractMiddlewareExecutor<Proces
          processUUID = UUID.randomUUID().toString();
       }
 
-      LOG.info(startAfterStep == null ? "Initiating process [" + processName + "] [" + processUUID + "]"
-         : "Resuming process [" + processName + "] [" + processUUID + "] after step [" + startAfterStep + "]");
+      if(startAtStep != null)
+      {
+         LOG.info("Resuming process [" + processName + "] [" + processUUID + "] at step [" + startAtStep + "]");
+      }
+      else
+      {
+         LOG.info(startAfterStep == null ? "Initiating process [" + processName + "] [" + processUUID + "]"
+            : "Resuming process [" + processName + "] [" + processUUID + "] after step [" + startAfterStep + "]");
+      }
 
       try
       {
+         /////////////////////////////////////////////////////////////////////////
+         // a variant-backed table's process runs against the requested variant //
+         /////////////////////////////////////////////////////////////////////////
+         ExecutorSessionUtils.setTableVariantInSession(input.getTableVariant());
+
          RunProcessInput runProcessInput = new RunProcessInput();
          QContext.pushAction(runProcessInput);
 
@@ -95,6 +108,7 @@ public class ProcessInitOrStepExecutor extends AbstractMiddlewareExecutor<Proces
          runProcessInput.setFrontendStepBehavior(input.getFrontendStepBehavior());
          runProcessInput.setProcessUUID(processUUID);
          runProcessInput.setStartAfterStep(startAfterStep);
+         runProcessInput.setStartAtStep(startAtStep);
          runProcessInput.setValues(Objects.requireNonNullElseGet(input.getValues(), HashMap::new));
 
          if(input.getRecordsFilter() != null)
@@ -124,7 +138,7 @@ public class ProcessInitOrStepExecutor extends AbstractMiddlewareExecutor<Proces
          }
 
          String reportName = ValueUtils.getValueAsString(runProcessInput.getValue("reportName"));
-         QJavalinAccessLogger.logStart(startAfterStep == null ? "processInit" : "processStep", logPair("processName", processName), logPair("processUUID", processUUID),
+         QJavalinAccessLogger.logStart(startAfterStep == null && startAtStep == null ? "processInit" : "processStep", logPair("processName", processName), logPair("processUUID", processUUID),
             StringUtils.hasContent(startAfterStep) ? logPair("startAfterStep", startAfterStep) : null,
             StringUtils.hasContent(reportName) ? logPair("reportName", reportName) : null);
 
@@ -137,11 +151,19 @@ public class ProcessInitOrStepExecutor extends AbstractMiddlewareExecutor<Proces
          ////////////////////////////////////////
          // run the process as an async action //
          ////////////////////////////////////////
+         final String handoffKey = processUUID;
          RunProcessOutput runProcessOutput = new AsyncJobManager().withProcessUUID(processUUID).startJob(processName, input.getStepTimeoutMillis(), TimeUnit.MILLISECONDS, (callback) ->
          {
             runProcessInput.setAsyncJobCallback(callback);
-            return (new RunProcessAction().execute(runProcessInput));
+            RunProcessOutput jobOutput = new RunProcessAction().execute(runProcessInput);
+            ////////////////////////////////////////////////////////////////////
+            // park one-time secrets for a status poll, in case the step went //
+            // async; taken right back below when it finished synchronously   //
+            ////////////////////////////////////////////////////////////////////
+            OneTimeSecretHandoff.offer(handoffKey, jobOutput.getOneTimeSecrets());
+            return (jobOutput);
          });
+         OneTimeSecretHandoff.take(handoffKey);
 
          LOG.debug("Process result error? " + runProcessOutput.getException());
          for(QFieldMetaData outputField : QContext.getQInstance().getProcess(runProcessInput.getProcessName()).getOutputFields())
@@ -150,6 +172,10 @@ public class ProcessInitOrStepExecutor extends AbstractMiddlewareExecutor<Proces
          }
 
          ProcessExecutorUtils.serializeRunProcessResultForCaller(output, processName, runProcessOutput);
+         if(!runProcessOutput.getOneTimeSecrets().isEmpty())
+         {
+            output.setOneTimeSecrets(runProcessOutput.getOneTimeSecrets());
+         }
          QJavalinAccessLogger.logProcessSummary(processName, processUUID, runProcessOutput);
       }
       catch(JobGoingAsyncException jgae)

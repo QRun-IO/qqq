@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.sampleapp;
@@ -28,6 +27,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -61,6 +61,28 @@ class PackagedSampleServer implements AutoCloseable
     *******************************************************************************/
    static PackagedSampleServer start(Class<?> launcher, Path directory, List<String> arguments) throws Exception
    {
+      String frontend = System.getProperty("qqq.javalin.frontend");
+      return start(launcher, directory, arguments, frontend == null ? List.of() : List.of("-Dqqq.javalin.frontend=" + frontend));
+   }
+
+
+
+   /*******************************************************************************
+    ** Run a public launcher with additional JVM options, such as a dashboard selection.
+    *******************************************************************************/
+   static PackagedSampleServer start(Class<?> launcher, Path directory, List<String> arguments, List<String> jvmOptions) throws Exception
+   {
+      return start(launcher, directory, arguments, jvmOptions, Map.of());
+   }
+
+
+
+   /*******************************************************************************
+    ** Run a public launcher with additional JVM options and environment variables
+    ** (such as a node's QQQ_NODE_ROLES and QQQ_NODE_ID).
+    *******************************************************************************/
+   static PackagedSampleServer start(Class<?> launcher, Path directory, List<String> arguments, List<String> jvmOptions, Map<String, String> environment) throws Exception
+   {
       Path artifact = Path.of(SampleJavalinServer.class.getProtectionDomain().getCodeSource().getLocation().toURI());
       assertTrue(Files.isRegularFile(artifact), "Acceptance must load the packaged sample");
       Path bundle = artifact.resolveSibling(artifact.getFileName().toString().replace(".jar", "-jar-with-dependencies.jar"));
@@ -71,12 +93,20 @@ class PackagedSampleServer implements AutoCloseable
       ManagementFactory.getRuntimeMXBean().getInputArguments().stream()
          .filter(argument -> argument.startsWith("-javaagent:") && argument.contains("org.jacoco.agent"))
          .forEach(command::add);
+      String brokerPort = System.getProperty("qqq.sample.esb.port");
+      if(brokerPort != null)
+      {
+         command.add("-Dqqq.sample.esb.port=" + brokerPort);
+      }
+      command.addAll(jvmOptions);
       command.addAll(List.of(
          "-Dqqq.sample.mockAuthentication=true", "-Dqqq.sample.port=0",
          "-cp", bundle.toString(), launcher.getName()));
       command.addAll(arguments);
-      Process process = new ProcessBuilder(command).directory(Files.createDirectory(work.resolve("cwd")).toFile())
-         .redirectErrorStream(true).redirectOutput(log.toFile()).start();
+      ProcessBuilder builder = new ProcessBuilder(command).directory(Files.createDirectory(work.resolve("cwd")).toFile())
+         .redirectErrorStream(true).redirectOutput(log.toFile());
+      builder.environment().putAll(environment);
+      Process process = builder.start();
       return new PackagedSampleServer(process, log);
    }
 
@@ -90,10 +120,10 @@ class PackagedSampleServer implements AutoCloseable
       long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
       while(System.nanoTime() < deadline && process.isAlive())
       {
-         Matcher listening = Pattern.compile("Listening on http://localhost:(\\d+)/").matcher(output());
+         Matcher listening = Pattern.compile("Listening on (http://(?:localhost|127\\.0\\.0\\.1):\\d+)/").matcher(output());
          if(listening.find())
          {
-            return URI.create("http://localhost:" + listening.group(1));
+            return URI.create(listening.group(1));
          }
          Thread.sleep(50);
       }
@@ -119,6 +149,37 @@ class PackagedSampleServer implements AutoCloseable
    String output() throws Exception
    {
       return Files.readString(log);
+   }
+
+
+
+   /*******************************************************************************
+    ** Kill the child at once (SIGKILL), as a lost node.
+    *******************************************************************************/
+   void kill() throws Exception
+   {
+      process.destroyForcibly();
+      assertTrue(process.waitFor(10, TimeUnit.SECONDS), "Killed sample process must exit");
+   }
+
+
+
+   /*******************************************************************************
+    ** Ask the child to stop (SIGTERM on Unix, so its shutdown hooks drain).
+    *******************************************************************************/
+   void terminate()
+   {
+      process.destroy();
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   boolean isAlive()
+   {
+      return process.isAlive();
    }
 
 

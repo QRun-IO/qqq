@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.api.actions;
@@ -33,6 +32,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import com.kingsrook.qqq.api.javalin.QBadRequestException;
 import com.kingsrook.qqq.api.model.APIVersion;
@@ -134,7 +134,7 @@ public class ApiImplementation
    ///////////////////////////////////////////////////////////////////
    // key:  Pair<apiName, apiVersion>, value: Map<name => metaData> //
    ///////////////////////////////////////////////////////////////////
-   private static Map<Pair<String, String>, Map<String, QTableMetaData>> tableApiNameMap = new HashMap<>();
+   private static final Map<Pair<String, String>, Map<String, QTableMetaData>> tableApiNameMap = new ConcurrentHashMap<>();
 
 
 
@@ -337,11 +337,17 @@ public class ApiImplementation
                      if(StringUtils.hasContent(apiFieldMetaData.getReplacedByFieldName()))
                      {
                         criteria.setFieldName(apiFieldMetaData.getReplacedByFieldName());
+                        convertDateCriteriaValues(table.getField(criteria.getFieldName()), criteria);
                      }
                      else if(apiFieldMetaData.getCustomValueMapper() != null)
                      {
                         ApiFieldCustomValueMapper customValueMapper = QCodeLoader.getAdHoc(ApiFieldCustomValueMapper.class, apiFieldMetaData.getCustomValueMapper());
                         customValueMapper.customizeFilterCriteriaForQueryOrCount(queryInput, filter, criteria, name, apiFieldMetaData);
+                     }
+                     else
+                     {
+                        criteria.setFieldName(field.getName());
+                        convertDateCriteriaValues(field, criteria);
                      }
 
                      filter.addCriteria(criteria);
@@ -398,6 +404,7 @@ public class ApiImplementation
          // but, instead we're trying to just put the query joins in here FROM the query input...                              //
          ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
          CountInput countInput = new CountInput();
+         countInput.setInputSource(QInputSource.USER);
          countInput.setTableName(tableName);
          countInput.setQueryJoins(queryInput.getQueryJoins());
          countInput.setFilter(filter);
@@ -1000,6 +1007,17 @@ public class ApiImplementation
       runProcessInput.setProcessName(processName);
       runProcessInput.setFrontendStepBehavior(RunProcessInput.FrontendStepBehavior.SKIP);
       runProcessInput.setProcessUUID(processUUID);
+
+      ///////////////////////////////////////////////////////////////////
+      // request metadata (remote address, user agent) from the server //
+      ///////////////////////////////////////////////////////////////////
+      for(Map.Entry<String, String> entry : paramMap.entrySet())
+      {
+         if(entry.getKey().startsWith(ApiProcessUtils.REQUEST_VALUE_PREFIX) && entry.getValue() != null)
+         {
+            runProcessInput.addValue(entry.getKey(), entry.getValue());
+         }
+      }
       // todo i don't think runProcessInput.setAsyncJobCallback();
 
       if(PermissionsHelper.getEffectivePermissionRules(process, QContext.getQInstance()).getCustomPermissionChecker() == null)
@@ -1351,6 +1369,25 @@ public class ApiImplementation
 
 
    /*******************************************************************************
+    ** Match native DATE values without taking conversion ownership from custom mappers.
+    *******************************************************************************/
+   private static void convertDateCriteriaValues(QFieldMetaData nativeField, QFilterCriteria criteria) throws QException
+   {
+      if(nativeField != null && nativeField.getType() == QFieldType.DATE && criteria.getValues() != null
+         && criteria.getOperator() != QCriteriaOperator.LIKE && criteria.getOperator() != QCriteriaOperator.NOT_LIKE)
+      {
+         List<Serializable> values = new ArrayList<>();
+         for(Serializable value : criteria.getValues())
+         {
+            values.add(ValueUtils.getValueAsLocalDate(value));
+         }
+         criteria.setValues(values);
+      }
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    private static QFilterCriteria parseQueryParamToCriteria(QFieldMetaData field, String name, String value) throws QException
@@ -1526,7 +1563,7 @@ public class ApiImplementation
       // the second level is keyed by tableApiNames.                                             //
       /////////////////////////////////////////////////////////////////////////////////////////////
       Pair<String, String> key = new Pair<>(apiName, version);
-      if(tableApiNameMap.get(key) == null)
+      Map<String, QTableMetaData> tables = tableApiNameMap.computeIfAbsent(key, ignored ->
       {
          Map<String, QTableMetaData> map = new HashMap<>();
 
@@ -1548,10 +1585,10 @@ public class ApiImplementation
             }
          }
 
-         tableApiNameMap.put(key, map);
-      }
+         return map;
+      });
 
-      return (tableApiNameMap.get(key).get(tableApiName));
+      return (tables.get(tableApiName));
    }
 
 

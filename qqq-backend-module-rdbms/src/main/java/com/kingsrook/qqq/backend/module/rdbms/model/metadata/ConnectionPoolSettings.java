@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.module.rdbms.model.metadata;
@@ -43,6 +42,8 @@ public class ConnectionPoolSettings
    private Integer maxIdleTimeExcessConnectionsSeconds;
    private Integer checkoutTimeoutSeconds;
    private Boolean testConnectionOnCheckout;
+   private Integer leakDetectionThresholdSeconds;
+   private Integer unreturnedConnectionTimeoutSeconds;
 
 
 
@@ -320,6 +321,68 @@ public class ConnectionPoolSettings
    public ConnectionPoolSettings withCheckoutTimeoutSeconds(Integer checkoutTimeoutSeconds)
    {
       this.checkoutTimeoutSeconds = checkoutTimeoutSeconds;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for leakDetectionThresholdSeconds: log a warning (with the checkout stack trace) for any connection held longer than this; detect only, the connection is not reclaimed. Null or 0 disables.
+    *******************************************************************************/
+   public Integer getLeakDetectionThresholdSeconds()
+   {
+      return (this.leakDetectionThresholdSeconds);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for leakDetectionThresholdSeconds
+    *******************************************************************************/
+   public void setLeakDetectionThresholdSeconds(Integer leakDetectionThresholdSeconds)
+   {
+      this.leakDetectionThresholdSeconds = leakDetectionThresholdSeconds;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for leakDetectionThresholdSeconds
+    *******************************************************************************/
+   public ConnectionPoolSettings withLeakDetectionThresholdSeconds(Integer leakDetectionThresholdSeconds)
+   {
+      this.leakDetectionThresholdSeconds = leakDetectionThresholdSeconds;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for unreturnedConnectionTimeoutSeconds: hard reclaim: the pool destroys a connection held longer than this (C3P0 unreturnedConnectionTimeout). Off by default, because long jobs hold connections legitimately.
+    *******************************************************************************/
+   public Integer getUnreturnedConnectionTimeoutSeconds()
+   {
+      return (this.unreturnedConnectionTimeoutSeconds);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for unreturnedConnectionTimeoutSeconds
+    *******************************************************************************/
+   public void setUnreturnedConnectionTimeoutSeconds(Integer unreturnedConnectionTimeoutSeconds)
+   {
+      this.unreturnedConnectionTimeoutSeconds = unreturnedConnectionTimeoutSeconds;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for unreturnedConnectionTimeoutSeconds
+    *******************************************************************************/
+   public ConnectionPoolSettings withUnreturnedConnectionTimeoutSeconds(Integer unreturnedConnectionTimeoutSeconds)
+   {
+      this.unreturnedConnectionTimeoutSeconds = unreturnedConnectionTimeoutSeconds;
       return (this);
    }
 

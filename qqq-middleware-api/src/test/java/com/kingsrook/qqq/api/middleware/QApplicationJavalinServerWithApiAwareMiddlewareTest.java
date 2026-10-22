@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.api.middleware;
@@ -24,6 +23,7 @@ package com.kingsrook.qqq.api.middleware;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import com.kingsrook.qqq.api.middleware.specs.v1.ApiAwareMiddlewareVersionV1;
 import com.kingsrook.qqq.api.model.APIVersion;
 import com.kingsrook.qqq.api.model.metadata.ApiInstanceMetaData;
@@ -41,13 +41,17 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryBackendModule;
 import com.kingsrook.qqq.middleware.javalin.QApplicationJavalinServer;
+import com.kingsrook.qqq.middleware.javalin.QJavalinRouteProviderInterface;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractMiddlewareVersion;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.MiddlewareVersionV1;
+import io.javalin.apibuilder.ApiBuilder;
+import io.javalin.apibuilder.EndpointGroup;
 import kong.unirest.HttpResponse;
 import kong.unirest.Unirest;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 /*******************************************************************************
@@ -72,9 +76,11 @@ public class QApplicationJavalinServerWithApiAwareMiddlewareTest
     *
     * Was registered before (and would therefore clobber):
     * /qqq/v1/metaData/authentication (meta-data about how to authenticate).
+    * Additional route providers registered after documentation also need to
+    * retain their JSON and permission-refusal responses (QRun-IO/qqq#977).
     *******************************************************************************/
    @Test
-   void testWildcardPathsDoNotClobberMetaDataAuthenticationEndpoint() throws QException
+   void testDocumentationPathsDoNotClobberMiddlewareOrAdditionalProviders() throws QException
    {
       AbstractQQQApplication minimalApplication = createMinimalApplication();
 
@@ -87,6 +93,11 @@ public class QApplicationJavalinServerWithApiAwareMiddlewareTest
       javalinServer.setPort(PORT);
       javalinServer.setServeFrontendMaterialDashboard(false);
       javalinServer.setServeLegacyUnversionedMiddlewareAPI(false);
+      ///////////////////////////////////////////////////////////////////////
+      // this test deliberately adds a raw route under /qqq/v1 (to prove     //
+      // providers are not clobbered), so it opts out of strict UI API routes //
+      ///////////////////////////////////////////////////////////////////////
+      javalinServer.withStrictUiApiRoutes(false);
 
       List<AbstractMiddlewareVersion> middlewareVersionList = new ArrayList<>();
       middlewareVersionList.add(new MiddlewareVersionV1());
@@ -104,24 +115,98 @@ public class QApplicationJavalinServerWithApiAwareMiddlewareTest
          }
       }
 
+      javalinServer.setServeFrontendNext(false);
+      javalinServer.withAdditionalRouteProviders(List.of(new QJavalinRouteProviderInterface()
+      {
+         /***************************************************************************
+          ** This provider isolates route precedence without depending on qqq-esb.
+          ***************************************************************************/
+         @Override
+         public void setQInstance(QInstance qInstance)
+         {
+         }
+
+
+
+         /***************************************************************************
+          ** Exercise the real ESB path with both successful and refused responses.
+          ***************************************************************************/
+         @Override
+         public EndpointGroup getJavalinEndpointGroup()
+         {
+            return (() -> ApiBuilder.get("/qqq/v1/esb/overview", context ->
+            {
+               if("true".equals(context.header("X-Test-Denied")))
+               {
+                  context.status(403).json(Map.of("error", "Permission denied."));
+               }
+               else
+               {
+                  context.json(Map.of("providers", List.of(), "destinations", List.of()));
+               }
+            }));
+         }
+      }));
+
       javalinServer.start();
+      try
+      {
+         //////////////////////////////////////////////////////////////////////////////////////////////
+         // do a basic control test, fetching /metaData (which didn't have an issue before this bug) //
+         //////////////////////////////////////////////////////////////////////////////////////////////
+         HttpResponse<String> metaDataResponse = Unirest.get("http://localhost:" + PORT + "/qqq/v1/metaData").asString();
+         assertEquals(200, metaDataResponse.getStatus());
+         JSONObject metaData = new JSONObject(metaDataResponse.getBody());
+         JSONObject tables   = metaData.getJSONObject("tables");
 
-      //////////////////////////////////////////////////////////////////////////////////////////////
-      // do a basic control test, fetching /metaData (which didn't have an issue before this bug) //
-      //////////////////////////////////////////////////////////////////////////////////////////////
-      HttpResponse<String> metaDataResponse = Unirest.get("http://localhost:" + PORT + "/qqq/v1/metaData").asString();
-      assertEquals(200, metaDataResponse.getStatus());
-      JSONObject metaData = new JSONObject(metaDataResponse.getBody());
-      JSONObject tables   = metaData.getJSONObject("tables");
+         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+         // now do the condition we're regression testing for - the /middleware/authentication path, which did have the bug //
+         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+         HttpResponse<String> authMetaDataResponse = Unirest.get("http://localhost:" + PORT + "/qqq/v1/metaData/authentication").asString();
+         assertEquals(200, authMetaDataResponse.getStatus());
+         JSONObject authenticationMetaData = new JSONObject(authMetaDataResponse.getBody());
+         String     authenticationType     = authenticationMetaData.getString("type");
+         assertEquals("FULLY_ANONYMOUS", authenticationType);
 
-      /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-      // now do the condition we're regression testing for - the /middleware/authentication path, which did have the bug //
-      /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-      HttpResponse<String> authMetaDataResponse = Unirest.get("http://localhost:" + PORT + "/qqq/v1/metaData/authentication").asString();
-      assertEquals(200, authMetaDataResponse.getStatus());
-      JSONObject authenticationMetaData = new JSONObject(authMetaDataResponse.getBody());
-      String     authenticationType     = authenticationMetaData.getString("type");
-      assertEquals("FULLY_ANONYMOUS", authenticationType);
+         HttpResponse<String> overview = Unirest.get("http://localhost:" + PORT + "/qqq/v1/esb/overview").asString();
+         assertEquals(200, overview.getStatus());
+         assertTrue(overview.getHeaders().getFirst("Content-Type").startsWith("application/json"));
+         assertTrue(new JSONObject(overview.getBody()).has("providers"));
+         assertTrue(new JSONObject(overview.getBody()).has("destinations"));
+
+         HttpResponse<String> denied = Unirest.get("http://localhost:" + PORT + "/qqq/v1/esb/overview").header("X-Test-Denied", "true").asString();
+         assertEquals(403, denied.getStatus());
+         assertTrue(denied.getHeaders().getFirst("Content-Type").startsWith("application/json"));
+         assertEquals("Permission denied.", new JSONObject(denied.getBody()).getString("error"));
+
+         for(String apiName : apiNames)
+         {
+            for(APIVersion apiVersion : apiVersions)
+            {
+               String docsPath = "http://localhost:" + PORT + "/qqq/v1/" + apiName + "/" + apiVersion;
+               for(String suffix : List.of("", "/openapi.html"))
+               {
+                  HttpResponse<String> docs = Unirest.get(docsPath + suffix).asString();
+                  assertEquals(200, docs.getStatus());
+                  assertTrue(docs.getHeaders().getFirst("Content-Type").startsWith("text/html"));
+                  assertTrue(docs.getBody().contains("QQQ Middleware API - v1"));
+               }
+               HttpResponse<String> spec = Unirest.get(docsPath + "/openapi.json").asString();
+               assertEquals(200, spec.getStatus());
+               assertTrue(new JSONObject(spec.getBody()).has("openapi"));
+               HttpResponse<String> yaml = Unirest.get(docsPath + "/openapi.yaml").asString();
+               assertEquals(200, yaml.getStatus());
+               assertTrue(yaml.getBody().contains("openapi:"));
+            }
+         }
+         assertEquals(404, Unirest.get("http://localhost:" + PORT + "/qqq/v1/unknown/v1").asString().getStatus());
+         assertEquals(404, Unirest.get("http://localhost:" + PORT + "/qqq/v1/full-api/unknown").asString().getStatus());
+      }
+      finally
+      {
+         javalinServer.stop();
+         QContext.clear();
+      }
    }
 
 

@@ -1,0 +1,163 @@
+/*
+ * QQQ - Low-code Application Framework for Engineers.
+ * Copyright (C) 2021-2026.  Kingsrook, LLC
+ * 651 N Broad St Ste 205 # 6917 | Middletown DE 19709 | United States
+ * contact@kingsrook.com
+ * https://github.com/Kingsrook/
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.kingsrook.qqq.backend.core.actions.tables.listeners;
+
+
+import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
+import com.kingsrook.qqq.backend.core.exceptions.QRuntimeException;
+import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
+import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
+import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
+
+
+/*******************************************************************************
+ ** Runs the instance's record change listeners.  Every listener failure (in
+ ** loading it, in appliesTo, or in onRecordsChanged) is caught and logged.
+ ** Required integrity listeners propagate execution failures. That includes
+ ** a LinkageError (e.g., a NoClassDefFoundError when a listener uses an
+ ** optional library, such as a message broker's client, that isn't on the
+ ** classpath), as well as any Exception.
+ **
+ ** Each applying listener is given the same event object, in registration
+ ** order.
+ *******************************************************************************/
+public class RecordChangeListenerHelper
+{
+   private static final QLogger LOG = QLogger.getLogger(RecordChangeListenerHelper.class);
+
+
+
+   /*******************************************************************************
+    ** Whether any of the instance's listeners applies to this table and change
+    ** type.  Actions check this before fetching old records or building an event,
+    ** so an instance without applying listeners pays for neither.
+    *******************************************************************************/
+   public static boolean anyApply(QInstance qInstance, String tableName, RecordChangeType type)
+   {
+      if(qInstance == null || CollectionUtils.nullSafeIsEmpty(qInstance.getRecordChangeListeners()))
+      {
+         return (false);
+      }
+
+      for(QCodeReference codeReference : qInstance.getRecordChangeListeners())
+      {
+         if(loadIfApplies(codeReference, tableName, type) != null)
+         {
+            return (true);
+         }
+      }
+
+      return (false);
+   }
+
+
+
+   /*******************************************************************************
+    ** Give the event to each listener that applies to its table and type, in
+    ** registration order.  Does nothing if the event has no records.
+    *******************************************************************************/
+   public static void fire(QInstance qInstance, RecordChangeEvent event)
+   {
+      fire(qInstance, event, false);
+   }
+
+
+
+   /*******************************************************************************
+    ** Suppressed notifications still run required integrity listeners.
+    *******************************************************************************/
+   public static void fire(QInstance qInstance, RecordChangeEvent event, boolean requiredOnly)
+   {
+      if(qInstance == null || event == null || CollectionUtils.nullSafeIsEmpty(event.getRecords()) || CollectionUtils.nullSafeIsEmpty(qInstance.getRecordChangeListeners()))
+      {
+         return;
+      }
+
+      if(requiredOnly)
+      {
+         event.setNotificationsSuppressed(true);
+      }
+
+      for(QCodeReference codeReference : qInstance.getRecordChangeListeners())
+      {
+         RecordChangeListenerInterface listener = loadIfApplies(codeReference, event.getTableName(), event.getType());
+         if(listener == null || (requiredOnly && !listener.isRequired()))
+         {
+            continue;
+         }
+
+         try
+         {
+            listener.onRecordsChanged(event);
+         }
+         catch(Exception | LinkageError e)
+         {
+            if(listener.isRequired())
+            {
+               throw (new RequiredListenerException(e));
+            }
+            LOG.warn("Error in record change listener", e, logPair("listener", codeReference.getName()), logPair("tableName", event.getTableName()), logPair("type", event.getType()), logPair("recordCount", event.getRecords().size()));
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** The listener for a code reference, if it loads and applies; else null.
+    *******************************************************************************/
+   private static RecordChangeListenerInterface loadIfApplies(QCodeReference codeReference, String tableName, RecordChangeType type)
+   {
+      try
+      {
+         RecordChangeListenerInterface listener = QCodeLoader.getAdHoc(RecordChangeListenerInterface.class, codeReference);
+         if(listener != null && listener.appliesTo(tableName, type))
+         {
+            return (listener);
+         }
+      }
+      catch(Exception | LinkageError e)
+      {
+         LOG.warn("Error loading record change listener", e, logPair("listener", codeReference == null ? null : codeReference.getName()), logPair("tableName", tableName), logPair("type", type));
+      }
+
+      return (null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Preserve required-listener failures through actions' event preparation guards.
+    *******************************************************************************/
+   public static class RequiredListenerException extends QRuntimeException
+   {
+      /*******************************************************************************
+       ** The caller must roll back the transaction containing the parent write.
+       *******************************************************************************/
+      public RequiredListenerException(Throwable cause)
+      {
+         super("Required record change listener failed; roll back the transaction", cause);
+      }
+   }
+
+}

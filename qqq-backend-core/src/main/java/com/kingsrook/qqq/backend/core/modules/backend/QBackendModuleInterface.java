@@ -5,25 +5,29 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.modules.backend;
 
 
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.interfaces.AggregateInterface;
+import com.kingsrook.qqq.backend.core.actions.interfaces.ConditionalUpdateInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.CountInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.DeleteInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.GetInterface;
@@ -32,9 +36,14 @@ import com.kingsrook.qqq.backend.core.actions.interfaces.QStorageInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.QueryInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.UpdateInterface;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.health.HealthCheck;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
+import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistentReadInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryLockMode;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableBackendDetails;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 
 
 /*******************************************************************************
@@ -47,6 +56,36 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableBackendDetails
 public interface QBackendModuleInterface
 {
    /*******************************************************************************
+    ** Optional backend readiness probe, registered by central health monitoring.
+    *******************************************************************************/
+   default HealthCheck getHealthCheck(QBackendMetaData backend)
+   {
+      return (null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Optional JVM-local resource check, sampled independently on every runner.
+    *******************************************************************************/
+   default HealthCheck getNodeLocalHealthCheck(QBackendMetaData backend)
+   {
+      return (null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether query, count and aggregate can translate same-backend sub-queries.
+    *******************************************************************************/
+   default boolean supportsSubQueries(QBackendMetaData backend)
+   {
+      return (false);
+   }
+
+
+
+   /*******************************************************************************
     ** Method where a backend module must be able to provide its type (name).
     *******************************************************************************/
    String getBackendType();
@@ -57,6 +96,19 @@ public interface QBackendModuleInterface
    default Class<? extends QBackendMetaData> getBackendMetaDataClass()
    {
       return (QBackendMetaData.class);
+   }
+
+
+
+   /*******************************************************************************
+    ** Capabilities this module can never provide (for example, writes on a
+    ** read-only module).  The instance enricher disables them on every backend of
+    ** this type, unless the backend explicitly enables them, so tables, their
+    ** generated bulk processes, permissions and frontends all agree.
+    *******************************************************************************/
+   default Set<Capability> getUnsupportedCapabilities()
+   {
+      return (Set.of());
    }
 
    /*******************************************************************************
@@ -132,6 +184,28 @@ public interface QBackendModuleInterface
 
 
    /*******************************************************************************
+    ** The CONDITIONAL_UPDATE capability (atomic compare-and-set update), or null
+    ** when the backend does not support it (the default).
+    *******************************************************************************/
+   default ConditionalUpdateInterface getConditionalUpdateInterface()
+   {
+      return (null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether queries against this backend can take the given row locks
+    ** (QueryInput.lockMode). False by default.
+    *******************************************************************************/
+   default boolean supportsQueryLockMode(QBackendMetaData backendMetaData, QueryLockMode lockMode)
+   {
+      return (false);
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    default QStorageInterface getStorageInterface()
@@ -147,6 +221,40 @@ public interface QBackendModuleInterface
    {
       return (new QBackendTransaction());
    }
+
+   /*******************************************************************************
+    ** Open a read-only transaction through which every table read (passed as the
+    ** transaction on the read's input) reflects one instant - see ConsistencyScope
+    ** and ConsistencyGuarantee (QBackendTransaction.getConsistencyGuarantee).
+    ** Where the backend can share the snapshot, the transaction's
+    ** getExportedSnapshotId is set, and other transactions may attach to it via
+    ** ConsistentReadInput.importSnapshotId (while this one stays open).
+    **
+    ** The default - for backends with no such support - is Optional.empty().
+    ** The caller owns the returned transaction, and must close it.
+    *******************************************************************************/
+   default Optional<QBackendTransaction> openConsistentReadTransaction(ConsistentReadInput input) throws QException
+   {
+      return (Optional.empty());
+   }
+
+
+
+   /*******************************************************************************
+    ** Advance each table's generated-key sequence past the largest key now in the
+    ** table, so the next generated insert gets max+1.  Needed after rows were
+    ** inserted with explicit (preserved) primary keys, e.g., a restore or a data
+    ** migration.
+    **
+    ** The default does nothing, and returns an empty list: backends without
+    ** generated key sequences have nothing to resync.
+    *******************************************************************************/
+   default List<SequenceResyncResult> resyncKeySequences(QBackendMetaData backend, Collection<QTableMetaData> tables) throws QException
+   {
+      return (List.of());
+   }
+
+
 
    /*******************************************************************************
     **

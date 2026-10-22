@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.actions.tables;
@@ -31,11 +30,16 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
+import com.kingsrook.qqq.backend.core.actions.collaboration.RecordReferenceSecurityHelper;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.actions.interfaces.GetInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionEnforcement;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.GetActionCacheHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
 import com.kingsrook.qqq.backend.core.actions.values.QPossibleValueTranslator;
@@ -76,6 +80,7 @@ public class GetAction
 
    private Optional<TableCustomizerInterface> postGetRecordCustomizer;
 
+   private boolean enforceFieldAccess;
    private GetInput                 getInput;
    private QPossibleValueTranslator qPossibleValueTranslator;
 
@@ -88,6 +93,43 @@ public class GetAction
     *******************************************************************************/
    public GetOutput execute(GetInput getInput) throws QException
    {
+      FieldAccessHelper.PendingExactMatch exactMatch = null;
+      boolean enforce = false;
+      if(getInput.getTable() != null)
+      {
+         CorePermissionEnforcer.checkTablePermissions(getInput, TablePermissionSubType.READ);
+         enforce = CorePermissionEnforcer.shouldEnforceFieldAccess(getInput);
+         if(enforce)
+         {
+            exactMatch = CorePermissionEnforcer.checkReadCriteria(getInput, getInput.getQueryJoins(), convertGetInputToQueryInput(getInput).getFilter(), null);
+         }
+      }
+
+      try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope())
+      {
+         GetOutput getOutput = executeInAuthorizedScope(getInput, enforce);
+         if(enforce && getOutput.getRecord() != null)
+         {
+            List<QRecord> records = new ArrayList<>(List.of(getOutput.getRecord()));
+            FieldAccessHelper.applyToRecords(getInput.getTableName(), getInput.getQueryJoins(), records, "get");
+            getOutput.setRecord(records.isEmpty() ? null : records.get(0));
+         }
+         if(exactMatch != null)
+         {
+            exactMatch.complete(getOutput.getRecord() == null ? 0 : 1, "get");
+         }
+         return (getOutput);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** The get itself - after any permission enforcement owed to the caller.
+    *******************************************************************************/
+   private GetOutput executeInAuthorizedScope(GetInput getInput, boolean enforce) throws QException
+   {
+      enforceFieldAccess = enforce;
       ActionHelper.validateSession(getInput);
 
       QTableMetaData table = getInput.getTable();
@@ -95,7 +137,7 @@ public class GetAction
       {
          throw (new QException("Requested to Get a record from an unrecognized table: " + getInput.getTableName()));
       }
-      table = TableMetaDataPersonalizerAction.execute(getInput);
+      table = TableMetaDataPersonalizerAction.execute(getInput, enforce);
       getInput.setTableMetaData(table);
 
       postGetRecordCustomizer = QCodeLoader.getTableCustomizer(table, TableCustomizers.POST_QUERY_RECORD.getRole());
@@ -121,7 +163,7 @@ public class GetAction
       boolean   usingDefaultGetInterface = false;
       if(getInterface == null)
       {
-         getInterface = new DefaultGetInterface();
+         getInterface = new DefaultGetInterface(false);
          usingDefaultGetInterface = true;
       }
 
@@ -148,6 +190,11 @@ public class GetAction
       if(table.getCacheOf() != null)
       {
          new GetActionCacheHelper().handleCaching(getInput, getOutput);
+      }
+
+      if(!RecordReferenceSecurityHelper.canReadReference(table, getOutput.getRecord(), getInput.getTransaction()))
+      {
+         getOutput.setRecord(null);
       }
 
       ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -288,7 +335,7 @@ public class GetAction
     *******************************************************************************/
    public GetOutput executeViaQuery(GetInput getInput) throws QException
    {
-      return (new DefaultGetInterface().execute(getInput));
+      return (new DefaultGetInterface(true).execute(getInput));
    }
 
 
@@ -298,10 +345,35 @@ public class GetAction
     *******************************************************************************/
    private static class DefaultGetInterface implements GetInterface
    {
+      private final boolean enforceQuery;
+
+
+
+      /*******************************************************************************
+       ** The owning get enforces once; a direct executeViaQuery must enforce itself.
+       *******************************************************************************/
+      private DefaultGetInterface(boolean enforceQuery)
+      {
+         this.enforceQuery = enforceQuery;
+      }
+
+
+
+      /*******************************************************************************
+       ** Run the query, retaining explicit enforcement for direct invocations.
+       *******************************************************************************/
       @Override
       public GetOutput execute(GetInput getInput) throws QException
       {
          QueryInput queryInput = convertGetInputToQueryInput(getInput);
+
+         ///////////////////////////////////////////////////////////////////////////
+         // an ENFORCE get (e.g., via the public executeViaQuery) stays enforced //
+         ///////////////////////////////////////////////////////////////////////////
+         if(enforceQuery && PermissionEnforcement.ENFORCE.equals(getInput.getPermissionEnforcement()))
+         {
+            queryInput.setPermissionEnforcement(PermissionEnforcement.ENFORCE);
+         }
 
          QueryOutput queryOutput = new QueryAction().execute(queryInput);
 
@@ -377,7 +449,7 @@ public class GetAction
       {
          if(qPossibleValueTranslator == null)
          {
-            qPossibleValueTranslator = new QPossibleValueTranslator(QContext.getQInstance(), QContext.getQSession());
+            qPossibleValueTranslator = new QPossibleValueTranslator(QContext.getQInstance(), QContext.getQSession()).withFieldAccessEnforcement(enforceFieldAccess);
          }
          qPossibleValueTranslator.translatePossibleValuesInRecords(getInput.getTable(), List.of(returnRecord));
       }

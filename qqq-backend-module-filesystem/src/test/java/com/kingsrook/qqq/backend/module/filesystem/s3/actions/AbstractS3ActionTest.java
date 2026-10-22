@@ -5,28 +5,27 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.module.filesystem.s3.actions;
 
 
-import com.amazonaws.regions.Regions;
-import com.amazonaws.services.s3.AmazonS3;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.module.filesystem.s3.model.metadata.S3BackendMetaData;
 import org.junit.jupiter.api.Test;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -41,15 +40,15 @@ class AbstractS3ActionTest
     **
     *******************************************************************************/
    @Test
-   void testBuildAmazonS3ClientFromBackendMetaData()
+   void testBuildS3ClientFromBackendMetaData()
    {
-      String regionName = Regions.AP_SOUTHEAST_3.getName();
+      String regionName = Region.AP_SOUTHEAST_3.id();
       S3BackendMetaData s3BackendMetaData = new S3BackendMetaData()
          .withAccessKey("Not a real access key")
          .withSecretKey("Also not a real key")
          .withRegion(regionName);
-      AmazonS3 amazonS3 = new AbstractS3Action().buildAmazonS3ClientFromBackendMetaData(s3BackendMetaData);
-      assertEquals(regionName, amazonS3.getRegionName());
+      S3Client s3Client = new AbstractS3Action().buildS3ClientFromBackendMetaData(s3BackendMetaData);
+      assertEquals(regionName, s3Client.serviceClientConfiguration().region().id());
    }
 
 
@@ -58,11 +57,11 @@ class AbstractS3ActionTest
     **
     *******************************************************************************/
    @Test
-   void testBuildAmazonS3ClientFromBackendMetaDataWrongType()
+   void testBuildS3ClientFromBackendMetaDataWrongType()
    {
       assertThrows(IllegalArgumentException.class, () ->
       {
-         new AbstractS3Action().buildAmazonS3ClientFromBackendMetaData(new QBackendMetaData());
+         new AbstractS3Action().buildS3ClientFromBackendMetaData(new QBackendMetaData());
       });
    }
 }

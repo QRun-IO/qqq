@@ -168,3 +168,48 @@ output.addValue("serverFilePath", ProcessFileDownload.register(generatedFile));
 For a storage-backed output, close its output stream, call `ProcessFileDownload.registerStorage(storageInput)`, and return the same `storageInput.getTableName()` and `storageInput.getReference()` as `storageTableName` and `storageReference`. Register only an output that the process has authorized for the caller. Never register an arbitrary path/reference copied from HTTP input or echoed process values. Table READ alone does not grant access to arbitrary storage objects.
 
 Grants belong to the application instance, originating authentication session and selected backend variants. They expire after 30 minutes, are limited to 10,000 cached outputs per JVM, and are lost on restart or eviction. Downloads must reach the JVM that generated the grant. Applications using multiple nodes must route process and download requests to the same node. Authentication modules must preserve `QSession.idReference` across requests (or `uuid` when no reference is supplied); credential renewal can require regenerating the report. Grants do not delete output files or replace the application's own cleanup policy. Local filesystem storage references must remain relative to the configured table directory, including when symbolic links are present.
+
+
+=== One-time secrets in process output
+
+A backend step can return a secret to the user exactly once using the shared
+`com.kingsrook.qqq.backend.core.model.secrets.OneTimeSecret` type:
+
+[source,java]
+----
+runBackendStepOutput.addOneTimeSecret(new OneTimeSecret()
+   .withLabel("Access token")
+   .withValue(tokenKey)
+   .withMasked("****" + tokenKey.substring(tokenKey.length() - 4))
+   .withUsageText("Copy this token now. It will not be shown again."));
+----
+
+The first consumer is qbit-authentik's Create Token process, which returns an access-token key.
+Streamed ETL transform and load steps can call the same API during `runOnePage`;
+the page secrets propagate to the enclosing backend step output.
+`RunProcessAction` gathers backend step secrets in execution order in
+`RunProcessOutput.getOneTimeSecrets()` for the current invocation only.
+
+Secrets live in transient output fields, never in `ProcessState`, values, or records.
+The output getters are excluded from JSON serialization so process traces and lifecycle
+listener output JSON cannot expose them. `OneTimeSecret.toString()` omits the raw value.
+Only the masked strings are appended to the stored `oneTimeSecretsMasked` value
+(`RunProcessAction.ONE_TIME_SECRETS_MASKED`), allowing later screens to show placeholders.
+Supply safe masked text; do not copy the raw token into labels, masked text, state,
+records, summaries, exception messages, progress messages, or logs.
+
+Synchronous v1 init/step and legacy process responses include an optional
+`oneTimeSecrets: [{label, value, masked, usageText}]` array and `Cache-Control: no-store`.
+The v1 API reuses the preferences `PreferenceSecretV1` schema.
+If execution exceeds `stepTimeoutMillis` (3 seconds by default, or a zero timeout
+forces an async job), the response contains a `jobUUID`. The finished job's secrets are
+then parked in memory (`OneTimeSecretHandoff`, keyed by process UUID, 5-minute time to
+live, never in process state) and returned, with `Cache-Control: no-store`, by the
+**first** status poll that sees the job complete; later polls never include them.
+A poll that reaches a different server instance, or arrives after the time to live,
+finds nothing: the secret is lost by design and only the masked state placeholders
+remain (rotate to get a new one).
+
+Clients should display each value once, offer a copy action, and show `usageText`.
+Never cache, persist, log, or send the response to analytics. After dismissal, use the
+masked state placeholders to indicate that the secret was already shown.

@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.model.actions.tables.insert;
@@ -45,6 +44,22 @@ public class InsertInput extends AbstractTableActionInput
    private List<QRecord>       records;
 
    private boolean skipUniqueKeyCheck = false;
+
+   /*******************************************************************************
+    ** For inserts whose row-level errors are an expected outcome (for example a
+    ** losing writer in a race on a unique key), so InsertAction need not log them.
+    ** The errors are still returned on the records.
+    *******************************************************************************/
+   private boolean quietRecordErrors = false;
+
+   private boolean dryRun = false;
+
+   /*******************************************************************************
+    ** For trusted system writes of derived values (counters, denormalized totals)
+    ** that are not business events. Required integrity listeners still run.
+    ** Record locks, field security, validation and permissions are unchanged.
+    *******************************************************************************/
+   private boolean omitRecordChangeEvents = false;
 
    private boolean omitDmlAudit = false;
    private String  auditContext = null;
@@ -206,12 +221,74 @@ public class InsertInput extends AbstractTableActionInput
 
 
    /*******************************************************************************
+    ** Getter for quietRecordErrors
+    *******************************************************************************/
+   public boolean getQuietRecordErrors()
+   {
+      return (quietRecordErrors);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for quietRecordErrors
+    *******************************************************************************/
+   public void setQuietRecordErrors(boolean quietRecordErrors)
+   {
+      this.quietRecordErrors = quietRecordErrors;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for quietRecordErrors
+    *******************************************************************************/
+   public InsertInput withQuietRecordErrors(boolean quietRecordErrors)
+   {
+      this.quietRecordErrors = quietRecordErrors;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
     ** Fluent setter for skipUniqueKeyCheck
     **
     *******************************************************************************/
    public InsertInput withSkipUniqueKeyCheck(boolean skipUniqueKeyCheck)
    {
       this.skipUniqueKeyCheck = skipUniqueKeyCheck;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for omitRecordChangeEvents
+    *******************************************************************************/
+   public boolean getOmitRecordChangeEvents()
+   {
+      return (this.omitRecordChangeEvents);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for omitRecordChangeEvents
+    *******************************************************************************/
+   public void setOmitRecordChangeEvents(boolean omitRecordChangeEvents)
+   {
+      this.omitRecordChangeEvents = omitRecordChangeEvents;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for omitRecordChangeEvents
+    *******************************************************************************/
+   public InsertInput withOmitRecordChangeEvents(boolean omitRecordChangeEvents)
+   {
+      this.omitRecordChangeEvents = omitRecordChangeEvents;
       return (this);
    }
 
@@ -359,6 +436,41 @@ public class InsertInput extends AbstractTableActionInput
       }
 
       return (this.flags.contains(flag));
+   }
+
+
+   /*******************************************************************************
+    ** Getter for dryRun - if true, run the pre-insert customizers (with isPreview=true) and all validations
+    ** (required fields, unique keys, record security locks, field security locks and
+    ** permissions if enforced) but do NOT store anything: no backend insert, no
+    ** associations, audits, record change listeners or post-insert customizers.  The
+    ** output records are the would-be inserted records (without generated keys),
+    ** carrying any errors/warnings.
+    *******************************************************************************/
+   public boolean getDryRun()
+   {
+      return (this.dryRun);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for dryRun - see getDryRun.
+    *******************************************************************************/
+   public void setDryRun(boolean dryRun)
+   {
+      this.dryRun = dryRun;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for dryRun - see getDryRun.
+    *******************************************************************************/
+   public InsertInput withDryRun(boolean dryRun)
+   {
+      this.dryRun = dryRun;
+      return (this);
    }
 
 }

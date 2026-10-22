@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.model.metadata.frontend;
@@ -30,6 +29,7 @@ import java.util.Objects;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.MetaDataOutput;
+import com.kingsrook.qqq.backend.core.model.metadata.help.HelpContentVisibility;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppSection;
@@ -45,6 +45,8 @@ import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 @JsonInclude(Include.NON_NULL)
 public class QFrontendAppMetaData
 {
+   private List<String> keywords;
+
    private String name;
    private String label;
    private QIcon  icon;
@@ -66,6 +68,7 @@ public class QFrontendAppMetaData
    public QFrontendAppMetaData(QAppMetaData appMetaData, MetaDataOutput metaDataOutput)
    {
       this.name = appMetaData.getName();
+      this.keywords = CollectionUtils.nullSafeIsEmpty(appMetaData.getKeywords()) ? null : new ArrayList<>(appMetaData.getKeywords());
       this.label = appMetaData.getLabel();
       this.icon = appMetaData.getIcon();
 
@@ -81,7 +84,7 @@ public class QFrontendAppMetaData
          List<String> filteredTables    = CollectionUtils.nonNullList(section.getTables()).stream().filter(n -> metaDataOutput.getTables().containsKey(n)).toList();
          List<String> filteredProcesses = CollectionUtils.nonNullList(section.getProcesses()).stream().filter(n -> metaDataOutput.getProcesses().containsKey(n)).toList();
          List<String> filteredReports   = CollectionUtils.nonNullList(section.getReports()).stream().filter(n -> metaDataOutput.getReports().containsKey(n)).toList();
-         List<String> filteredApps      = CollectionUtils.nonNullList(section.getApps());
+         List<String> filteredApps      = new ArrayList<>(CollectionUtils.nonNullList(section.getApps()));
 
          //////////////////////////////////////////////////////
          // only include the section if it has some contents //
@@ -126,7 +129,7 @@ public class QFrontendAppMetaData
          }
       }
 
-      this.helpContents = appMetaData.getHelpContent();
+      this.helpContents = HelpContentVisibility.filter(appMetaData.getHelpContent());
    }
 
 
@@ -253,4 +256,34 @@ public class QFrontendAppMetaData
    {
       return icon;
    }
+
+
+
+   /*******************************************************************************
+    ** Getter for keywords
+    *******************************************************************************/
+   public List<String> getKeywords()
+   {
+      return (this.keywords);
+   }
+
+
+
+   /*******************************************************************************
+    ** Filter section apps after all permitted apps have been collected, regardless of server order.
+    *******************************************************************************/
+   public void filterSectionApps(Map<String, QFrontendAppMetaData> apps)
+   {
+      if(sections != null)
+      {
+         for(QAppSection section : sections)
+         {
+            section.setApps(CollectionUtils.nonNullList(section.getApps()).stream().filter(apps::containsKey).toList());
+         }
+         sections.removeIf(section -> CollectionUtils.nullSafeIsEmpty(section.getApps())
+            && CollectionUtils.nullSafeIsEmpty(section.getTables()) && CollectionUtils.nullSafeIsEmpty(section.getProcesses())
+            && CollectionUtils.nullSafeIsEmpty(section.getReports()));
+      }
+   }
+
 }

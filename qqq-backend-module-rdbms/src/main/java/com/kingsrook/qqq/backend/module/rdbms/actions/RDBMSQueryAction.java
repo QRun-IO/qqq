@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.module.rdbms.actions;
@@ -45,6 +44,8 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
+import com.kingsrook.qqq.backend.core.instrumentation.StatementOperation;
+import com.kingsrook.qqq.backend.core.instrumentation.StatementTimer;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.personalization.TableMetaDataPersonalizerInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QueryHint;
@@ -53,6 +54,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryLockMode;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -166,6 +168,8 @@ public class RDBMSQueryAction extends AbstractRDBMSAction implements QueryInterf
          }
 
          Long mark = System.currentTimeMillis();
+         StatementTimer statementTimer = startStatementTimer(table.getName(), StatementOperation.QUERY);
+         int[]          rowCounter     = new int[1];
 
          try
          {
@@ -228,6 +232,7 @@ public class RDBMSQueryAction extends AbstractRDBMSAction implements QueryInterf
                   }
 
                   queryOutput.addRecord(record);
+                  rowCounter[0]++;
 
                   if(queryInput.getAsyncJobCallback().wasCancelRequested())
                   {
@@ -243,11 +248,13 @@ public class RDBMSQueryAction extends AbstractRDBMSAction implements QueryInterf
 
             }), params);
 
+            statementTimer.succeeded(rowCounter[0]);
             return queryOutput;
          }
          finally
          {
             logSQL(sql, params, mark);
+            statementTimer.finish(sql);
 
             if(actionTimeoutHelper != null)
             {
@@ -355,6 +362,21 @@ public class RDBMSQueryAction extends AbstractRDBMSAction implements QueryInterf
          }
       }
 
+      if(queryInput.getLockMode() == QueryLockMode.FOR_UPDATE_SKIP_LOCKED)
+      {
+         ///////////////////////////////////////////////////////////////////////
+         // row locks for work queues (e.g., durable job leases), in the      //
+         // caller's transaction. Lock only the main table's rows (OF alias): //
+         // joins - such as record-lock security joins - are outer joins,     //
+         // which cannot be locked, and must not be.                          //
+         ///////////////////////////////////////////////////////////////////////
+         if(!getActionStrategy().supportsForUpdateSkipLocked())
+         {
+            throw (new QException("This database does not support FOR UPDATE SKIP LOCKED."));
+         }
+         sql.append(" FOR UPDATE OF ").append(escapeIdentifier(tableName)).append(" SKIP LOCKED");
+      }
+
       // todo sql customization - can edit sql and/or param list
 
       setSqlAndJoinsInQueryStat(sql, joinsContext);
@@ -376,9 +398,8 @@ public class RDBMSQueryAction extends AbstractRDBMSAction implements QueryInterf
          JoinsContext.FieldAndTableNameOrAlias otherFieldAndTableNameOrAlias = joinsContext.getFieldAndTableNameOrAlias(orderBy.getFieldName());
 
          QFieldMetaData field  = otherFieldAndTableNameOrAlias.field();
-         String         column = getColumnName(field);
 
-         String qualifiedColumn = escapeIdentifier(otherFieldAndTableNameOrAlias.tableNameOrAlias()) + "." + escapeIdentifier(column);
+         String qualifiedColumn = fieldExpression(otherFieldAndTableNameOrAlias.tableNameOrAlias(), field);
          String columnNo        = String.valueOf(selection.qualifiedColumns.indexOf(qualifiedColumn) + 1);
          clauses.add(columnNo + " " + ascOrDesc);
 
@@ -451,7 +472,7 @@ public class RDBMSQueryAction extends AbstractRDBMSAction implements QueryInterf
       // if a field is heavy, and heavy fields aren't being selected, then replace that field name with a LENGTH function //
       //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
       List<String> qualifiedColumns = new ArrayList<>(fieldList.stream()
-         .map(field -> Pair.of(field, escapeIdentifier(tableName) + "." + escapeIdentifier(getColumnName(field))))
+         .map(field -> Pair.of(field, fieldExpression(tableName, field)))
          .map(pair -> wrapHeavyFieldsWithLengthFunctionIfNeeded(pair, queryInput.getShouldFetchHeavyFields()))
          .toList());
 
@@ -510,7 +531,7 @@ public class RDBMSQueryAction extends AbstractRDBMSAction implements QueryInterf
             // map to columns, wrapping heavy fields as needed //
             /////////////////////////////////////////////////////
             List<String> qualifiedJoinColumns = joinFieldList.stream()
-               .map(field -> Pair.of(field, escapeIdentifier(tableNameOrAlias) + "." + escapeIdentifier(getColumnName(field))))
+               .map(field -> Pair.of(field, fieldExpression(tableNameOrAlias, field)))
                .map(pair -> wrapHeavyFieldsWithLengthFunctionIfNeeded(pair, queryInput.getShouldFetchHeavyFields()))
                .toList();
 
@@ -569,7 +590,7 @@ public class RDBMSQueryAction extends AbstractRDBMSAction implements QueryInterf
             requireFieldFunctionAdapterNotNull(fieldFunctionAdapter, fieldFunction);
 
             QFieldMetaData sourceField       = table.getField(fieldFunction.getFieldName());
-            String         columnName        = escapeIdentifier(tableNameOrAlias) + "." + escapeIdentifier(getColumnName(sourceField));
+            String         columnName        = fieldExpression(tableNameOrAlias, sourceField);
             String         wrappedColumnName = fieldFunctionAdapter.wrapColumnName(columnName, fieldFunction, makeFieldNameToColumnReferenceFunction(tableNameOrAlias, table));
 
             CollectionUtils.addAllIfNotNull(params, fieldFunctionAdapter.getParams(fieldFunction));
@@ -643,7 +664,15 @@ public class RDBMSQueryAction extends AbstractRDBMSAction implements QueryInterf
          }
       }
 
-      return (connection.prepareStatement(sql));
+      PreparedStatement statement = connection.prepareStatement(sql);
+      if(queryInput.hasQueryHint(QueryHint.POTENTIALLY_LARGE_NUMBER_OF_RESULTS))
+      {
+         /////////////////////////////////////////////////////////////////////////////////
+         // let the vendor strategy ask its driver to stream (e.g., postgres fetch size) //
+         /////////////////////////////////////////////////////////////////////////////////
+         getActionStrategy().configureStatementForLargeResults(connection, statement);
+      }
+      return (statement);
    }
 
 

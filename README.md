@@ -18,22 +18,24 @@ Write Java for custom behavior while sharing metadata across the configured back
 - **Metadata-driven tables** - Define entities once, get API + UI + validation
 - **Backend modules** - RDBMS, filesystem, MongoDB, S3 out of the box
 - **Business processes** - Multi-step workflows with state management
-- **Metadata-driven dashboards** - Next for the local quickstart, plus the existing Material UI dashboard
+- **Metadata-driven dashboard** - the Next dashboard is served by default; the Material Dashboard remains an explicit option
 - **Multiple interfaces** - REST API, CLI, Lambda handlers from same codebase
 - **Extensible** - Custom actions, widgets, and integrations when needed
 
-## Quick Start
+## Quick Start — 4.1 RC1
 
-**Prerequisites:** JDK 21+, Git, curl, unzip, and Docker installed and running; Bash on macOS, Linux, or Windows WSL. Maven is downloaded automatically by the checked-in Maven Wrapper.
+This branch targets QQQ **4.1.0-RC.1** with Next **1.0.0-RC.11**. Confirm availability in the [RC1 release](https://github.com/QRun-IO/qqq/releases/tag/v4.1.0-RC.1) before installing. This is a prerelease with [known Next limitations](https://github.com/QRun-IO/qqq-frontend-next/releases/tag/v1.0.0-RC.11), including browser and feature parity gaps. For the stable release, use the [4.0.0 instructions](https://github.com/QRun-IO/qqq/blob/v4.0.0/README.md).
+
+**Prerequisites:** JDK 21+, Git, curl and unzip; Bash on macOS, Linux, or Windows WSL. Maven is downloaded automatically by the checked-in Maven Wrapper. No Node.js or Docker is needed.
 
 ```bash
-curl -fsSLo quickstart.sh https://raw.githubusercontent.com/QRun-IO/qqq/quickstart-4.0.0/quickstart.sh
+curl -fsSLo quickstart.sh https://raw.githubusercontent.com/QRun-IO/qqq/quickstart-4.1.0-RC.1/quickstart.sh
 bash quickstart.sh
 ```
 
-The script checks prerequisites, clones editable sample source into `qqq-sample`, compiles it against published QQQ 4.0.0, and opens the Next dashboard at <http://localhost:3000/app/person>. Seeded H2 data needs no external database or account. Ports 8000 and 3000 must be free. Press Ctrl+C to stop; edit the Java source and run `./quickstart.sh` inside the checkout to rebuild and restart. Data resets on restart. See the [sample instructions](qqq-sample-project/README.md) for the walkthrough, logs, existing Material option, and current Next limitations.
+The script checks prerequisites, clones editable sample source into `qqq-sample`, compiles it against published QQQ 4.1.0-RC.1, and opens the Next dashboard at <http://localhost:8000/app/person>. One Java process serves both the API and the dashboard; port 8000 must be free. Seeded H2 data needs no external database or account. Press Ctrl+C to stop; edit the Java source and run `./quickstart.sh` inside the checkout to rebuild and restart. Data resets on restart. Run `QQQ_FRONTEND=material bash quickstart.sh` to open the Material Dashboard instead. See the [sample instructions](qqq-sample-project/README.md) for the walkthrough and logs.
 
-Use the 4.0.0 BOM below to align modules in your own application. Migrating an existing application requires the [4.0 migration guide](docs/migration/4.0.adoc).
+Use the 4.1.0-RC.1 BOM below to align modules, including the default dashboard, in your own application. Migrating an existing application requires the [4.0 migration guide](docs/migration/4.0.adoc).
 
 ```xml
 <dependencyManagement>
@@ -41,7 +43,7 @@ Use the 4.0.0 BOM below to align modules in your own application. Migrating an e
         <dependency>
             <groupId>com.kingsrook.qqq</groupId>
             <artifactId>qqq-bom-pom</artifactId>
-            <version>4.0.0</version>
+            <version>4.1.0-RC.1</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -105,11 +107,28 @@ Register table metadata in a configured application to expose query and validati
 
 ### Adding the Dashboard
 
-See [qqq-frontend-material-dashboard](https://github.com/QRun-IO/qqq-frontend-material-dashboard) for the React admin UI.
+Add the Next dashboard jar. `QApplicationJavalinServer` serves it at `/`, on the same port as the API:
+
+```xml
+<dependency>
+    <groupId>com.kingsrook.qqq</groupId>
+    <artifactId>qqq-frontend-next</artifactId>
+</dependency>
+```
+
+The [Material Dashboard](https://github.com/QRun-IO/qqq-frontend-material-dashboard) remains available. Applications that depend only on its jar keep serving it, unchanged. With both jars present, choose Material with `withServeFrontendMaterialDashboard(true)` or `-Dqqq.javalin.frontend=material` (`next` and `none` are the other values). To serve both, host Material at another path with `withFrontendMaterialDashboardHostedPath("/material")`.
+
+## Adopting in another app
+
+- **Coordinates:** group `com.kingsrook.qqq` on Maven Central. Import `qqq-bom-pom` and omit module versions. Stable is `4.0.0`; the newest 4.1 candidate is `4.1.0-RC.3`. Pin an exact version.
+- **From 0.x:** follow the [4.0 migration guide](docs/migration/4.0.adoc) first.
+- **4.1 features:** [Adopting QQQ 4.1 features](docs/migration/4.1.adoc) covers record search providers, OAuth2 refresh tokens (new table and encryption-key secret), the `FILE_PREVIEW` adornment, the instance home app and the upgrade notes from 4.0.
+- **Checklist:** the [adoption checklist](docs/migration/adoption-checklist.adoc) walks an existing 0.x app through adopting 4.1, Next and the new QBits, one feature at a time.
+- **Limitations:** 4.1 candidates carry the accepted limitations in the [4.1 release procedure](docs/release/4.1.adoc).
 
 ## Project Status
 
-QQQ 4.0 establishes the semver contract. Major-version migration includes package renames and API removals; consult the [migration guide](docs/migration/4.0.adoc) and [release notes](CHANGELOG.md). The standard Material dashboard release is 0.41.0; Next remains a compatible preview. Comprehensive sample coverage and other deferred work are tracked in [#534](https://github.com/QRun-IO/qqq/issues/534).
+QQQ 4.0 establishes the semver contract. Major-version migration includes package renames and API removals; consult the [migration guide](docs/migration/4.0.adoc) and [release notes](CHANGELOG.md). QQQ 4.1 makes the [Next dashboard](https://github.com/QRun-IO/qqq-frontend-next) the default; the Material Dashboard (0.42.0-RC.2) remains supported as an explicit option. Comprehensive sample coverage and other deferred work are tracked in [#534](https://github.com/QRun-IO/qqq/issues/534).
 
 ## Contributing
 
@@ -121,7 +140,42 @@ mvn clean install
 
 See [Developer Onboarding](https://github.com/QRun-IO/qqq/wiki/Developer-Onboarding) and [Contribution Guidelines](https://github.com/QRun-IO/qqq/wiki/Contribution-Guidelines).
 
+### Verify packaged notices
+
+From the reactor root, package the release-profile archives and check their
+LICENSE/NOTICE entries before publication:
+
+```bash
+mvn -Prelease -DskipTests -Dgpg.skip=true clean package
+python3 scripts/check-packaged-notices.py
+```
+
+The guard checks main, source and Javadoc JARs for every JAR-producing reactor
+module, plus declared test JARs. Each must contain exactly one `META-INF/LICENSE`
+and `META-INF/NOTICE`, byte-identical to the root files. Explicit archive paths
+can also be supplied to check downloaded distributions. Missing archives,
+missing or duplicate entries, and altered notice text fail the check.
+
+Maven shared archive resources preserve the existing main/test resources. Shade
+adds the exact root notices after its existing filters, without merging them
+with dependency notices; inherited transformer lists append to child manifest
+and service transformers. Missing root notice files fail `generate-resources`
+before copying, even when stale generated files exist. Maven locates the root
+through the checked-in `.mvn` directory, including root `-pl`, module `-f` and
+module-directory invocations. The optional `buildShadedJar` profile uses the same
+mapping. This explicit post-package guard does not run automatically in the
+publishing workflow. These commands skip runtime tests and neither sign nor
+publish; existing release checks still apply.
+
+Run the lifecycle from the reactor root (`-pl` or `-f` may select a module).
+The existing relative Checkstyle header path requires that working directory;
+isolated resource-only probes from a module directory need `-Dcheckstyle.skip=true`.
+
 ## Documentation
+
+[Contingent possible values](docs/CONTINGENT-POSSIBLE-VALUES.md) documents dependent choices, frontend integration, server validation and the address-book sample.
+
+[Deployment modes](docs/DEPLOYMENT-MODES.md) gives the exact configuration for a single node (the default: nothing to set), a single node with ESB, and HA on several nodes (roles, shared state, cluster bus, broker HA, drain), and how to go back to one node.
 
 Start with the [sample application](qqq-sample-project/README.md), [4.0 migration guide](docs/migration/4.0.adoc), [framework documentation](https://www.qrun.io/docs), and [QQQ Wiki](https://github.com/QRun-IO/qqq/wiki).
 

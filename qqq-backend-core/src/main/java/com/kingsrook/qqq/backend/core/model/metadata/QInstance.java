@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.model.metadata;
@@ -113,7 +112,7 @@ public class QInstance
    // Important to use LinkedHashmap here, to preserve the order in which entries are added. //
    ////////////////////////////////////////////////////////////////////////////////////////////
    private Map<String, QBitMetaData>             qBits                = new LinkedHashMap<>();
-   private Map<String, QTableMetaData>           tables               = new LinkedHashMap<>();
+   private volatile Map<String, QTableMetaData>  tables               = new LinkedHashMap<>();
    private Map<String, QJoinMetaData>            joins                = new LinkedHashMap<>();
    private Map<String, QPossibleValueSource>     possibleValueSources = new LinkedHashMap<>();
    private Map<String, QProcessMetaData>         processes            = new LinkedHashMap<>();
@@ -136,6 +135,12 @@ public class QInstance
 
    private String              deploymentMode;
    private Map<String, String> environmentValues = new LinkedHashMap<>();
+
+   //////////////////////////////////////////////////////////////////////////
+   // the app whose dashboard a frontend shows as the instance's home page //
+   // (e.g., at /app/).  null means the frontend's own default home.       //
+   //////////////////////////////////////////////////////////////////////////
+   private String homeAppName;
    private String              defaultTimeZoneId = "UTC";
 
    private QPermissionRules defaultPermissionRules = QPermissionRules.defaultInstance();
@@ -143,7 +148,34 @@ public class QInstance
 
    private ListingHash<String, QCodeReference> tableCustomizers;
 
+   private List<QCodeReference> recordChangeListeners = new ArrayList<>();
+
    private QCodeReference metaDataActionCustomizer = null;
+
+   private List<QCodeReference> processLifecycleListeners = new ArrayList<>();
+
+   private List<QCodeReference> runtimeServices = new ArrayList<>();
+
+   private QCodeReference recordSearchProvider = null;
+
+   ////////////////////////////////////////////////////////////////////////////////
+   // if true, MetaDataProducerHelper throws when it can't use or run a          //
+   // producer, instead of logging a warning and skipping it.  the system        //
+   // property qqq.metaData.failOnProducerError=true turns this on too.          //
+   ////////////////////////////////////////////////////////////////////////////////
+   private Boolean failOnMetaDataProducerError = false;
+
+   ////////////////////////////////////////////////////////////////////////////////////
+   // if true, core actions (Query, Get, Count, Aggregate, Insert, Update, Delete,   //
+   // Replace, RunProcess, RenderWidget, GenerateReport, Export) enforce the        //
+   // session's table/process/widget/report permissions and field security locks   //
+   // on their outermost (non-nested) calls - see CorePermissionEnforcer.  null     //
+   // means "not configured": the system property                                   //
+   // qqq.enforcePermissionsInCoreActions or the environment variable               //
+   // QQQ_ENFORCE_PERMISSIONS_IN_CORE_ACTIONS is used if set, else OFF (in 4.1.x;   //
+   // the default is planned to change to ON in 4.2).                               //
+   ////////////////////////////////////////////////////////////////////////////////////
+   private Boolean enforcePermissionsInCoreActions = null;
 
    //////////////////////////////////////////////////////////////////////////////////////
    // todo - lock down the object (no more changes allowed) after it's been validated? //
@@ -465,6 +497,22 @@ public class QInstance
    public void setBackends(Map<String, QBackendMetaData> backends)
    {
       this.backends = backends;
+   }
+
+
+
+   /*******************************************************************************
+    ** Replace existing, validated tables atomically; keep startup validation state.
+    *******************************************************************************/
+   public synchronized void replaceTables(Map<String, QTableMetaData> replacements, QInstanceValidationKey key)
+   {
+      if(key == null || !tables.keySet().containsAll(replacements.keySet()))
+      {
+         throw (new IllegalArgumentException("Only validated replacements of existing tables are allowed"));
+      }
+      Map<String, QTableMetaData> updated = new LinkedHashMap<>(tables);
+      updated.putAll(replacements);
+      tables = updated;
    }
 
 
@@ -1366,6 +1414,38 @@ public class QInstance
 
 
    /*******************************************************************************
+    ** Getter for homeAppName - the app whose dashboard a frontend shows as the
+    ** instance's home page (e.g., at /app/); null for the frontend's own default.
+    *******************************************************************************/
+   public String getHomeAppName()
+   {
+      return (this.homeAppName);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for homeAppName
+    *******************************************************************************/
+   public void setHomeAppName(String homeAppName)
+   {
+      this.homeAppName = homeAppName;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for homeAppName
+    *******************************************************************************/
+   public QInstance withHomeAppName(String homeAppName)
+   {
+      this.homeAppName = homeAppName;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
     ** Getter for defaultPermissionRules
     *******************************************************************************/
    public QPermissionRules getDefaultPermissionRules()
@@ -1951,6 +2031,43 @@ public class QInstance
 
 
    /*******************************************************************************
+    ** Getter for recordChangeListeners
+    *******************************************************************************/
+   public List<QCodeReference> getRecordChangeListeners()
+   {
+      return (this.recordChangeListeners);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for recordChangeListeners
+    *******************************************************************************/
+   public void setRecordChangeListeners(List<QCodeReference> recordChangeListeners)
+   {
+      this.recordChangeListeners = recordChangeListeners;
+   }
+
+
+
+   /*******************************************************************************
+    ** Add a RecordChangeListenerInterface, which InsertAction, UpdateAction and
+    ** DeleteAction call with the records they write successfully.
+    *******************************************************************************/
+   public QInstance withRecordChangeListener(QCodeReference recordChangeListener)
+   {
+      if(this.recordChangeListeners == null)
+      {
+         this.recordChangeListeners = new ArrayList<>();
+      }
+
+      this.recordChangeListeners.add(recordChangeListener);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
     ** Add an audit handler to the instance.
     *******************************************************************************/
    public void addAuditHandler(QAuditHandlerMetaData handler)
@@ -2023,6 +2140,196 @@ public class QInstance
          .filter(h -> CollectionUtils.nullSafeIsEmpty(h.getTableNames())
                       || h.getTableNames().contains(tableName))
          .toList();
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for processLifecycleListeners - code references to
+    ** ProcessLifecycleListenerInterface implementations.
+    *******************************************************************************/
+   public List<QCodeReference> getProcessLifecycleListeners()
+   {
+      return (this.processLifecycleListeners);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for processLifecycleListeners
+    *******************************************************************************/
+   public void setProcessLifecycleListeners(List<QCodeReference> processLifecycleListeners)
+   {
+      this.processLifecycleListeners = processLifecycleListeners;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for processLifecycleListeners
+    *******************************************************************************/
+   public QInstance withProcessLifecycleListeners(List<QCodeReference> processLifecycleListeners)
+   {
+      this.processLifecycleListeners = processLifecycleListeners;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent method to add one process lifecycle listener (a code reference to a
+    ** ProcessLifecycleListenerInterface implementation).
+    *******************************************************************************/
+   public QInstance withProcessLifecycleListener(QCodeReference processLifecycleListener)
+   {
+      if(this.processLifecycleListeners == null)
+      {
+         this.processLifecycleListeners = new ArrayList<>();
+      }
+      this.processLifecycleListeners.add(processLifecycleListener);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for runtimeServices - code references to QRuntimeServiceInterface
+    ** implementations, which an application launcher starts (in this order)
+    ** after the server, and stops (in reverse order) at shutdown.
+    *******************************************************************************/
+   public List<QCodeReference> getRuntimeServices()
+   {
+      return (this.runtimeServices);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for runtimeServices
+    *******************************************************************************/
+   public void setRuntimeServices(List<QCodeReference> runtimeServices)
+   {
+      this.runtimeServices = runtimeServices;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent method to add one runtime service (a code reference to a
+    ** QRuntimeServiceInterface implementation).
+    *******************************************************************************/
+   public QInstance withRuntimeService(QCodeReference runtimeService)
+   {
+      if(this.runtimeServices == null)
+      {
+         this.runtimeServices = new ArrayList<>();
+      }
+      this.runtimeServices.add(runtimeService);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for recordSearchProvider - a code reference to a
+    ** RecordSearchProviderInterface implementation, which RecordSearchAction
+    ** asks to search the tables it claims (null - the default - searches every
+    ** table with the default search over its search fields).
+    *******************************************************************************/
+   public QCodeReference getRecordSearchProvider()
+   {
+      return (this.recordSearchProvider);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for recordSearchProvider
+    *******************************************************************************/
+   public void setRecordSearchProvider(QCodeReference recordSearchProvider)
+   {
+      this.recordSearchProvider = recordSearchProvider;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for recordSearchProvider - a code reference to a
+    ** RecordSearchProviderInterface implementation.
+    *******************************************************************************/
+   public QInstance withRecordSearchProvider(QCodeReference recordSearchProvider)
+   {
+      this.recordSearchProvider = recordSearchProvider;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for failOnMetaDataProducerError - if true, MetaDataProducerHelper
+    ** throws when it can't use or run a meta-data producer, instead of logging
+    ** a warning.
+    *******************************************************************************/
+   public Boolean getFailOnMetaDataProducerError()
+   {
+      return (this.failOnMetaDataProducerError);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for failOnMetaDataProducerError
+    *******************************************************************************/
+   public void setFailOnMetaDataProducerError(Boolean failOnMetaDataProducerError)
+   {
+      this.failOnMetaDataProducerError = failOnMetaDataProducerError;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for failOnMetaDataProducerError - set to true before running
+    ** MetaDataProducerHelper, so a failing producer stops startup instead of
+    ** being logged as a warning and skipped.
+    *******************************************************************************/
+   public QInstance withFailOnMetaDataProducerError(Boolean failOnMetaDataProducerError)
+   {
+      this.failOnMetaDataProducerError = failOnMetaDataProducerError;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for enforcePermissionsInCoreActions (may be null, meaning "not
+    ** configured" - see CorePermissionEnforcer.isInstanceEnforcementEnabled for
+    ** the effective value).
+    *******************************************************************************/
+   public Boolean getEnforcePermissionsInCoreActions()
+   {
+      return (this.enforcePermissionsInCoreActions);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for enforcePermissionsInCoreActions
+    *******************************************************************************/
+   public void setEnforcePermissionsInCoreActions(Boolean enforcePermissionsInCoreActions)
+   {
+      this.enforcePermissionsInCoreActions = enforcePermissionsInCoreActions;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for enforcePermissionsInCoreActions - set to true so that core
+    ** actions enforce table/process/widget/report permissions and field security
+    ** locks themselves, for every entry point (not only the middlewares).
+    *******************************************************************************/
+   public QInstance withEnforcePermissionsInCoreActions(Boolean enforcePermissionsInCoreActions)
+   {
+      this.enforcePermissionsInCoreActions = enforcePermissionsInCoreActions;
+      return (this);
    }
 
 }

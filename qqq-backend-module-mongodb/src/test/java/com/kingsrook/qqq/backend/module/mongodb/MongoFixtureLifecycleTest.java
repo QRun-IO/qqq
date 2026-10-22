@@ -5,38 +5,38 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.module.mongodb;
 
 
 import java.lang.reflect.Field;
-import java.lang.reflect.Proxy;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
+import com.mongodb.MongoClientSettings;
 import com.mongodb.client.MongoClient;
+import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoDatabase;
 import org.bson.Document;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.startupcheck.MinimumDurationRunningStartupCheckStrategy;
 import org.testcontainers.utility.MountableFile;
@@ -46,6 +46,12 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 
 /*******************************************************************************
@@ -306,72 +312,37 @@ class MongoFixtureLifecycleTest
 
 
    /***************************************************************************
-    ** Provide only the owned cleanup client; execute the actual fixture cleanup.
+    ** Intercept only the native client factory; execute the actual fixture cleanup.
     ***************************************************************************/
    private void assertCleanupOwnership(boolean fail)
    {
       QContext.init(TestUtils.defineInstance(), new QSession());
       QContext.setObject("ownedCleanupMarker", "present");
-      AtomicInteger drops = new AtomicInteger();
-      AtomicInteger closes = new AtomicInteger();
+      MongoClient client = mock(MongoClient.class);
+      MongoDatabase database = mock(MongoDatabase.class);
+      when(client.getDatabase(TestUtils.MONGO_DATABASE)).thenReturn(database);
       IllegalStateException dropFailure = new IllegalStateException("owned drop failure");
       IllegalStateException closeFailure = new IllegalStateException("owned close failure");
-      MongoDatabase database = (MongoDatabase) Proxy.newProxyInstance(MongoDatabase.class.getClassLoader(), new Class<?>[] { MongoDatabase.class }, (proxy, method, arguments) ->
+      if(fail)
       {
-         if(method.getName().equals("drop") && method.getParameterCount() == 0)
-         {
-            drops.incrementAndGet();
-            if(fail)
-            {
-               throw dropFailure;
-            }
-            return (null);
-         }
-         throw new UnsupportedOperationException("Unexpected database operation in cleanup control");
-      });
-      MongoClient client = (MongoClient) Proxy.newProxyInstance(MongoClient.class.getClassLoader(), new Class<?>[] { MongoClient.class }, (proxy, method, arguments) ->
+         doThrow(dropFailure).when(database).drop();
+         doThrow(closeFailure).when(client).close();
+      }
+      try(MockedStatic<MongoClients> factory = mockStatic(MongoClients.class))
       {
-         if(method.getName().equals("getDatabase"))
-         {
-            assertEquals(TestUtils.MONGO_DATABASE, arguments[0]);
-            return (database);
-         }
-         if(method.getName().equals("close"))
-         {
-            closes.incrementAndGet();
-            if(fail)
-            {
-               throw closeFailure;
-            }
-            return (null);
-         }
-         throw new UnsupportedOperationException("Unexpected client operation in cleanup control");
-      });
-      BaseTest owner = new BaseTest()
-      {
-         /***************************************************************************
-          ** Exercise real fixture cleanup with an owned dependency-free client fake.
-          ***************************************************************************/
-         @Override
-         protected MongoClient getCleanupClient()
-         {
-            return (client);
-         }
-      };
-      try
-      {
+         factory.when(() -> MongoClients.create(any(MongoClientSettings.class))).thenReturn(client);
          if(fail)
          {
-            assertSame(dropFailure, assertThrows(IllegalStateException.class, owner::baseAfterEach));
+            assertSame(dropFailure, assertThrows(IllegalStateException.class, () -> new BaseTest().baseAfterEach()));
             assertEquals(1, dropFailure.getSuppressed().length);
             assertSame(closeFailure, dropFailure.getSuppressed()[0]);
          }
          else
          {
-            owner.baseAfterEach();
+            new BaseTest().baseAfterEach();
          }
-         assertEquals(1, drops.get());
-         assertEquals(1, closes.get());
+         verify(database).drop();
+         verify(client).close();
          assertNull(QContext.getQInstance());
          assertNull(QContext.getQSession());
          assertNull(QContext.getObjects());

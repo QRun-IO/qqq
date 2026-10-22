@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.utils;
@@ -26,13 +25,18 @@ import java.io.IOException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.exc.StreamConstraintsException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -104,8 +108,7 @@ public class JsonUtils
       }
       catch(JsonProcessingException e)
       {
-         LOG.error("Error serializing object of type [" + object.getClass().getSimpleName() + "] to json", e);
-         throw new IllegalArgumentException("Error in JSON Serialization", e);
+         throw serializationException(object, e);
       }
    }
 
@@ -132,8 +135,7 @@ public class JsonUtils
       }
       catch(JsonProcessingException e)
       {
-         LOG.error("Error serializing object of type [" + object.getClass().getSimpleName() + "] to json", e);
-         throw new IllegalArgumentException("Error in JSON Serialization", e);
+         throw serializationException(object, e);
       }
    }
 
@@ -156,9 +158,64 @@ public class JsonUtils
       }
       catch(JsonProcessingException e)
       {
-         LOG.error("Error serializing object of type [" + object.getClass().getSimpleName() + "] to json", e);
-         throw new IllegalArgumentException("Error in JSON Serialization", e);
+         throw serializationException(object, e);
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Explain excessive nesting using property names, without exposing values.
+    *******************************************************************************/
+   private static IllegalArgumentException serializationException(Object object, JsonProcessingException exception)
+   {
+      String    message   = "Error in JSON Serialization";
+      String    className = object.getClass().getSimpleName();
+      Throwable rootCause = exception;
+      while(rootCause.getCause() != null && rootCause.getCause() != rootCause)
+      {
+         rootCause = rootCause.getCause();
+      }
+
+      if(rootCause instanceof StreamConstraintsException
+         || (exception instanceof JsonMappingException && exception.getMessage() != null && exception.getMessage().toLowerCase(Locale.ROOT).contains("nesting depth")))
+      {
+         List<String> steps          = new ArrayList<>();
+         Set<String>  seenSteps      = new HashSet<>();
+         boolean      referenceCycle = false;
+         if(exception instanceof JsonMappingException mappingException)
+         {
+            for(JsonMappingException.Reference reference : mappingException.getPath())
+            {
+               Object from          = reference.getFrom();
+               String fromClassName = from instanceof Class<?> fromClass ? fromClass.getSimpleName()
+                  : from == null ? "Unknown" : from.getClass().getSimpleName();
+               String step = fromClassName + (reference.getFieldName() == null ? "[" + reference.getIndex() + "]" : "." + reference.getFieldName());
+               steps.add(step);
+               if(!seenSteps.add(step))
+               {
+                  referenceCycle = true;
+                  break;
+               }
+            }
+         }
+
+         if(referenceCycle)
+         {
+            message += ": reference cycle in " + className + ": " + String.join(" -> ", steps) + " (repeats). Mark the back-reference @JsonIgnore.";
+         }
+         else
+         {
+            message += ": nesting too deep (possible unbounded recursion) in " + className;
+            if(!steps.isEmpty())
+            {
+               message += ": " + String.join(" -> ", steps.subList(0, Math.min(5, steps.size()))) + (steps.size() > 5 ? " -> ..." : "");
+            }
+         }
+      }
+
+      LOG.error("Error serializing object of type [" + className + "] to json: " + message, exception);
+      return (new IllegalArgumentException(message, exception));
    }
 
 

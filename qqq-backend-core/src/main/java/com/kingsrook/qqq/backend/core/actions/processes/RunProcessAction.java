@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.actions.processes;
@@ -34,12 +33,19 @@ import java.util.UUID;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.NoCodeWidgetRenderer;
+import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
+import com.kingsrook.qqq.backend.core.actions.processes.listeners.ProcessLifecycleListenerHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
+import com.kingsrook.qqq.backend.core.instrumentation.UnitOfWorkKind;
+import com.kingsrook.qqq.backend.core.instrumentation.UnitsOfWork;
+import com.kingsrook.qqq.backend.core.jobs.DurableJobDiversion;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.processes.ProcessState;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
@@ -65,14 +71,16 @@ import com.kingsrook.qqq.backend.core.model.metadata.processes.QFrontendStepMeta
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QStateMachineStep;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QStepMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.processes.implementations.basepull.BasepullConfiguration;
 import com.kingsrook.qqq.backend.core.processes.tracing.ProcessTracerInterface;
-import com.kingsrook.qqq.backend.core.state.InMemoryStateProvider;
+import com.kingsrook.qqq.backend.core.state.QStateProviders;
 import com.kingsrook.qqq.backend.core.state.StateProviderInterface;
 import com.kingsrook.qqq.backend.core.state.StateType;
 import com.kingsrook.qqq.backend.core.state.UUIDAndTypeStateKey;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
+import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import org.apache.commons.lang3.BooleanUtils;
@@ -93,6 +101,8 @@ public class RunProcessAction
    public static final String BASEPULL_TIMESTAMP_FIELD  = "basepullTimestampField";
    public static final String BASEPULL_CONFIGURATION    = "basepullConfiguration";
 
+   public static final String ONE_TIME_SECRETS_MASKED = "oneTimeSecretsMasked";
+
    public static final String PROCESS_TRACER_CODE_REFERENCE_FIELD = "processTracerCodeReference";
 
    ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -109,6 +119,26 @@ public class RunProcessAction
     **
     *******************************************************************************/
    public RunProcessOutput execute(RunProcessInput runProcessInput) throws QException
+   {
+      runProcessInput.setFieldAccessEnforced(CorePermissionEnforcer.shouldEnforceFieldAccess(runProcessInput));
+      if(runProcessInput.getProcessName() != null && QContext.getQInstance() != null && QContext.getQInstance().getProcess(runProcessInput.getProcessName()) != null)
+      {
+         CorePermissionEnforcer.checkProcessPermission(runProcessInput, runProcessInput.getProcessName(), runProcessInput.getValues());
+      }
+
+      try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope();
+         UnitsOfWork.Scope unitOfWork = UnitsOfWork.begin(UnitOfWorkKind.PROCESS, runProcessInput.getProcessName()))
+      {
+         return (executeInAuthorizedScope(runProcessInput));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Run the process - after any permission enforcement owed to the caller.
+    *******************************************************************************/
+   private RunProcessOutput executeInAuthorizedScope(RunProcessInput runProcessInput) throws QException
    {
       ActionHelper.validateSession(runProcessInput);
 
@@ -131,10 +161,15 @@ public class RunProcessAction
       }
       runProcessOutput.setProcessUUID(runProcessInput.getProcessUUID());
 
-      traceStartOrResume(runProcessInput, process);
+      boolean isResume = isResume(runProcessInput);
+      traceStartOrResume(runProcessInput, process, isResume);
 
       UUIDAndTypeStateKey stateKey     = new UUIDAndTypeStateKey(UUID.fromString(runProcessInput.getProcessUUID()), StateType.PROCESS_STATUS);
       ProcessState        processState = primeProcessState(runProcessInput, stateKey, process);
+      if(runProcessInput.isFieldAccessEnforced())
+      {
+         validateFieldAccessInput(runProcessInput, process);
+      }
 
       /////////////////////////////////////////////////////////////////////////////////////////////////////////////
       // these should always be clear when we're starting a run - so make sure they haven't leaked from previous //
@@ -152,6 +187,17 @@ public class RunProcessAction
          // get the stored basepull timestamp //
          ///////////////////////////////////////
          persistLastRunTime(runProcessInput, process, basepullConfiguration);
+      }
+
+      ///////////////////////////////////////////////////////////////////////////
+      // lifecycle listeners hear "started" only for a new run (not a resume), //
+      // and only once the run is set up - so a started run's own failures are //
+      // heard too (though not every started gets exactly one completed or     //
+      // failed - see ProcessLifecycleListenerInterface).                      //
+      ///////////////////////////////////////////////////////////////////////////
+      if(!isResume)
+      {
+         ProcessLifecycleListenerHelper.fireStarted(QContext.getQInstance(), runProcessInput);
       }
 
       try
@@ -181,6 +227,7 @@ public class RunProcessAction
          // upon exception (e.g., one thrown by a step), throw it. //
          ////////////////////////////////////////////////////////////
          traceBreakOrFinish(runProcessInput, runProcessOutput, qe);
+         ProcessLifecycleListenerHelper.fireFailed(QContext.getQInstance(), runProcessInput, qe);
          throw (qe);
       }
       catch(Exception e)
@@ -189,6 +236,7 @@ public class RunProcessAction
          // upon exception (e.g., one thrown by a step), throw it. //
          ////////////////////////////////////////////////////////////
          traceBreakOrFinish(runProcessInput, runProcessOutput, e);
+         ProcessLifecycleListenerHelper.fireFailed(QContext.getQInstance(), runProcessInput, e);
          throw (new QException("Error running process", e));
       }
       finally
@@ -201,7 +249,42 @@ public class RunProcessAction
 
       traceBreakOrFinish(runProcessInput, runProcessOutput, null);
 
+      if(isProcessFinished(processState))
+      {
+         ProcessLifecycleListenerHelper.fireCompleted(QContext.getQInstance(), runProcessInput, runProcessOutput);
+      }
+
       return (runProcessOutput);
+   }
+
+
+
+   /*******************************************************************************
+    ** A request that starts after or at a named step is continuing an existing
+    ** run (e.g., after a frontend step), rather than starting a new one.
+    *******************************************************************************/
+   private static boolean isResume(RunProcessInput runProcessInput)
+   {
+      return (StringUtils.hasContent(runProcessInput.getStartAfterStep()) || StringUtils.hasContent(runProcessInput.getStartAtStep()));
+   }
+
+
+
+   /*******************************************************************************
+    ** A run is finished when there is no next step, or when the next step is the
+    ** last one in the step list (e.g., a final frontend step showing results,
+    ** after which the frontend does not call back to the backend).
+    *******************************************************************************/
+   private static boolean isProcessFinished(ProcessState processState)
+   {
+      if(processState.getNextStepName().isEmpty())
+      {
+         return (true);
+      }
+
+      String nextStepName  = processState.getNextStepName().get();
+      int    nextStepIndex = processState.getStepList().indexOf(nextStepName);
+      return (nextStepIndex == processState.getStepList().size() - 1);
    }
 
 
@@ -254,6 +337,11 @@ public class RunProcessAction
             LoopTodo loopTodo = prepareForFrontendStep(runProcessInput, process, frontendStep, processState);
             if(loopTodo == LoopTodo.BREAK)
             {
+               ////////////////////////////////////////////////////////////////////////
+               // store what the frontend step set up (defaults, components, next/   //
+               // back step), so a node that resumes from shared state sees it too   //
+               ////////////////////////////////////////////////////////////////////////
+               storeState(stateKey, processState);
                break;
             }
          }
@@ -438,6 +526,11 @@ public class RunProcessAction
             LoopTodo loopTodo = prepareForFrontendStep(runProcessInput, process, frontendStep, processState);
             if(loopTodo == LoopTodo.BREAK)
             {
+               ////////////////////////////////////////////////////////////////////////
+               // store what the frontend step set up (defaults, components, next/   //
+               // back step), so a node that resumes from shared state sees it too   //
+               ////////////////////////////////////////////////////////////////////////
+               storeState(stateKey, processState);
                return;
             }
          }
@@ -602,6 +695,12 @@ public class RunProcessAction
          /////////////////////////////////////////////////////////////////////////////////////////////////////
          optionalProcessState.get().setProcessMetaDataAdjustment(null);
 
+         ////////////////////////////////////////////////////////////////////////
+         // isStepBack belongs to a single run (the loop lowers it in memory   //
+         // after the last store) - never carry it over from stored state      //
+         ////////////////////////////////////////////////////////////////////////
+         optionalProcessState.get().setIsStepBack(false);
+
          ///////////////////////////////////////////////////////////////////////////
          // if there were values from the caller, put those (back) in the request //
          ///////////////////////////////////////////////////////////////////////////
@@ -652,6 +751,7 @@ public class RunProcessAction
    {
       RunBackendStepInput runBackendStepInput = new RunBackendStepInput(processState);
       runBackendStepInput.setInputSource(runProcessInput.getInputSource());
+      runBackendStepInput.setFieldAccessEnforced(runProcessInput.isFieldAccessEnforced());
       runBackendStepInput.setProcessName(process.getName());
       runBackendStepInput.setStepName(backendStep.getName());
       runBackendStepInput.setCallback(runProcessInput.getCallback());
@@ -679,9 +779,34 @@ public class RunProcessAction
          runBackendStepInput.setBasepullLastRunTime((Instant) runProcessInput.getValues().get(BASEPULL_LAST_RUNTIME_KEY));
       }
 
+      ////////////////////////////////////////////////////////////////////////
+      // an eligible process over the durable-jobs threshold runs its       //
+      // execute step as a background job instead (DurableJobDiversion)    //
+      ////////////////////////////////////////////////////////////////////////
+      Optional<RunBackendStepOutput> diverted = DurableJobDiversion.maybeDivert(runBackendStepInput, process, backendStep);
+      if(diverted.isPresent())
+      {
+         storeState(stateKey, diverted.get().getProcessState());
+         return (diverted.get());
+      }
+
       traceStepStart(runBackendStepInput);
 
       RunBackendStepOutput runBackendStepOutput = new RunBackendStepAction().execute(runBackendStepInput);
+      if(!runBackendStepOutput.getOneTimeSecrets().isEmpty())
+      {
+         runProcessOutput.getOneTimeSecrets().addAll(runBackendStepOutput.getOneTimeSecrets());
+         ArrayList<String> masked = new ArrayList<>();
+         if(processState.getValues().get(ONE_TIME_SECRETS_MASKED) instanceof List<?> previousMasks)
+         {
+            for(Object previousMask : previousMasks)
+            {
+               masked.add((String) previousMask);
+            }
+         }
+         runBackendStepOutput.getOneTimeSecrets().forEach(secret -> masked.add(secret.getMasked()));
+         runBackendStepOutput.addValue(ONE_TIME_SECRETS_MASKED, masked);
+      }
       storeState(stateKey, runBackendStepOutput.getProcessState());
 
       traceStepFinish(runBackendStepInput, runBackendStepOutput);
@@ -690,6 +815,15 @@ public class RunProcessAction
       {
          runProcessOutput.setException(runBackendStepOutput.getException());
          throw (runBackendStepOutput.getException());
+      }
+
+      //////////////////////////////////////////////////////////////////////
+      // let an optional listener (e.g., a durable job) see the finished  //
+      // step - to checkpoint its values, or to stop the run by throwing. //
+      //////////////////////////////////////////////////////////////////////
+      if(runProcessInput.getBackendStepListener() != null)
+      {
+         runProcessInput.getBackendStepListener().afterBackendStep(backendStep.getName(), runBackendStepOutput.getProcessState());
       }
 
       return (runBackendStepOutput);
@@ -769,11 +903,11 @@ public class RunProcessAction
     *******************************************************************************/
    public static StateProviderInterface getStateProvider()
    {
-      // TODO - read this from somewhere in meta data eh?
-      return InMemoryStateProvider.getInstance();
-
-      // todo - by using JSON serialization internally, this makes stupidly large payloads and crashes things.
-      // return TempFileStateProvider.getInstance();
+      //////////////////////////////////////////////////////////////////////////
+      // the instance's StateProviderMetaData (shared across nodes), else the //
+      // in-memory provider (spec 2026-10-15-cluster-ha-design, section B)    //
+      //////////////////////////////////////////////////////////////////////////
+      return (QStateProviders.get());
    }
 
 
@@ -1014,7 +1148,7 @@ public class RunProcessAction
    /***************************************************************************
     **
     ***************************************************************************/
-   private void traceStartOrResume(RunProcessInput runProcessInput, QProcessMetaData process)
+   private void traceStartOrResume(RunProcessInput runProcessInput, QProcessMetaData process, boolean isResume)
    {
       setupProcessTracer(runProcessInput, process);
 
@@ -1022,7 +1156,7 @@ public class RunProcessAction
       {
          if(processTracer != null)
          {
-            if(StringUtils.hasContent(runProcessInput.getStartAfterStep()) || StringUtils.hasContent(runProcessInput.getStartAtStep()))
+            if(isResume)
             {
                processTracer.handleProcessResume(runProcessInput);
             }
@@ -1049,36 +1183,13 @@ public class RunProcessAction
       {
          if(processTracer != null)
          {
-            ProcessState processState = runProcessOutput.getProcessState();
-            boolean      isBreak      = true;
-
-            /////////////////////////////////////////////////////////////
-            // if there's no next step, that means the process is done //
-            /////////////////////////////////////////////////////////////
-            if(processState.getNextStepName().isEmpty())
-            {
-               isBreak = false;
-            }
-            else
-            {
-               /////////////////////////////////////////////////////////////////
-               // or if the next step is the last index, then we're also done //
-               /////////////////////////////////////////////////////////////////
-               String nextStepName  = processState.getNextStepName().get();
-               int    nextStepIndex = processState.getStepList().indexOf(nextStepName);
-               if(nextStepIndex == processState.getStepList().size() - 1)
-               {
-                  isBreak = false;
-               }
-            }
-
-            if(isBreak)
-            {
-               processTracer.handleProcessBreak(runProcessInput, runProcessOutput, processException);
-            }
-            else
+            if(isProcessFinished(runProcessOutput.getProcessState()))
             {
                processTracer.handleProcessFinish(runProcessInput, runProcessOutput, processException);
+            }
+            else
+            {
+               processTracer.handleProcessBreak(runProcessInput, runProcessOutput, processException);
             }
          }
       }
@@ -1150,6 +1261,67 @@ public class RunProcessAction
          {
             throw new QBadRequestException("Process input [" + field.getName() + "] is configured by the server and cannot be supplied by a user.");
          }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Validate restored and newly supplied caller values before any process step.
+    ** Final customized extraction filters are checked again at the query boundary.
+    *******************************************************************************/
+   private void validateFieldAccessInput(RunProcessInput input, QProcessMetaData process) throws QException
+   {
+      String tableName = input.getValueString("sourceTable");
+      if(tableName == null)
+      {
+         tableName = process.getTableName();
+      }
+      if(tableName == null)
+      {
+         tableName = input.getValueString("tableName");
+      }
+      if(tableName == null)
+      {
+         tableName = process.getInputFields().stream().filter(field -> "sourceTable".equals(field.getName()))
+            .map(QFieldMetaData::getDefaultValue).filter(Objects::nonNull).map(String::valueOf).findFirst().orElse(null);
+      }
+      QTableMetaData table = QContext.getQInstance().getTable(tableName);
+      for(String name : List.of("queryFilterJson", "filterJSON", "defaultQueryFilter"))
+      {
+         Serializable supplied = input.getValue(name);
+         if(supplied == null || supplied instanceof String string && string.isBlank())
+         {
+            continue;
+         }
+         if(table == null)
+         {
+            throw (new QPermissionDeniedException("Permission denied: unknown process query table."));
+         }
+         try
+         {
+            QQueryFilter filter = supplied instanceof QQueryFilter queryFilter ? queryFilter : JsonUtils.toObject(String.valueOf(supplied), QQueryFilter.class);
+            FieldAccessHelper.assertCriteriaAllowed(tableName, null, filter, null, false);
+         }
+         catch(java.io.IOException e)
+         {
+            throw (new QBadRequestException("Invalid process query filter."));
+         }
+      }
+      String enabled = input.getValueString("bulkEditEnabledFields");
+      if(enabled != null)
+      {
+         QTableMetaData writeTable = QContext.getQInstance().getTable(process.getTableName());
+         if(writeTable == null)
+         {
+            throw (new QPermissionDeniedException("Permission denied: unknown process write table."));
+         }
+         QRecord values = new QRecord();
+         for(String name : enabled.split(","))
+         {
+            values.setValue(name, input.getValue(name));
+         }
+         FieldAccessHelper.assertWritesAllowed(writeTable, List.of(values));
       }
    }
 }

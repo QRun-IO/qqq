@@ -1,0 +1,155 @@
+= Realtime invalidation and record versions
+
+Core provides the transport and optimistic version preflight. Presence state and other
+collaboration business behavior belong to qbits. Events are best-effort hints; clients
+refetch records through the normal permission-checked endpoints.
+
+== Connecting
+
+Open `GET /qqq/v1/realtime/stream` with the same authentication as other v1 requests.
+The response is `text/event-stream`. The first event is `hello`:
+
+[source,text]
+----
+id: <connectionId>:1
+event: hello
+data: {"connectionId":"<connectionId>","heartbeatSeconds":25,"metaDataGeneration":1}
+
+----
+
+Then post `POST /qqq/v1/realtime/subscriptions`:
+
+[source,json]
+----
+{"connectionId":"<connectionId>","add":["record:order:42","table:order","user:me","instance"],"remove":[]}
+----
+
+The response contains `active` and `refused` arrays. Refusals do not explain whether
+a record exists. Record channels require a successful `GetAction` with the session;
+table channels require READ. Only `user:me` can subscribe to user events; the server
+maps it to `user:<sessionUserId>` and returns the alias in `active`. Another session's
+connection has the same 404 as an unknown connection. Removals apply before additions.
+
+Each event carries an id `<connectionId>:<sequence>`. Reconnect with `Last-Event-ID`.
+A retained cursor resumes the same connection and subscriptions, first sending hello
+at the acknowledged cursor, then events after it in order. The default replay window
+is 120 seconds; buffers additionally cap at 10,000 events. A missing, expired, evicted,
+invalid, or other-pod cursor causes `resync`; refetch displayed data and use the new
+hello's connection id. When the connection still exists, subscriptions are retained.
+Replay checks permissions again and re-filters field names. Load-balancer affinity
+improves replay continuity; it is not needed for live multi-pod delivery.
+
+Comment pings arrive every 25 seconds by default. Session validity is checked at that
+interval; expiry sends `session-ended` and closes the connection. Explicit v1 logout
+and back-channel logout also publish a session-ended hint across pods. Permissions
+are rechecked every five minutes; denied channels are removed with `channel-revoked`.
+The default limits are 200 channels per connection and 20 connections per session;
+opening another connection closes the oldest. Slow transports have bounded queues
+and are disconnected; clients reconnect and may need to resync.
+
+== Events
+
+[cols="1,3"]
+|===
+|Event |JSON data
+|`hello` |`connectionId`, `heartbeatSeconds`, `metaDataGeneration`
+|`record.changed` |`table`, `pk`, `version`, `changedBy`, `fields` (names only)
+|`record.deleted` |`table`, `pk`
+|`table.changed` |`table`
+|`metadata.changed` |`generation`
+|`resync` |Empty object; refetch current state
+|`session-ended` |Empty object; authenticate again
+|`channel-revoked` |`channel`
+|===
+
+Each core event has its own `Realtime*EventV1` OpenAPI component. The generic
+`RealtimeEventV1` documents event, channel and data for qbit-defined events such as
+`presence.changed` and `comment.added`; the SSE wire data is the event's data object.
+
+Core publishes record changes after commit only for tables whose resolved features
+include PRESENCE or FOLLOW. Rollbacks publish nothing. Table hints are coalesced to
+at most one per table per second per instance in a pod. The hub applies frontend
+metadata personalization, field security and hidden-field rules to every subscriber's
+field-name list. Record values are never included. Overlay refresh publishes
+`metadata.changed` after installing the new generation.
+
+== Configuring a transport
+
+The default is `InMemoryRealtimeBus`: synchronous fan-out on virtual threads with
+isolated, logged listener failures. One bus is cached per QInstance. Configure with:
+
+[source,java]
+----
+instance.withSupplementalMetaData(new RealtimeMetaData()
+   .withReplaySeconds(120)
+   .withHeartbeatSeconds(25)
+   .withMaxChannelsPerConnection(200)
+   .withMaxConnectionsPerSession(20)
+   .withRecheckMinutes(5));
+----
+
+For multiple pods, use the `qqq-esb` implementation:
+
+[source,java]
+----
+instance.withSupplementalMetaData(new RealtimeMetaData()
+   .withBus(new QCodeReference(EsbRealtimeBus.class)));
+EsbInstanceMetaData.of(instance).withRealtimeDestinationName("qqq.realtime");
+----
+
+Declare that destination as a TOPIC with a provider. With exactly one configured ESB
+provider, an undeclared topic name is resolved on that provider automatically.
+Every bus opens a non-durable, non-shared consumer through `EsbConnectionManager`,
+so every pod receives every hint. Publishing is non-persistent and best-effort;
+broker outages are logged and never fail record writes. Listener setup retries
+and consumers are recreated on provider reconnection. No backlog is replayed by
+the broker. Runtime-service shutdown closes the instance bus after producers drain;
+embedded hosts not using the launcher should call `RealtimeBus.close(instance)`.
+The Javalin server closes its hub and streams when stopped or metadata is replaced.
+
+== Publishing from a qbit
+
+[source,java]
+----
+RealtimeBus.get(instance).publish(new RealtimeMessage()
+   .withChannel("record:order:42")
+   .withEvent("comment.added")
+   .withData(Map.of("table", "order", "pk", 42, "commentId", 1001)));
+----
+
+Qbits define their own event names and typed payload schemas. Publish identifiers
+and hints, never record contents or secrets. Defer write-related events with
+`transaction.addAfterCommitCallback(...)`. Do not implement presence in the core bus.
+Close handles returned by `subscribe` when their owner stops.
+
+== Optimistic record versions
+
+`QTableMetaData.withRecordVersionField("revision")` chooses a version field. Enrichment
+defaults to the field with the MODIFY_DATE behavior (including conventional
+`modifyDate` fields). An explicit empty string disables checking. Custom version
+fields must be advanced by the application or backend.
+
+Core callers can use `UpdateInput.withExpectedVersions(Map.of(primaryKey, version))`.
+The action reuses old rows when available, compares values using the version field's
+type, and adds a `RecordVersionConflictError` to stale records so they are not written.
+Other records in a batch follow the normal per-record error behavior.
+
+The v1 PATCH endpoint retains its flat JSON or multipart record body. Supply the
+optional *query parameter* `expectedVersion` (URL-encode ISO-8601 timestamps):
+
+[source,text]
+----
+PATCH /qqq/v1/table/order/42?expectedVersion=2026-10-13T15%3A00%3A00Z
+{"status":"approved"}
+----
+
+A mismatch returns HTTP 409 `RecordConflictV1`: `currentVersion`, `changedFields`,
+`modifiedByUserId`, and `modifiedAt`. Nullable details are available when the table
+provides them. `modifiedByUserId` uses a field of that name, falling back to
+`modifiedBy`; `modifiedAt` uses the MODIFY_DATE field. Changed names are best-effort
+differences between submitted values and the current record, not an audit history.
+Omitting the version preserves the existing unconditional update behavior.
+
+This is a core preflight check, not a backend atomic compare-and-swap: another
+writer can race between the read and write. Applications requiring serialization
+must additionally use their backend's transaction/locking guarantees.

@@ -5,28 +5,34 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.actions.tables;
 
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import com.kingsrook.qqq.backend.core.BaseTest;
+import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.customizers.AbstractPreDeleteCustomizer;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeEvent;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeListenerHelperTest;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeListenerHelperTest.CapturingListener;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeListenerHelperTest.ThrowingListener;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeType;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountInput;
@@ -56,6 +62,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.Association;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.statusmessages.BadInputStatusMessage;
 import com.kingsrook.qqq.backend.core.model.statusmessages.QWarningMessage;
+import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryRecordStore;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import com.kingsrook.qqq.backend.core.utils.collections.ListBuilder;
 import com.kingsrook.qqq.backend.core.utils.collections.MapBuilder;
@@ -572,6 +579,83 @@ class DeleteActionTest extends BaseTest
       assertThat(output.getRecordsWithErrors()).hasSize(1);
       assertThat(TestUtils.queryTable("audit")).hasSize(1);
       assertThat(queryTable(tableName)).extracting(record -> record.getValueInteger("id")).containsExactly(OrderPreDeleteCustomizer.DELETE_ERROR_ID);
+   }
+
+
+
+   /*******************************************************************************
+    ** Record change listeners hear about the deleted records (as stored before
+    ** the delete, in both records and oldRecords), not about keys that failed,
+    ** and they get the caller's transaction.  A throwing listener does not fail
+    ** the delete.
+    *******************************************************************************/
+   @Test
+   void testRecordChangeListenerReceivesDeletedRecords() throws QException
+   {
+      RecordChangeListenerHelperTest.resetListeners();
+      String tableName = TestUtils.TABLE_NAME_PERSON_MEMORY;
+      new InsertAction().execute(new InsertInput(tableName).withRecords(List.of(
+         new QRecord().withValue("firstName", "Darin"),
+         new QRecord().withValue("firstName", "Tim"),
+         new QRecord().withValue("firstName", "James"),
+         new QRecord().withValue("firstName", "Kirk"))));
+      QContext.getQInstance().withRecordChangeListener(new QCodeReference(CapturingListener.class));
+
+      QBackendTransaction transaction = new QBackendTransaction();
+      DeleteOutput deleteOutput = new DeleteAction().execute(new DeleteInput(tableName).withTransaction(transaction).withPrimaryKeys(List.of(1, 47, 3)));
+      assertEquals(2, deleteOutput.getDeletedRecordCount());
+      assertThat(deleteOutput.getRecordsWithErrors()).hasSize(1);
+
+      assertThat(CapturingListener.events).hasSize(1);
+      RecordChangeEvent event = CapturingListener.events.get(0);
+      assertEquals(tableName, event.getTableName());
+      assertEquals(RecordChangeType.DELETE, event.getType());
+      assertThat(event.getRecords()).extracting(r -> r.getValueString("firstName")).containsExactly("Darin", "James");
+      assertEquals(event.getRecords(), event.getOldRecords());
+      assertSame(transaction, event.getTransaction());
+
+      QContext.getQInstance().setRecordChangeListeners(new ArrayList<>(List.of(new QCodeReference(ThrowingListener.class), new QCodeReference(CapturingListener.class))));
+      deleteOutput = new DeleteAction().execute(new DeleteInput(tableName).withQueryFilter(new QQueryFilter(new QFilterCriteria("firstName", QCriteriaOperator.EQUALS, "Tim"))));
+      assertEquals(1, deleteOutput.getDeletedRecordCount());
+      assertThat(deleteOutput.getRecordsWithWarnings()).isNullOrEmpty();
+      assertThat(ThrowingListener.events).hasSize(1);
+      assertThat(CapturingListener.events).hasSize(2);
+      assertThat(CapturingListener.events.get(1).getRecords()).extracting(r -> r.getValueString("firstName")).containsExactly("Tim");
+      assertNull(CapturingListener.events.get(1).getTransaction());
+      assertThat(queryTable(tableName)).extracting(r -> r.getValueString("firstName")).containsExactly("Kirk");
+   }
+
+
+
+   /*******************************************************************************
+    ** On a backend that does not pre-fetch old records, the delete queries for
+    ** them only when a listener applies.
+    *******************************************************************************/
+   @Test
+   void testRecordChangeListenerOldRecordFetchOnlyWhenApplying() throws QException
+   {
+      RecordChangeListenerHelperTest.resetListeners();
+      String tableName = RecordChangeListenerHelperTest.defineNoPrefetchTable();
+      new InsertAction().execute(new InsertInput(tableName).withRecords(List.of(
+         new QRecord().withValue("id", 1).withValue("name", "one"),
+         new QRecord().withValue("id", 2).withValue("name", "two"),
+         new QRecord().withValue("id", 3).withValue("name", "three"))));
+      MemoryRecordStore.setCollectStatistics(true);
+
+      new DeleteAction().execute(new DeleteInput(tableName).withPrimaryKeys(List.of(1)));
+      QContext.getQInstance().withRecordChangeListener(new QCodeReference(CapturingListener.class));
+      CapturingListener.appliesToTableName = TestUtils.TABLE_NAME_PERSON_MEMORY;
+      new DeleteAction().execute(new DeleteInput(tableName).withPrimaryKeys(List.of(2)));
+      assertEquals(0, RecordChangeListenerHelperTest.getMemoryQueryCount());
+      assertThat(CapturingListener.events).isEmpty();
+
+      CapturingListener.appliesToTableName = tableName;
+      new DeleteAction().execute(new DeleteInput(tableName).withPrimaryKeys(List.of(3)));
+      assertEquals(1, RecordChangeListenerHelperTest.getMemoryQueryCount());
+      assertThat(CapturingListener.events).hasSize(1);
+      assertThat(CapturingListener.events.get(0).getRecords()).extracting(r -> r.getValueString("name")).containsExactly("three");
+      assertThat(CapturingListener.events.get(0).getOldRecords()).extracting(r -> r.getValueString("name")).containsExactly("three");
+      assertThat(queryTable(tableName)).isEmpty();
    }
 
 

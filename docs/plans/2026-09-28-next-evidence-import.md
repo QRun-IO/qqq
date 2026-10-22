@@ -1,0 +1,7 @@
+# #798/#790 Next successor evidence import
+
+Work only in `feature/GH-798-next-evidence-import` from `afa4a5842d5a31ad41cb30ed245a9db88f9ed33e`. Keep the 130-row ledger byte-identical. The seven retained frontend IDs receive an explicit Next successor crosswalk with original contracts and Material provenance; unbound negatives remain pending. No Next/Material implementation, workflow, dependency, Maven/cache, issue or status changes.
+
+1. Inspect native Playwright report/gate and existing provenance; freeze sanitized schema examples and source hashes. Baseline: 46 Python checks pass. The local receipt is partial; inspected CI WebKit receipt has four failures and tests a merge SHA. Neither is acceptance of the release combination, and neither supplies artifact hashes.
+2. Add regressions, then a standard-library native JSON verifier called by the existing ledger gate. Reconcile per-test/project results with the gate, require complete browser coverage and exact reviewed selectors, reject retries/skips/failures/partial/stale inputs. Bind receipt bytes, source files and actual artifacts through a separately reviewed QQQ import manifest; missing binding stays pending. Never generate JUnit or infer acceptance from totals.
+3. Verify all Python checks and unchanged ledger/contracts. Document precise missing owner handoff, freeze diff/hashes and red/green evidence. Independent review precedes signed commit or push; main composition/CI remains separate.

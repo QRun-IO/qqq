@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.actions.metadata;
@@ -31,13 +30,16 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
+import com.kingsrook.qqq.backend.core.actions.collaboration.RuntimeMetaDataOverlay;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionCheckResult;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.cluster.ClusterCaches;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QRuntimeException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
+import com.kingsrook.qqq.backend.core.instances.QInstanceHelpContentManager;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.MetaDataInput;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.MetaDataOutput;
@@ -51,6 +53,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendProcessMe
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendReportMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendWidgetMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.help.HelpContentVisibility;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppChildMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.MetaDataWithPermissionRules;
@@ -70,7 +73,7 @@ public class MetaDataAction
 {
    private static final QLogger LOG = QLogger.getLogger(MetaDataAction.class);
 
-   private static Memoization<QInstance, MetaDataActionCustomizerInterface> metaDataActionCustomizerMemoization = new Memoization<>();
+   private static Memoization<QInstance, MetaDataActionCustomizerInterface> metaDataActionCustomizerMemoization = ClusterCaches.nodeLocal(new Memoization<>(), "code from the instance, the same on every node");
 
 
 
@@ -80,8 +83,10 @@ public class MetaDataAction
    public MetaDataOutput execute(MetaDataInput metaDataInput) throws QException
    {
       ActionHelper.validateSession(metaDataInput);
+      QInstanceHelpContentManager.reloadIfChanged(QContext.getQInstance());
 
       MetaDataOutput           metaDataOutput = new MetaDataOutput();
+      metaDataOutput.setMetaDataGeneration(RuntimeMetaDataOverlay.getGeneration(QContext.getQInstance()));
       Map<String, AppTreeNode> treeNodes      = new LinkedHashMap<>();
 
       MetaDataActionCustomizerInterface customizer = getMetaDataActionCustomizer();
@@ -244,6 +249,7 @@ public class MetaDataAction
          apps.put(appName, frontendAppMetaData);
          treeNodes.put(appName, new AppTreeNode(app));
       }
+      apps.values().forEach(app -> app.filterSectionApps(apps));
       metaDataOutput.setApps(apps);
 
       ////////////////////////////////////////////////
@@ -268,8 +274,18 @@ public class MetaDataAction
       }
 
       metaDataOutput.setEnvironmentValues(Objects.requireNonNullElse(QContext.getQInstance().getEnvironmentValues(), Collections.emptyMap()));
-      metaDataOutput.setHelpContents(Objects.requireNonNullElse(QContext.getQInstance().getHelpContent(), Collections.emptyMap()));
+      metaDataOutput.setHelpContents(HelpContentVisibility.filter(Objects.requireNonNullElse(QContext.getQInstance().getHelpContent(), Collections.emptyMap())));
       metaDataOutput.setSupplementalInstanceMetaData(QContext.getQInstance().getSupplementalMetaData());
+
+      //////////////////////////////////////////////////////////////////////
+      // publish the home app only to users who may open it - otherwise a //
+      // frontend falls back to its own default home page                 //
+      //////////////////////////////////////////////////////////////////////
+      String homeAppName = QContext.getQInstance().getHomeAppName();
+      if(homeAppName != null && apps.containsKey(homeAppName))
+      {
+         metaDataOutput.setHomeAppName(homeAppName);
+      }
 
       Map<String, String> redirects = buildRedirectsForMultiAppTablesWithLimitedUserAccess(metaDataInput, sortedApps, apps.keySet());
       metaDataOutput.setRedirects(redirects);
@@ -477,7 +493,7 @@ public class MetaDataAction
     * Check both the customizer and permissions to decide if an object should
     * be denied/hidden from the user
     ***************************************************************************/
-   private static boolean isObjectDenied(MetaDataInput metaDataInput, MetaDataActionCustomizerInterface customizer, MetaDataWithPermissionRules object)
+   public static boolean isObjectDenied(MetaDataInput metaDataInput, MetaDataActionCustomizerInterface customizer, MetaDataWithPermissionRules object)
    {
       if(object instanceof QTableMetaData table && !customizer.allowTable(metaDataInput, table))
       {
@@ -517,7 +533,7 @@ public class MetaDataAction
    /***************************************************************************
     **
     ***************************************************************************/
-   private MetaDataActionCustomizerInterface getMetaDataActionCustomizer()
+   public MetaDataActionCustomizerInterface getMetaDataActionCustomizer()
    {
       return metaDataActionCustomizerMemoization.getResult(QContext.getQInstance(), i ->
       {

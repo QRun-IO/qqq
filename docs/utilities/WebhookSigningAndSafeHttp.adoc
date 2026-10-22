@@ -1,0 +1,167 @@
+== Webhook signing and the SSRF-safe HTTP client
+include::../variables.adoc[]
+
+Two small utilities in `qqq-backend-core` for any code that sends HTTP requests to URLs that users typed in (webhook endpoints, alert channels, revalidation hooks):
+
+* `com.kingsrook.qqq.backend.core.utils.webhooks`: `WebhookSecret`, `WebhookSigner`, `WebhookVerifier`, `WebhookVerificationException`. These sign and verify requests in the https://www.standardwebhooks.com/[Standard Webhooks] format.
+* `com.kingsrook.qqq.backend.core.utils.http`: `SafeHttpClient`, `SafeHttpPolicy`, `SafeHttpResponse`, `SafeHttpException`, `AddressRules`. This client refuses to reach the internal network unless an allowlist says so.
+
+They have no tables, threads or configuration of their own. qbit-webhooks is their first consumer; the Alerts and CDN qbits use them too.
+
+=== Signing format
+
+Every signed request carries three headers:
+
+[cols="1,3"]
+|===
+|Header |Value
+
+|`webhook-id`
+|The message (event) id. It stays the same on every retry of the same event, so receivers use it as the idempotency key.
+
+|`webhook-timestamp`
+|When this attempt was sent, as Unix seconds.
+
+|`webhook-signature`
+|`v1,<base64 signature>`. During a secret rotation there is one entry per active secret, separated by spaces: `v1,<sig-new> v1,<sig-old>`.
+|===
+
+The signature is HMAC-SHA256, base64 encoded, over the bytes of:
+
+----
+<webhook-id>.<webhook-timestamp>.<exact request body>
+----
+
+*Secrets* are written `whsec_<base64 key bytes>`, and the HMAC key is the decoded bytes. A secret without the `whsec_` prefix is used as raw UTF-8 bytes. Generated secrets are 32 random bytes; the shortest accepted is 16 bytes. `WebhookSecret.toString()` prints only a 12-character SHA-256 fingerprint, never the key.
+
+*Receivers must:*
+
+. Reject the request if any of the three headers is missing.
+. Reject a timestamp more than *5 minutes* from their own clock, either way. This stops replays of old requests.
+. Compute the signature over the *raw* body bytes, before any JSON parsing.
+. Accept the request if *any* `v1` entry matches, comparing in constant time. Ignore entries with other version prefixes.
+. Optionally, remember recent `webhook-id` values and ignore a repeat. Delivery is at-least-once.
+
+==== Sending
+
+[source,java]
+----
+Map<String, String> headers = WebhookSigner.headers(eventId, Instant.now(), bodyBytes, List.of(activeSecret));
+// during rotation: List.of(newSecret, previousSecret)
+----
+
+==== Verifying in Java
+
+[source,java]
+----
+WebhookVerifier verifier = new WebhookVerifier(List.of(WebhookSecret.parse(secretFromVault)));
+try
+{
+   verifier.verify(requestHeaders, rawBodyBytes);   // header names are case-insensitive
+}
+catch(WebhookVerificationException e)
+{
+   // e.getReason(): MISSING_HEADERS, BAD_TIMESTAMP, TIMESTAMP_OUT_OF_TOLERANCE or NO_MATCHING_SIGNATURE
+   respondWith(400);
+}
+----
+
+==== Verifying in Node.js
+
+[source,javascript]
+----
+const crypto = require('crypto');
+
+function verifyWebhook(secret, headers, rawBody /* Buffer */) {
+  const id = headers['webhook-id'];
+  const ts = headers['webhook-timestamp'];
+  const signatures = headers['webhook-signature'];
+  if (!id || !ts || !signatures) throw new Error('missing webhook headers');
+  if (Math.abs(Date.now() / 1000 - Number(ts)) > 300) throw new Error('timestamp outside tolerance');
+
+  const key = secret.startsWith('whsec_') ? Buffer.from(secret.slice(6), 'base64') : Buffer.from(secret, 'utf8');
+  const expected = crypto.createHmac('sha256', key).update(`${id}.${ts}.`).update(rawBody).digest();
+
+  for (const entry of signatures.split(' ')) {
+    const [version, signature] = entry.split(',');
+    if (version !== 'v1' || !signature) continue;
+    const given = Buffer.from(signature, 'base64');
+    if (given.length === expected.length && crypto.timingSafeEqual(given, expected)) return true;
+  }
+  throw new Error('no matching signature');
+}
+----
+
+==== Verifying in Python
+
+[source,python]
+----
+import base64, hashlib, hmac, time
+
+def verify_webhook(secret: str, headers: dict, raw_body: bytes) -> None:
+    msg_id = headers.get("webhook-id")
+    ts = headers.get("webhook-timestamp")
+    signatures = headers.get("webhook-signature")
+    if not (msg_id and ts and signatures):
+        raise ValueError("missing webhook headers")
+    if abs(time.time() - int(ts)) > 300:
+        raise ValueError("timestamp outside tolerance")
+
+    key = base64.b64decode(secret[6:]) if secret.startswith("whsec_") else secret.encode()
+    digest = hmac.new(key, f"{msg_id}.{ts}.".encode() + raw_body, hashlib.sha256).digest()
+    expected = base64.b64encode(digest).decode()
+
+    for entry in signatures.split(" "):
+        version, _, signature = entry.partition(",")
+        if version == "v1" and hmac.compare_digest(signature, expected):
+            return
+    raise ValueError("no matching signature")
+----
+
+The reference vector from the Standard Webhooks libraries is checked by `WebhookSigningTest`. The secret `whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw`, id `msg_p5jXN8AQM9LWM0D4loKWxJek`, timestamp `1614265330` and body `{"test": 2432232314}` sign to `v1,g0hM9SsE+OTPJTGt/tmIKtSyZlE3uFJELVlNIOLJ1OE=`.
+
+=== SSRF policy (`SafeHttpClient`)
+
+[source,java]
+----
+SafeHttpPolicy policy = SafeHttpPolicy.defaults()                 // https only, no internal targets
+   .withInternalAllowlist(List.of(".svc.cluster.local"))           // admin-chosen exceptions only
+   .withConnectTimeout(Duration.ofSeconds(5))
+   .withReadTimeout(Duration.ofSeconds(10))
+   .withTotalTimeout(Duration.ofSeconds(30))
+   .withMaxResponseBytes(64 * 1024);
+try(SafeHttpClient client = new SafeHttpClient(policy))           // one pooled client per policy; share it
+{
+   SafeHttpResponse response = client.post(url, headers, body);    // any HTTP status is a response
+}
+catch(SafeHttpException e)
+{
+   // e.getReason(): INVALID_URL, BLOCKED_SCHEME, BLOCKED_ADDRESS (policy refusals: e.getReason().isPolicy()),
+   // DNS_FAILURE, CONNECT_TIMEOUT, READ_TIMEOUT, TOTAL_TIMEOUT, TLS_FAILURE, CONNECTION_FAILED
+}
+----
+
+What the client enforces:
+
+* *Scheme and shape.* Only `https`, plus `http` when the policy allows it. URLs with a user name or password, or with no host, are refused.
+* *Blocked addresses.* These ranges are refused by default:
+** "this network" `0.0.0.0/8`
+** private: `10/8`, `172.16/12` and `192.168/16`
+** carrier-grade NAT `100.64/10`
+** loopback: `127/8` and `::1`
+** link-local: `169.254/16` and `fe80::/10`, which covers the cloud metadata endpoints
+** IETF protocol and documentation ranges
+** benchmarking `198.18/15`
+** multicast, reserved and broadcast: `224/4` and `240/4`
+** IPv6 unique-local `fc00::/7`, site-local `fec0::/10`, discard `100::/64` and documentation `2001:db8::/32`
+
++
+An IPv4 address embedded in IPv6 is checked as IPv4: IPv4-mapped, IPv4-compatible, NAT64 `64:ff9b::/96` and 6to4 `2002::/16`.
+* *Resolve once, check all, pin.* The host is resolved once per request. If *any* address it resolves to is blocked, the request is refused, so a mixed DNS answer does not slip through. The connection is then made only to the addresses that were checked; the client's own DNS resolver refuses any host that was not checked. A DNS answer that changes between the check and the connect (DNS rebinding) is therefore never used.
+* *No redirects.* A `3xx` is returned to the caller as the response and is never followed. A redirect to an internal address cannot be used to reach it.
+* *TLS.* TLS 1.2 or 1.3, the JVM trust store and standard host-name verification.
+* *Timeouts and size.* There are connect, read (idle) and total timeouts; the total timeout aborts a server that trickles bytes. At most `maxResponseBytes` of the body is read; the rest is dropped with the connection, and `truncated()` is `true`.
+* *Allowlist (admin only).* `withInternalAllowlist` re-opens specific internal targets. An entry can be a CIDR block (`10.100.22.0/24`), a single address, an exact host name, or a host suffix with a leading dot (`.svc.cluster.local`). The cloud metadata addresses (`169.254.169.254`, `100.100.100.200`, `fd00:ec2::254`) and the unspecified addresses stay blocked even when an allowlist entry covers them. Only administrators should be able to set an allowlist.
+* *Validation on save.* `checkUrl(url)` applies the same checks without sending anything, so a URL can be rejected when it is saved. The send-time check still runs, because DNS can change in between.
+
+Error messages never include request bodies, headers or secrets.

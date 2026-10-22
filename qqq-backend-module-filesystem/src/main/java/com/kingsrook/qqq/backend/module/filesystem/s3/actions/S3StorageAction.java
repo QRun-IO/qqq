@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.module.filesystem.s3.actions;
@@ -25,11 +24,6 @@ package com.kingsrook.qqq.backend.module.filesystem.s3.actions;
 import java.io.File;
 import java.io.InputStream;
 import java.io.OutputStream;
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.model.CannedAccessControlList;
-import com.amazonaws.services.s3.model.GetObjectRequest;
-import com.amazonaws.services.s3.model.S3Object;
-import com.amazonaws.services.s3.model.S3ObjectInputStream;
 import com.kingsrook.qqq.backend.core.actions.interfaces.QStorageInterface;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.storage.StorageInput;
@@ -37,6 +31,12 @@ import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.module.filesystem.s3.model.metadata.S3BackendMetaData;
 import com.kingsrook.qqq.backend.module.filesystem.s3.utils.S3UploadOutputStream;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetUrlRequest;
+import software.amazon.awssdk.services.s3.model.ObjectCannedACL;
+import software.amazon.awssdk.services.s3.model.PutObjectAclRequest;
 
 
 /*******************************************************************************
@@ -44,6 +44,26 @@ import com.kingsrook.qqq.backend.module.filesystem.s3.utils.S3UploadOutputStream
  *******************************************************************************/
 public class S3StorageAction extends AbstractS3Action implements QStorageInterface
 {
+
+   /*******************************************************************************
+    ** Delete an object, including an incomplete report output.
+    *******************************************************************************/
+   @Override
+   public void deleteObject(StorageInput storageInput) throws QException
+   {
+      try
+      {
+         S3BackendMetaData backend = (S3BackendMetaData) storageInput.getBackend();
+         preAction(backend);
+         getS3Utils().getS3Client().deleteObject(DeleteObjectRequest.builder().bucket(backend.getBucketName()).key(getFullPath(storageInput)).build());
+      }
+      catch(Exception e)
+      {
+         throw new QException("Exception deleting S3 storage object", e);
+      }
+   }
+
+
 
    /*******************************************************************************
     **
@@ -56,9 +76,9 @@ public class S3StorageAction extends AbstractS3Action implements QStorageInterfa
          S3BackendMetaData backend = (S3BackendMetaData) storageInput.getBackend();
          preAction(backend);
 
-         AmazonS3             amazonS3             = getS3Utils().getAmazonS3();
+         S3Client             s3Client             = getS3Utils().getS3Client();
          String               fullPath             = getFullPath(storageInput);
-         S3UploadOutputStream s3UploadOutputStream = new S3UploadOutputStream(amazonS3, backend.getBucketName(), fullPath, storageInput.getContentType());
+         S3UploadOutputStream s3UploadOutputStream = new S3UploadOutputStream(s3Client, backend.getBucketName(), fullPath, storageInput.getContentType());
          return (s3UploadOutputStream);
       }
       catch(Exception e)
@@ -102,13 +122,11 @@ public class S3StorageAction extends AbstractS3Action implements QStorageInterfa
          S3BackendMetaData backend = (S3BackendMetaData) storageInput.getBackend();
          preAction(backend);
 
-         AmazonS3            amazonS3         = getS3Utils().getAmazonS3();
-         String              fullPath         = getFullPath(storageInput);
-         GetObjectRequest    getObjectRequest = new GetObjectRequest(backend.getBucketName(), fullPath);
-         S3Object            s3Object         = amazonS3.getObject(getObjectRequest);
-         S3ObjectInputStream objectContent    = s3Object.getObjectContent();
+         S3Client         s3Client         = getS3Utils().getS3Client();
+         String           fullPath         = getFullPath(storageInput);
+         GetObjectRequest getObjectRequest = GetObjectRequest.builder().bucket(backend.getBucketName()).key(fullPath).build();
 
-         return (objectContent);
+         return (s3Client.getObject(getObjectRequest));
       }
       catch(Exception e)
       {
@@ -129,9 +147,9 @@ public class S3StorageAction extends AbstractS3Action implements QStorageInterfa
          S3BackendMetaData backend = (S3BackendMetaData) storageInput.getBackend();
          preAction(backend);
 
-         AmazonS3 amazonS3 = getS3Utils().getAmazonS3();
+         S3Client s3Client = getS3Utils().getS3Client();
          String   fullPath = getFullPath(storageInput);
-         return (amazonS3.getUrl(backend.getBucketName(), fullPath).toString());
+         return (s3Client.utilities().getUrl(GetUrlRequest.builder().bucket(backend.getBucketName()).key(fullPath).build()).toString());
       }
       catch(Exception e)
       {
@@ -152,13 +170,18 @@ public class S3StorageAction extends AbstractS3Action implements QStorageInterfa
          S3BackendMetaData backend = (S3BackendMetaData) storageInput.getBackend();
          preAction(backend);
 
-         AmazonS3 amazonS3 = getS3Utils().getAmazonS3();
+         S3Client s3Client = getS3Utils().getS3Client();
          String   fullPath = getFullPath(storageInput);
-         amazonS3.setObjectAcl(backend.getBucketName(), fullPath, CannedAccessControlList.PublicRead);
+         s3Client.putObjectAcl(PutObjectAclRequest.builder().bucket(backend.getBucketName()).key(fullPath).acl(ObjectCannedACL.PUBLIC_READ).build());
       }
       catch(Exception e)
       {
-         throw (new QException("Exception making s3 file publicly available.", e));
+         ///////////////////////////////////////////////////////////////////////////
+         // object ACLs are disabled by default on new AWS buckets, and are not   //
+         // supported by several S3-compatible stores (e.g., R2, Garage) - so say //
+         // what to do instead.                                                   //
+         ///////////////////////////////////////////////////////////////////////////
+         throw (new QException("Exception making s3 file publicly available (via an object ACL).  If the bucket or store does not support object ACLs, grant public read with a bucket policy instead.", e));
       }
    }
 

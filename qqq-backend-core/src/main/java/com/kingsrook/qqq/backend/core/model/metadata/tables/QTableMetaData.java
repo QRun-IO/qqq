@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.model.metadata.tables;
@@ -57,6 +56,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLock
 import com.kingsrook.qqq.backend.core.model.metadata.sharing.ShareableTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.automation.QTableAutomationDetails;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.cache.CacheOf;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.picker.QRelatedRecordPicker;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
@@ -67,6 +67,10 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  *******************************************************************************/
 public class QTableMetaData implements QAppChildMetaData, Serializable, MetaDataWithPermissionRules, TopLevelMetaDataInterface, SourceQBitAware, Cloneable
 {
+   private List<String> keywords;
+
+   private String recordVersionField;
+
    private static final QLogger LOG = QLogger.getLogger(QTableMetaData.class);
 
    private String name;
@@ -98,6 +102,8 @@ public class QTableMetaData implements QAppChildMetaData, Serializable, MetaData
    private String       recordLabelFormat;
    private List<String> recordLabelFields;
 
+   private List<String> searchFields;
+
    private List<QFieldSection> sections;
 
    private List<AssociatedScript> associatedScripts;
@@ -116,6 +122,9 @@ public class QTableMetaData implements QAppChildMetaData, Serializable, MetaData
    protected Map<String, List<QHelpContent>> helpContent;
 
    private List<QMenu> menus;
+
+   private Map<String, QRelatedRecordPicker> relatedRecordPickers;
+   private String                            quickCreateSectionName;
 
 
 
@@ -1718,6 +1727,7 @@ public class QTableMetaData implements QAppChildMetaData, Serializable, MetaData
       try
       {
          QTableMetaData clone = (QTableMetaData) super.clone();
+         clone.keywords = keywords == null ? null : new ArrayList<>(keywords);
 
          if(fields != null)
          {
@@ -1809,6 +1819,11 @@ public class QTableMetaData implements QAppChildMetaData, Serializable, MetaData
             clone.setRecordLabelFields(new ArrayList<>(recordLabelFields));
          }
 
+         if(searchFields != null)
+         {
+            clone.setSearchFields(new ArrayList<>(searchFields));
+         }
+
          if(sections != null)
          {
             List<QFieldSection> clonedSections = new ArrayList<>();
@@ -1892,6 +1907,16 @@ public class QTableMetaData implements QAppChildMetaData, Serializable, MetaData
                clonedMenus.add(menu.clone());
             }
             clone.setMenus(clonedMenus);
+         }
+
+         if(relatedRecordPickers != null)
+         {
+            Map<String, QRelatedRecordPicker> clonedPickers = new LinkedHashMap<>();
+            for(Map.Entry<String, QRelatedRecordPicker> entry : relatedRecordPickers.entrySet())
+            {
+               clonedPickers.put(entry.getKey(), entry.getValue().clone());
+            }
+            clone.setRelatedRecordPickers(clonedPickers);
          }
 
          return clone;
@@ -1998,6 +2023,224 @@ public class QTableMetaData implements QAppChildMetaData, Serializable, MetaData
          this.menus = new ArrayList<>();
       }
       this.menus.add(menu);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    * Getter for searchFields
+    * @see #withSearchFields(List)
+    *******************************************************************************/
+   public List<String> getSearchFields()
+   {
+      return (this.searchFields);
+   }
+
+
+
+   /*******************************************************************************
+    * Setter for searchFields
+    * @see #withSearchFields(List)
+    *******************************************************************************/
+   public void setSearchFields(List<String> searchFields)
+   {
+      this.searchFields = searchFields;
+   }
+
+
+
+   /*******************************************************************************
+    * Fluent setter for searchFields
+    *
+    * @param searchFields
+    * Names of the fields that record search (RecordSearchAction, the v1
+    * {@code /search} endpoint) matches a search term against.  String fields
+    * match when they contain the term (case-insensitively); integer fields match
+    * when they equal a numeric term.  A table with no search fields is not
+    * searched.  Hidden and password fields are not allowed.
+    * @return this
+    *******************************************************************************/
+   public QTableMetaData withSearchFields(List<String> searchFields)
+   {
+      this.searchFields = searchFields;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    * Fluent setter for searchFields
+    * @see #withSearchFields(List)
+    *******************************************************************************/
+   public QTableMetaData withSearchFields(String... searchFields)
+   {
+      this.searchFields = new ArrayList<>(Arrays.asList(searchFields));
+      return (this);
+   }
+
+
+
+
+   /*******************************************************************************
+    ** Getter for recordVersionField
+    *******************************************************************************/
+   public String getRecordVersionField()
+   {
+      return (recordVersionField);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for recordVersionField
+    *******************************************************************************/
+   public void setRecordVersionField(String recordVersionField)
+   {
+      this.recordVersionField = recordVersionField;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for recordVersionField
+    *******************************************************************************/
+   public QTableMetaData withRecordVersionField(String recordVersionField)
+   {
+      setRecordVersionField(recordVersionField);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for relatedRecordPickers
+    *******************************************************************************/
+   public Map<String, QRelatedRecordPicker> getRelatedRecordPickers()
+   {
+      return (this.relatedRecordPickers);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for relatedRecordPickers
+    *******************************************************************************/
+   public void setRelatedRecordPickers(Map<String, QRelatedRecordPicker> relatedRecordPickers)
+   {
+      this.relatedRecordPickers = relatedRecordPickers;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for relatedRecordPickers
+    *******************************************************************************/
+   public QTableMetaData withRelatedRecordPickers(Map<String, QRelatedRecordPicker> relatedRecordPickers)
+   {
+      this.relatedRecordPickers = relatedRecordPickers;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for quickCreateSectionName
+    *******************************************************************************/
+   public String getQuickCreateSectionName()
+   {
+      return (this.quickCreateSectionName);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for quickCreateSectionName
+    *******************************************************************************/
+   public void setQuickCreateSectionName(String quickCreateSectionName)
+   {
+      this.quickCreateSectionName = quickCreateSectionName;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for quickCreateSectionName
+    *******************************************************************************/
+   public QTableMetaData withQuickCreateSectionName(String quickCreateSectionName)
+   {
+      this.quickCreateSectionName = quickCreateSectionName;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Add a related-record picker (keyed by its name).
+    *******************************************************************************/
+   public QTableMetaData withRelatedRecordPicker(QRelatedRecordPicker relatedRecordPicker)
+   {
+      if(this.relatedRecordPickers == null)
+      {
+         this.relatedRecordPickers = new LinkedHashMap<>();
+      }
+      this.relatedRecordPickers.put(relatedRecordPicker.getName(), relatedRecordPicker);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Get a related-record picker by name (null if there is none).
+    *******************************************************************************/
+   public QRelatedRecordPicker getRelatedRecordPicker(String name)
+   {
+      return (this.relatedRecordPickers == null ? null : this.relatedRecordPickers.get(name));
+   }
+
+
+
+   /*******************************************************************************
+    ** Search aliases: other words people use for this (old labels, jargon, vendor names).
+    ** Clients match search on label, keywords and ancestor labels. Never displayed as the label.
+    *******************************************************************************/
+   public List<String> getKeywords()
+   {
+      return (this.keywords);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for keywords
+    *******************************************************************************/
+   public void setKeywords(List<String> keywords)
+   {
+      this.keywords = keywords;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for keywords
+    *******************************************************************************/
+   public QTableMetaData withKeywords(List<String> keywords)
+   {
+      this.keywords = keywords;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Append a search alias.
+    *******************************************************************************/
+   public QTableMetaData withKeyword(String keyword)
+   {
+      if(keywords == null)
+      {
+         keywords = new ArrayList<>();
+      }
+      keywords.add(keyword);
       return (this);
    }
 

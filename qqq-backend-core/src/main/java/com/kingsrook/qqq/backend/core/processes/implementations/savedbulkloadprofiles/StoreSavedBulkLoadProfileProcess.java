@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.processes.implementations.savedbulkloadprofiles;
@@ -26,15 +25,18 @@ import java.io.Serializable;
 import java.util.List;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
+import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
@@ -100,14 +102,14 @@ public class StoreSavedBulkLoadProfileProcess implements BackendStep
             .withValue("mappingJson", mappingJson)
             .withValue("label", label)
             .withValue("tableName", tableName)
-            .withValue("isBulkEdit", isBulkEdit)
-            .withValue("userId", userId);
+            .withValue("isBulkEdit", isBulkEdit);
 
          List<QRecord> savedBulkLoadProfileList;
          if(qRecord.getValueInteger("id") == null)
          {
             checkForDuplicates(userId, tableName, label, null);
 
+            qRecord.setValue("userId", userId);
             InsertInput input = new InsertInput();
             input.setTableName(SavedBulkLoadProfile.TABLE_NAME);
             input.setRecords(List.of(qRecord));
@@ -117,7 +119,17 @@ public class StoreSavedBulkLoadProfileProcess implements BackendStep
          }
          else
          {
-            checkForDuplicates(userId, tableName, label, qRecord.getValueInteger("id"));
+            //////////////////////////////////////////////////////////////////
+            // an update keeps the profile's owner: a user it is shared with //
+            // (and whose write the table's locks allow) must not take it    //
+            //////////////////////////////////////////////////////////////////
+            QRecord existing = new GetAction().executeForRecord(new GetInput(SavedBulkLoadProfile.TABLE_NAME).withPrimaryKey(qRecord.getValueInteger("id")));
+            if(existing == null)
+            {
+               throw (new QNotFoundException("The requested Bulk Load Profile was not found."));
+            }
+            checkForDuplicates(existing.getValueString("userId"), tableName, label, qRecord.getValueInteger("id"));
+            qRecord.setValue("userId", existing.getValueString("userId"));
 
             UpdateInput input = new UpdateInput();
             input.setTableName(SavedBulkLoadProfile.TABLE_NAME);
@@ -125,6 +137,18 @@ public class StoreSavedBulkLoadProfileProcess implements BackendStep
 
             UpdateOutput output = new UpdateAction().execute(input);
             savedBulkLoadProfileList = output.getRecords();
+         }
+
+         ////////////////////////////////////////////////////////////////////
+         // a record the backend refused (a record lock, a bad value) is an //
+         // error, not a silent success                                     //
+         ////////////////////////////////////////////////////////////////////
+         for(QRecord record : CollectionUtils.nonNullList(savedBulkLoadProfileList))
+         {
+            if(CollectionUtils.nullSafeHasContents(record.getErrors()))
+            {
+               throw (new QUserFacingException("Error saving Bulk Load Profile: " + record.getErrors().get(0).getMessage()));
+            }
          }
 
          runBackendStepOutput.addValue("savedBulkLoadProfileList", (Serializable) savedBulkLoadProfileList);

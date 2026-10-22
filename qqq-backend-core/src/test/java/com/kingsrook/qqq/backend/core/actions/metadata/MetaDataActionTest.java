@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.actions.metadata;
@@ -61,6 +60,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
@@ -192,6 +192,32 @@ class MetaDataActionTest extends BaseTest
       }
 
       // todo -- assert about sections in those apps not having stuff
+   }
+
+
+
+   /*******************************************************************************
+    ** The home app is published to users who may open it, and omitted otherwise
+    ** (and when the instance designates none), so a frontend falls back to its
+    ** own default home page.
+    *******************************************************************************/
+   @Test
+   void testHomeAppName() throws QException
+   {
+      assertNull(new MetaDataAction().execute(new MetaDataInput()).getHomeAppName());
+
+      QInstance instance = TestUtils.defineInstance();
+      instance.setHomeAppName(TestUtils.APP_NAME_GREETINGS);
+      reInitInstanceInContext(instance);
+      assertEquals(TestUtils.APP_NAME_GREETINGS, new MetaDataAction().execute(new MetaDataInput()).getHomeAppName());
+
+      instance = TestUtils.defineInstance();
+      instance.setHomeAppName(TestUtils.APP_NAME_GREETINGS);
+      instance.setDefaultPermissionRules(new QPermissionRules().withLevel(PermissionLevel.HAS_ACCESS_PERMISSION));
+      reInitInstanceInContext(instance);
+      MetaDataOutput withoutAccess = new MetaDataAction().execute(new MetaDataInput());
+      assertEquals(0, withoutAccess.getApps().size());
+      assertNull(withoutAccess.getHomeAppName());
    }
 
 
@@ -915,6 +941,31 @@ class MetaDataActionTest extends BaseTest
       {
          return false;
       }
+   }
+
+   /*******************************************************************************
+    ** Search aliases are copied into frontend metadata and table clones.
+    *******************************************************************************/
+   @Test
+   void testKeywordCopies() throws QException
+   {
+      QAppMetaData app = QContext.getQInstance().getApp(TestUtils.APP_NAME_PEOPLE).withKeyword("customers");
+      QTableMetaData table = QContext.getQInstance().getTable(TestUtils.TABLE_NAME_PERSON).withKeyword("contacts");
+      AppTreeNode appNode = new AppTreeNode(app);
+      AppTreeNode tableNode = new AppTreeNode(table);
+      QTableMetaData tableClone = table.clone();
+      MetaDataOutput output = new MetaDataAction().execute(new MetaDataInput());
+      app.getKeywords().clear();
+      table.getKeywords().clear();
+      assertEquals(List.of("customers"), appNode.getKeywords());
+      assertEquals(List.of("contacts"), tableNode.getKeywords());
+      assertEquals(List.of("contacts"), tableClone.getKeywords());
+      assertEquals(List.of("customers"), output.getApps().get(app.getName()).getKeywords());
+      assertNull(new AppTreeNode(app).getKeywords());
+      assertNull(new AppTreeNode(table).getKeywords());
+      AppTreeNode clonedNode = tableNode.clone();
+      clonedNode.getKeywords().clear();
+      assertEquals(List.of("contacts"), tableNode.getKeywords());
    }
 
 }

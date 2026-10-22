@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components;
@@ -25,12 +24,15 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.sharing.ShareableTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QSupplementalTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
+import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIExclude;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIIncludeProperties;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIListItems;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIMapValueType;
@@ -44,6 +46,8 @@ import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIMap
 @OpenAPIIncludeProperties(ancestorClasses = TableMetaDataLight.class)
 public class TableMetaData extends TableMetaDataLight implements ToSchema
 {
+   @OpenAPIExclude()
+   private TableCapabilitiesV1 clientCapabilities;
 
 
    /*******************************************************************************
@@ -53,6 +57,13 @@ public class TableMetaData extends TableMetaDataLight implements ToSchema
    public TableMetaData(QFrontendTableMetaData wrapped)
    {
       super(wrapped);
+
+      ///////////////////////////////////////////////////////////////////////////
+      // capabilities depend on the session: compute them now, in the request //
+      // context, not when the object is serialized                           //
+      ///////////////////////////////////////////////////////////////////////////
+      QInstance instance = QContext.getQInstance();
+      this.clientCapabilities = instance == null || wrapped == null ? null : TableCapabilitiesV1.of(instance.getTable(wrapped.getName()));
    }
 
 
@@ -179,6 +190,22 @@ public class TableMetaData extends TableMetaDataLight implements ToSchema
    /***************************************************************************
     **
     ***************************************************************************/
+   @OpenAPIDescription("Menus the table defines for screen slots (for example the record view's VIEW_SCREEN_ACTIONS menu, which replaces the default actions menu, and VIEW_SCREEN_ADDITIONAL menus).  Omitted when the table defines none.")
+   @OpenAPIListItems(value = TableMenu.class, useRef = true)
+   public List<TableMenu> getMenus()
+   {
+      if(wrapped.getMenus() == null || wrapped.getMenus().isEmpty())
+      {
+         return (null);
+      }
+      return (wrapped.getMenus().stream().map(TableMenu::new).toList());
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
    @OpenAPIDescription("Virtual fields in this table")
    @OpenAPIMapValueType(value = VirtualFieldMetaData.class, useRef = true)
    public Map<String, VirtualFieldMetaData> getVirtualFields()
@@ -188,4 +215,63 @@ public class TableMetaData extends TableMetaDataLight implements ToSchema
    }
 
 
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @OpenAPIDescription("Related-record pickers of this table whose target the user may read (docs/RELATED-RECORD-PICKER.md)")
+   @OpenAPIListItems(value = RelatedRecordPicker.class, useRef = true)
+   public List<RelatedRecordPicker> getRelatedRecordPickers()
+   {
+      if(wrapped.getRelatedRecordPickers() == null)
+      {
+         return (null);
+      }
+
+      return (wrapped.getRelatedRecordPickers().stream().map(RelatedRecordPicker::new).toList());
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @OpenAPIDescription("Name of the section whose editable fields a quick-create form shows (else the required, editable fields)")
+   public String getQuickCreateSectionName()
+   {
+      return (wrapped.getQuickCreateSectionName());
+   }
+
+
+   /*******************************************************************************
+    ** Built-in session-relative views published by core.
+    *******************************************************************************/
+   @OpenAPIDescription("Built-in views; evaluate their filters in the current session without persisting the resolved user id.")
+   @OpenAPIListItems(value = BuiltInViewV1.class, useRef = true)
+   public List<BuiltInViewV1> getBuiltInViews()
+   {
+      return (wrapped.getBuiltInViews() == null ? null : wrapped.getBuiltInViews().stream().map(BuiltInViewV1::new).toList());
+   }
+
+
+
+   /*******************************************************************************
+    ** Typed capabilities (saved views, audits, sharing, bulk processes).
+    *******************************************************************************/
+   @OpenAPIDescription("What a client may offer on this table beyond plain CRUD - saved views, audits, sharing and the bulk processes - with the process or table to use for each, for the current user.  Clients use these instead of hard-coded process names.  Since 1.6.0.")
+   public TableCapabilitiesV1 getClientCapabilities()
+   {
+      return (clientCapabilities);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether the current session has any restricted fields on this table.
+    *******************************************************************************/
+   @OpenAPIDescription("True when any field has REVEALABLE, MASKED, or HIDDEN access for the current session.")
+   public Boolean getHasRestrictedFields()
+   {
+      return (wrapped.getHasRestrictedFields());
+   }
 }

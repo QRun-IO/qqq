@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.module.rdbms.actions;
@@ -107,6 +106,12 @@ public class RDBMSTransaction extends QBackendTransaction
       catch(Exception e)
       {
          LOG.error("Error committing transaction", e);
+
+         ///////////////////////////////////////////////////////////////////////////
+         // the callbacks' work was not committed - so drop them now, rather than //
+         // running them on a later commit of this (re-opened) transaction        //
+         ///////////////////////////////////////////////////////////////////////////
+         discardAfterCommitCallbacks();
          throw new QException("Error committing transaction: " + e.getMessage(), e);
       }
       finally
@@ -116,6 +121,11 @@ public class RDBMSTransaction extends QBackendTransaction
          /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
          openedAt = Instant.now();
       }
+
+      ///////////////////////////////////////////////////////////////////////
+      // only reached if the commit succeeded (else the catch threw above) //
+      ///////////////////////////////////////////////////////////////////////
+      runAfterCommitCallbacks();
    }
 
 
@@ -136,6 +146,14 @@ public class RDBMSTransaction extends QBackendTransaction
       {
          LOG.error("Error rolling back transaction", e);
          throw new QException("Error rolling back transaction: " + e.getMessage(), e);
+      }
+      finally
+      {
+         ///////////////////////////////////////////////////////////////////////
+         // base class discards after-commit callbacks - even if the rollback //
+         // failed, their work was never committed                            //
+         ///////////////////////////////////////////////////////////////////////
+         super.rollback();
       }
    }
 

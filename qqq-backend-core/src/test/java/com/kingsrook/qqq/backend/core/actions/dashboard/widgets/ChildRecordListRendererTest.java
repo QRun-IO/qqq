@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.actions.dashboard.widgets;
@@ -53,8 +52,14 @@ import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinOn;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinType;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.QJoinMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
+import com.kingsrook.qqq.backend.core.model.metadata.qbits.ProvidedOrSuppliedTableConfig;
+import com.kingsrook.qqq.backend.core.model.metadata.qbits.testqbit.CyclicTestQBitConfig;
+import com.kingsrook.qqq.backend.core.model.metadata.qbits.testqbit.TestQBitConfig;
+import com.kingsrook.qqq.backend.core.model.metadata.qbits.testqbit.TestQBitProducer;
+import com.kingsrook.qqq.backend.core.model.metadata.qbits.testqbit.metadata.OtherTableMetaDataProducer;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryRecordStore;
+import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -169,6 +174,41 @@ class ChildRecordListRendererTest extends BaseTest
       ChildRecordListData userData = (ChildRecordListData) new RenderWidgetAction().execute(userInput).getWidgetData();
       assertEquals(2, userData.getTotalRows());
       assertEquals("BCD", userData.getQueryOutput().getRecords().getFirst().getValueString("sku"));
+   }
+
+
+
+   /*******************************************************************************
+    ** A QBit's runtime back-reference must not escape through child table metadata.
+    *******************************************************************************/
+   @Test
+   void testChildRecordsFromQBitSerialize() throws QException
+   {
+      QInstance qInstance = QContext.getQInstance();
+      TestQBitConfig config = new CyclicTestQBitConfig()
+         .withOtherTableConfig(ProvidedOrSuppliedTableConfig.provideTableUsingBackendNamed(TestUtils.MEMORY_BACKEND_NAME))
+         .withIsSomeTableEnabled(false);
+      new TestQBitProducer().withTestQBitConfig(config).produce(qInstance);
+      String sourceQBitName = qInstance.getTable(OtherTableMetaDataProducer.NAME).getSourceQBitName();
+      qInstance.getTable(TestUtils.TABLE_NAME_LINE_ITEM).setSourceQBitName(sourceQBitName);
+      QContext.getQSession().withSecurityKeyValue(TestUtils.SECURITY_KEY_TYPE_STORE_ALL_ACCESS, true);
+
+      QWidgetMetaData widget = ChildRecordListRenderer.widgetMetaDataBuilder(qInstance.getJoin("orderLineItem"))
+         .withLabel("Line Items")
+         .getWidgetMetaData();
+      qInstance.addWidget(widget);
+      insertTwoOrdersAndThreeLines(qInstance);
+
+      RenderWidgetInput input = new RenderWidgetInput();
+      input.setWidgetMetaData(widget);
+      input.setQueryParams(new HashMap<>(Map.of("id", "1")));
+      RenderWidgetOutput output = new RenderWidgetAction().execute(input);
+
+      ChildRecordListData data = (ChildRecordListData) output.getWidgetData();
+      assertEquals(sourceQBitName, data.getChildTableMetaData().getSourceQBitName());
+      assertThat(data.getQueryOutput().getRecords()).hasSize(2);
+      assertThat(JsonUtils.toJson(output.getWidgetData())).contains("\"sourceQBitName\":\"" + sourceQBitName + "\"")
+         .doesNotContain("\"sourceQBitConfig\"", "\"sourceQBit\"");
    }
 
 

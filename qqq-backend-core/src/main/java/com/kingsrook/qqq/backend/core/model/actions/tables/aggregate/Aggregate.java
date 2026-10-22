@@ -5,24 +5,24 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.model.actions.tables.aggregate;
 
 
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.util.Objects;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 
@@ -33,6 +33,9 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
  *******************************************************************************/
 public class Aggregate implements Serializable
 {
+   private BigDecimal percentile;
+   private String otherFieldName;
+
    private String            fieldName;
    private AggregateOperator operator;
    private QFieldType        fieldType;
@@ -65,7 +68,8 @@ public class Aggregate implements Serializable
       }
 
       Aggregate aggregate = (Aggregate) o;
-      return Objects.equals(fieldName, aggregate.fieldName) && operator == aggregate.operator && fieldType == aggregate.fieldType;
+      return (Objects.equals(fieldName, aggregate.fieldName) && operator == aggregate.operator && fieldType == aggregate.fieldType
+         && Objects.equals(percentile, aggregate.percentile) && Objects.equals(otherFieldName, aggregate.otherFieldName));
    }
 
 
@@ -76,7 +80,7 @@ public class Aggregate implements Serializable
    @Override
    public int hashCode()
    {
-      return Objects.hash(fieldName, operator, fieldType);
+      return (Objects.hash(fieldName, operator, fieldType, percentile, otherFieldName));
    }
 
 
@@ -189,4 +193,76 @@ public class Aggregate implements Serializable
       return (this);
    }
 
+
+
+
+   /*******************************************************************************
+    ** Getter for percentile
+    *******************************************************************************/
+   public BigDecimal getPercentile()
+   {
+      return (this.percentile);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for percentile
+    *******************************************************************************/
+   public void setPercentile(BigDecimal percentile)
+   {
+      this.percentile = percentile;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for percentile
+    *******************************************************************************/
+   public Aggregate withPercentile(BigDecimal percentile)
+   {
+      setPercentile(percentile);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for otherFieldName
+    *******************************************************************************/
+   public String getOtherFieldName()
+   {
+      return (this.otherFieldName);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for otherFieldName
+    *******************************************************************************/
+   public void setOtherFieldName(String otherFieldName)
+   {
+      this.otherFieldName = otherFieldName;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for otherFieldName
+    *******************************************************************************/
+   public Aggregate withOtherFieldName(String otherFieldName)
+   {
+      setOtherFieldName(otherFieldName);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Continuous percentile of a field, from zero through one.
+    *******************************************************************************/
+   public static Aggregate percentile(String fieldName, double percentile)
+   {
+      return (new Aggregate(fieldName, AggregateOperator.PERCENTILE_CONT).withPercentile(BigDecimal.valueOf(percentile)));
+   }
 }

@@ -52,6 +52,7 @@ import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryActionCacheHel
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.SelectionValidationHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.query.QueryFilterPreprocessor;
+import com.kingsrook.qqq.backend.core.actions.tables.query.VirtualFieldValueProviders;
 import com.kingsrook.qqq.backend.core.actions.values.QPossibleValueTranslator;
 import com.kingsrook.qqq.backend.core.actions.values.QValueFormatter;
 import com.kingsrook.qqq.backend.core.actions.values.ValueBehaviorApplier;
@@ -100,6 +101,8 @@ public class QueryAction
    private QueryInterface           queryInterface;
    private QPossibleValueTranslator qPossibleValueTranslator;
    private boolean preservePrimaryKeys;
+   private final Set<String> providerIdentitiesToOmit = new HashSet<>();
+   private boolean enforceProviderFieldAccess;
    private boolean enforcingPermissions = false;
    private final Set<Object> nativePrimaryKeys = new HashSet<>();
 
@@ -155,13 +158,29 @@ public class QueryAction
 
       try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope())
       {
-         QueryOutput output = executeInAuthorizedScope(queryInput, preservePrimaryKeys, enforce);
+         QueryOutput output = executeInAuthorizedScope(queryInput, preservePrimaryKeys, enforce, enforce);
          if(exactMatch != null)
          {
             exactMatch.complete(fieldAccessRecordCount, fieldAccessActionName);
          }
          return (output);
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** The owning GET already authorized the table and filters. Preserve its provider
+    ** policy without repeating the final masking performed by that GET.
+    *******************************************************************************/
+   QueryOutput executeForGet(QueryInput input, boolean enforceProviders) throws QException
+   {
+      if(QContext.getAuthorizedActionScopeDepth() == 0)
+      {
+         throw new QException("A nested GET query requires an authorized action scope");
+      }
+      fieldAccessActionName = "get";
+      return (executeInAuthorizedScope(input, false, false, enforceProviders));
    }
 
 
@@ -199,9 +218,11 @@ public class QueryAction
    /*******************************************************************************
     ** The query itself - after any permission enforcement owed to the caller.
     *******************************************************************************/
-   private QueryOutput executeInAuthorizedScope(QueryInput queryInput, boolean preservePrimaryKeys, boolean enforce) throws QException
+   private QueryOutput executeInAuthorizedScope(QueryInput queryInput, boolean preservePrimaryKeys, boolean enforce, boolean enforceProviders) throws QException
    {
       this.preservePrimaryKeys = preservePrimaryKeys;
+      this.providerIdentitiesToOmit.clear();
+      this.enforceProviderFieldAccess = enforceProviders;
       this.enforcingPermissions = enforce;
       this.fieldAccessRecordCount = 0;
       nativePrimaryKeys.clear();
@@ -231,20 +252,6 @@ public class QueryAction
       postQueryRecordCustomizer = QCodeLoader.getTableCustomizer(table, TableCustomizers.POST_QUERY_RECORD.getRole());
       this.queryInput = queryInput;
 
-      if(queryInput.getRecordPipe() != null)
-      {
-         queryInput.getRecordPipe().setPostRecordActions(this::postRecordActions);
-
-         if(queryInput.getIncludeAssociations())
-         {
-            //////////////////////////////////////////////////////////////////////////////////////////
-            // if the user requested to include associations, it's important that that is buffered, //
-            // (for performance reasons), so, wrap the user's pipe with a buffer                    //
-            //////////////////////////////////////////////////////////////////////////////////////////
-            queryInput.setRecordPipe(new RecordPipeBufferedWrapper(queryInput.getRecordPipe()));
-         }
-      }
-
       ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
       // apply any available field behaviors to the filter (noting that, if anything changes, a new filter is returned) //
       ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -258,11 +265,32 @@ public class QueryAction
 
       queryInterface = qModule.getQueryInterface();
       queryInterface.setQueryStat(queryStat);
-      QueryOutput queryOutput = preservePrimaryKeys ? executeDmlQuery(queryInput) : queryInterface.execute(queryInput);
+      QueryInput backendInput = prepareProviderProjection(queryInput);
+      if(queryInput.getRecordPipe() != null)
+      {
+         queryInput.getRecordPipe().setPostRecordActions(this::postRecordActions);
+         if(!(queryInput.getRecordPipe() instanceof BufferedRecordPipe)
+            && (queryInput.getIncludeAssociations() || !VirtualFieldValueProviders.selected(queryInput, enforceProviderFieldAccess).isEmpty()))
+         {
+            try
+            {
+               if(backendInput == queryInput)
+               {
+                  backendInput = queryInput.clone();
+               }
+               backendInput.setRecordPipe(new RecordPipeBufferedWrapper(queryInput.getRecordPipe()));
+            }
+            catch(CloneNotSupportedException e)
+            {
+               throw new QException("Unable to prepare buffered query input", e);
+            }
+         }
+      }
+      QueryOutput queryOutput = preservePrimaryKeys ? executeDmlQuery(backendInput) : queryInterface.execute(backendInput);
 
       if(queryStat != null)
       {
-         setRecordCountInQueryStat(queryInput, queryOutput, queryStat);
+         setRecordCountInQueryStat(backendInput, queryOutput, queryStat);
          QueryStatManager.getInstance().add(queryStat);
       }
 
@@ -274,7 +302,7 @@ public class QueryAction
          new QueryActionCacheHelper().handleCaching(queryInput, queryOutput);
       }
 
-      if(queryInput.getRecordPipe() instanceof BufferedRecordPipe bufferedRecordPipe)
+      if(backendInput.getRecordPipe() instanceof BufferedRecordPipe bufferedRecordPipe)
       {
          bufferedRecordPipe.finalFlush();
       }
@@ -285,6 +313,71 @@ public class QueryAction
       }
 
       return queryOutput;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fetch provider identity on a private input, leaving the caller's projection intact.
+    ** DISTINCT cannot be evaluated correctly before a post-query value is available.
+    *******************************************************************************/
+   private QueryInput prepareProviderProjection(QueryInput input) throws QException
+   {
+      var providers = VirtualFieldValueProviders.selected(input, enforceProviderFieldAccess);
+      if(providers.isEmpty())
+      {
+         return (input);
+      }
+      if(input.getSelectDistinct())
+      {
+         throw new QException("DISTINCT is not supported for post-query virtual-field values");
+      }
+      Set<String> selection = input.getFieldNamesToInclude() == null ? null : new HashSet<>(input.getFieldNamesToInclude());
+      boolean fetchHeavyBaseKey = false;
+      for(var provider : providers)
+      {
+         String primaryKey = provider.table().getPrimaryKeyField();
+         if(primaryKey == null || provider.table().getField(primaryKey) == null)
+         {
+            throw new QException("Virtual-field value providers require a primary key");
+         }
+         String outputKey = provider.prefix() + primaryKey;
+         boolean omitted = selection != null && !input.getFieldNamesToInclude().contains(outputKey);
+         boolean heavy = provider.table().getField(primaryKey).getIsHeavy() && !input.getShouldFetchHeavyFields();
+         if(heavy && !provider.prefix().isEmpty())
+         {
+            throw new QException("Joined virtual-field providers require fetching their heavy primary key");
+         }
+         if(omitted || heavy)
+         {
+            providerIdentitiesToOmit.add(outputKey);
+            if(selection != null)
+            {
+               selection.add(outputKey);
+            }
+            fetchHeavyBaseKey |= heavy;
+         }
+      }
+      if(providerIdentitiesToOmit.isEmpty())
+      {
+         return (input);
+      }
+      try
+      {
+         QueryInput backendInput = input.clone();
+         backendInput.setFieldNamesToInclude(selection);
+         if(fetchHeavyBaseKey)
+         {
+            QTableMetaData backendTable = input.getTable().clone();
+            backendTable.getField(input.getTable().getPrimaryKeyField()).setIsHeavy(false);
+            backendInput.setTableMetaData(backendTable);
+         }
+         return (backendInput);
+      }
+      catch(CloneNotSupportedException e)
+      {
+         throw new QException("Unable to prepare virtual-field projection", e);
+      }
    }
 
 
@@ -572,6 +665,8 @@ public class QueryAction
          }
       }
 
+      VirtualFieldValueProviders.fill(queryInput, records, enforceProviderFieldAccess);
+
       ValueBehaviorApplier.applyFieldBehaviors(ValueBehaviorApplier.Action.READ, QContext.getQInstance(), queryInput.getTable(), records, null);
 
       if(queryInput.getShouldTranslatePossibleValues())
@@ -701,6 +796,22 @@ public class QueryAction
                record.setRecordLabel(null);
                record.setRecordLabel(QValueFormatter.formatRecordLabel(queryInput.getTable(), record));
             }
+         }
+      }
+      if(!providerIdentitiesToOmit.isEmpty())
+      {
+         for(QRecord record : records)
+         {
+            for(String identity : providerIdentitiesToOmit)
+            {
+               record.removeValue(identity);
+               if(record.getBackendDetails() != null
+                  && record.getBackendDetails().get(QRecord.BACKEND_DETAILS_TYPE_HEAVY_FIELD_LENGTHS) instanceof Map<?, ?> lengths)
+               {
+                  lengths.remove(identity);
+               }
+            }
+            record.setRecordLabel(null);
          }
       }
       if(preservePrimaryKeys)

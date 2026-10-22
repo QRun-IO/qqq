@@ -59,6 +59,12 @@
       </dependency>
 
       <!-- 3rd party deps specifically for this module -->
+      <!-- Explicit Unix path/glob semantics for remote S3 and SFTP namespaces. -->
+      <dependency>
+         <groupId>com.google.jimfs</groupId>
+         <artifactId>jimfs</artifactId>
+         <version>1.3.2</version>
+      </dependency>
       <!-- AWS SDK for Java v2 (v1 reached end of support 2025-12-31). Version from the awssdk bom below. -->
       <dependency>
          <groupId>software.amazon.awssdk</groupId>

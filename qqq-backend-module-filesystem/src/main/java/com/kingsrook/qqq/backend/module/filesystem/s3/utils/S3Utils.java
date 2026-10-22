@@ -22,11 +22,6 @@ package com.kingsrook.qqq.backend.module.filesystem.s3.utils;
 
 
 import java.io.InputStream;
-import java.net.URI;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.FileSystems;
-import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.util.ArrayList;
 import java.util.List;
@@ -34,6 +29,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.module.filesystem.base.model.metadata.AbstractFilesystemTableBackendDetails;
+import com.kingsrook.qqq.backend.module.filesystem.base.utils.RemotePathUtils;
 import com.kingsrook.qqq.backend.module.filesystem.exceptions.FilesystemException;
 import com.kingsrook.qqq.backend.module.filesystem.local.actions.AbstractFilesystemAction;
 import com.kingsrook.qqq.backend.module.filesystem.s3.model.S3ObjectSummary;
@@ -145,7 +141,7 @@ public class S3Utils
       }
 
       String      pathMatcherArg = AbstractFilesystemAction.stripDuplicatedSlashes("glob:/" + path + "/" + glob);
-      PathMatcher pathMatcher    = FileSystems.getDefault().getPathMatcher(pathMatcherArg);
+      PathMatcher pathMatcher    = RemotePathUtils.getPathMatcher(pathMatcherArg);
 
       ListObjectsV2Response listObjectsV2Response = null;
       List<S3ObjectSummary> rs                    = new ArrayList<>();
@@ -189,7 +185,7 @@ public class S3Utils
             ///////////////////////////////////////////
             // skip files that do not match the glob //
             ///////////////////////////////////////////
-            if(!pathMatcher.matches(Path.of(URI.create("file:///" + URLEncoder.encode(key, StandardCharsets.UTF_8)))))
+            if(!pathMatcher.matches(RemotePathUtils.getPath("/" + key)))
             {
                // LOG.debug("Skipping file [{}] that does not match glob [{}]", key, glob);
                continue;

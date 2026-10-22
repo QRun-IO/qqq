@@ -28,6 +28,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import com.kingsrook.qqq.backend.core.actions.interfaces.QStorageInterface;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
@@ -96,20 +97,27 @@ public class FilesystemStorageAction extends AbstractFilesystemAction implements
    @NotNull
    private String getFullPath(StorageInput storageInput) throws IOException, QBadRequestException
    {
-      QTableMetaData table = storageInput.getTable();
-      QBackendMetaData backend = storageInput.getBackend();
-      File base = new File(getFullBasePath(table, backend)).getCanonicalFile();
-      String reference = storageInput.getReference();
-      if(reference == null || reference.isBlank() || new File(reference).isAbsolute())
+      try
       {
-         throw new QBadRequestException("Storage reference must be a relative file path");
+         QTableMetaData table = storageInput.getTable();
+         QBackendMetaData backend = storageInput.getBackend();
+         Path base = resolveLocalPath(Path.of(getFullBasePath(table, backend)));
+         String reference = storageInput.getReference();
+         if(reference == null || reference.isBlank() || new File(reference).isAbsolute())
+         {
+            throw new QBadRequestException("Storage reference must be a relative file path");
+         }
+         Path file = resolveLocalPath(base.resolve(reference));
+         if(file.equals(base) || !file.startsWith(base))
+         {
+            throw new QBadRequestException("Storage reference must remain inside its table directory");
+         }
+         return (file.toString());
       }
-      File file = new File(base, reference).getCanonicalFile();
-      if(file.equals(base) || !file.toPath().startsWith(base.toPath()))
+      catch(InvalidPathException e)
       {
-         throw new QBadRequestException("Storage reference must remain inside its table directory");
+         throw new QBadRequestException("Storage reference contains an invalid file path");
       }
-      return file.getPath();
    }
 
 

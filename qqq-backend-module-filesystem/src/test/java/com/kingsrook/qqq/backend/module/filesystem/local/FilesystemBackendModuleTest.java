@@ -221,7 +221,7 @@ public class FilesystemBackendModuleTest
 
       FilesystemBackendModule filesystemBackendModule = new FilesystemBackendModule();
       String                  originalFilePath        = filesBeforeMove.get(0).getAbsolutePath();
-      String                  movedFilePath           = originalFilePath.replace(basePath, subPath);
+      String                  movedFilePath           = originalFilePath.replace(new File(basePath).getPath(), new File(subPath).getPath());
 
       filesystemBackendModule.getActionBase().moveFile(qInstance, table, originalFilePath, movedFilePath);
 
@@ -251,7 +251,7 @@ public class FilesystemBackendModuleTest
       String         subPath          = basePath + File.separator + "subdir";
       List<File>     filesBeforeMove  = new AbstractFilesystemAction().listFiles(table, qInstance.getBackendForTable(table.getName()));
       String         originalFilePath = filesBeforeMove.get(0).getAbsolutePath();
-      String         movedFilePath    = originalFilePath.replace(basePath, subPath);
+      String         movedFilePath    = originalFilePath.replace(new File(basePath).getPath(), new File(subPath).getPath());
 
       Assertions.assertThrows(FilesystemException.class, () ->
       {

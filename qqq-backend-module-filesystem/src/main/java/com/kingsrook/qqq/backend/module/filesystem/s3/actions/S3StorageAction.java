@@ -21,7 +21,6 @@
 package com.kingsrook.qqq.backend.module.filesystem.s3.actions;
 
 
-import java.io.File;
 import java.io.InputStream;
 import java.io.OutputStream;
 import com.kingsrook.qqq.backend.core.actions.interfaces.QStorageInterface;
@@ -96,7 +95,7 @@ public class S3StorageAction extends AbstractS3Action implements QStorageInterfa
    {
       QTableMetaData   table    = storageInput.getTable();
       QBackendMetaData backend  = storageInput.getBackend();
-      String           fullPath = stripDuplicatedSlashes(getFullBasePath(table, backend) + File.separator + storageInput.getReference());
+      String           fullPath = stripDuplicatedSlashes(getFullBasePath(table, backend) + getPathSeparator() + storageInput.getReference());
 
       /////////////////////////////////////////////////////////////
       // s3 seems to do better w/o leading slashes, so, strip... //

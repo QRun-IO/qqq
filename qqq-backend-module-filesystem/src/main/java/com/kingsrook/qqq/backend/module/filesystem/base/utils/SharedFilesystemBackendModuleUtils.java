@@ -55,7 +55,7 @@ public class SharedFilesystemBackendModuleUtils
          throw (new QException("Filters with sub-filters are not supported for querying filesystems at this time."));
       }
 
-      Path path = Path.of("/", filePath);
+      Path path = Path.of("/").resolve(filePath);
 
       ////////////////////////////////////////////////////////////////////////////////////////////////////
       // foreach criteria, build a pathmatcher (or many, for an in-list), and check if the file matches //

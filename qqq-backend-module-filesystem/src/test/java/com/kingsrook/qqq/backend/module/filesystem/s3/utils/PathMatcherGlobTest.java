@@ -21,10 +21,8 @@
 package com.kingsrook.qqq.backend.module.filesystem.s3.utils;
 
 
-import java.net.URI;
-import java.nio.file.FileSystems;
-import java.nio.file.Path;
 import java.nio.file.PathMatcher;
+import com.kingsrook.qqq.backend.module.filesystem.base.utils.RemotePathUtils;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -45,31 +43,31 @@ public class PathMatcherGlobTest
       /////////////////////////////////////////////////////////////
       // note:  must start with for both the pattern and the uri //
       /////////////////////////////////////////////////////////////
-      PathMatcher pathMatcher = FileSystems.getDefault().getPathMatcher("glob:/root/*/acme/*/*.csv");
+      PathMatcher pathMatcher = RemotePathUtils.getPathMatcher("glob:/root/*/acme/*/*.csv");
 
-      Assertions.assertTrue(pathMatcher.matches(Path.of(URI.create("file:///root/stl/acme/20220627/1234.csv"))), "Glob should match");
-      Assertions.assertTrue(pathMatcher.matches(Path.of(URI.create("file:///root/nj/acme/20220627/1234.csv"))), "Glob should match");
-      Assertions.assertTrue(pathMatcher.matches(Path.of(URI.create("file:///root/stl/acme/20220628/1234.csv"))), "Glob should match");
-      Assertions.assertTrue(pathMatcher.matches(Path.of(URI.create("file:///root/stl/acme/20220627/12345.csv"))), "Glob should match");
+      Assertions.assertTrue(pathMatcher.matches(RemotePathUtils.getPath("/root/stl/acme/20220627/1234.csv")), "Glob should match");
+      Assertions.assertTrue(pathMatcher.matches(RemotePathUtils.getPath("/root/nj/acme/20220627/1234.csv")), "Glob should match");
+      Assertions.assertTrue(pathMatcher.matches(RemotePathUtils.getPath("/root/stl/acme/20220628/1234.csv")), "Glob should match");
+      Assertions.assertTrue(pathMatcher.matches(RemotePathUtils.getPath("/root/stl/acme/20220627/12345.csv")), "Glob should match");
 
-      Assertions.assertFalse(pathMatcher.matches(Path.of(URI.create("file:///root/stl/beta/20220627/1234.csv"))), "Glob should not match (beta vs acme)");
-      Assertions.assertFalse(pathMatcher.matches(Path.of(URI.create("file:///something/stl/acme/20220627/1234.csv"))), "Glob should not match (wrong start path)");
-      Assertions.assertFalse(pathMatcher.matches(Path.of(URI.create("file:///root/stl/acme/20220627/csv"))), "Glob should not match (no file basename)");
-      Assertions.assertFalse(pathMatcher.matches(Path.of(URI.create("file:///root/stl/acme/20220627/1234.CSV"))), "Glob should not match (wrong case extension)");
-      Assertions.assertFalse(pathMatcher.matches(Path.of(URI.create("file:///root/stl/acme/20220627/extra/1234.csv"))), "Glob should not match (extra dir)");
-      Assertions.assertFalse(pathMatcher.matches(Path.of(URI.create("file:///root/stl/extra/acme/20220627/1234.csv"))), "Glob should not match (extra dir)");
-      Assertions.assertFalse(pathMatcher.matches(Path.of(URI.create("file:///root/extra/stl/acme/20220627/1234.csv"))), "Glob should not match (extra dir)");
+      Assertions.assertFalse(pathMatcher.matches(RemotePathUtils.getPath("/root/stl/beta/20220627/1234.csv")), "Glob should not match (beta vs acme)");
+      Assertions.assertFalse(pathMatcher.matches(RemotePathUtils.getPath("/something/stl/acme/20220627/1234.csv")), "Glob should not match (wrong start path)");
+      Assertions.assertFalse(pathMatcher.matches(RemotePathUtils.getPath("/root/stl/acme/20220627/csv")), "Glob should not match (no file basename)");
+      Assertions.assertFalse(pathMatcher.matches(RemotePathUtils.getPath("/root/stl/acme/20220627/1234.CSV")), "Glob should not match (wrong case extension)");
+      Assertions.assertFalse(pathMatcher.matches(RemotePathUtils.getPath("/root/stl/acme/20220627/extra/1234.csv")), "Glob should not match (extra dir)");
+      Assertions.assertFalse(pathMatcher.matches(RemotePathUtils.getPath("/root/stl/extra/acme/20220627/1234.csv")), "Glob should not match (extra dir)");
+      Assertions.assertFalse(pathMatcher.matches(RemotePathUtils.getPath("/root/extra/stl/acme/20220627/1234.csv")), "Glob should not match (extra dir)");
 
-      pathMatcher = FileSystems.getDefault().getPathMatcher("glob:/root/**/acme/*/*.csv");
-      Assertions.assertTrue(pathMatcher.matches(Path.of(URI.create("file:///root/extra/stl/acme/20220627/1234.csv"))), "Glob should match with extra dir");
-      Assertions.assertTrue(pathMatcher.matches(Path.of(URI.create("file:///root/extra/extra2/stl/acme/20220627/1234.csv"))), "Glob should match with 2 extra dirs");
-      Assertions.assertFalse(pathMatcher.matches(Path.of(URI.create("file:///root/acme/20220627/1234.csv"))), "Glob does not match with no dir for **");
+      pathMatcher = RemotePathUtils.getPathMatcher("glob:/root/**/acme/*/*.csv");
+      Assertions.assertTrue(pathMatcher.matches(RemotePathUtils.getPath("/root/extra/stl/acme/20220627/1234.csv")), "Glob should match with extra dir");
+      Assertions.assertTrue(pathMatcher.matches(RemotePathUtils.getPath("/root/extra/extra2/stl/acme/20220627/1234.csv")), "Glob should match with 2 extra dirs");
+      Assertions.assertFalse(pathMatcher.matches(RemotePathUtils.getPath("/root/acme/20220627/1234.csv")), "Glob does not match with no dir for **");
 
-      pathMatcher = FileSystems.getDefault().getPathMatcher("glob:/root/**");
-      Assertions.assertTrue(pathMatcher.matches(Path.of(URI.create("file:///root/1234.csv"))), "Glob should match with extra dir");
+      pathMatcher = RemotePathUtils.getPathMatcher("glob:/root/**");
+      Assertions.assertTrue(pathMatcher.matches(RemotePathUtils.getPath("/root/1234.csv")), "Glob should match with extra dir");
 
-      pathMatcher = FileSystems.getDefault().getPathMatcher("glob:/*");
-      Assertions.assertTrue(pathMatcher.matches(Path.of(URI.create("file:///1234.csv"))), "Glob should match");
+      pathMatcher = RemotePathUtils.getPathMatcher("glob:/*");
+      Assertions.assertTrue(pathMatcher.matches(RemotePathUtils.getPath("/1234.csv")), "Glob should match");
    }
 
 }

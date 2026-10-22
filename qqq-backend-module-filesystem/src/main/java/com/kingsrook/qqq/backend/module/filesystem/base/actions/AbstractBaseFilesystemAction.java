@@ -175,6 +175,16 @@ public abstract class AbstractBaseFilesystemAction<FILE>
 
 
    /*******************************************************************************
+    ** Local files use the host separator; remote backends override their syntax.
+    *******************************************************************************/
+   protected char getPathSeparator()
+   {
+      return (File.separatorChar);
+   }
+
+
+
+   /*******************************************************************************
     ** Append together the backend's base path (if present), with a table's base
     ** path (again, if present).
     *******************************************************************************/
@@ -196,10 +206,10 @@ public abstract class AbstractBaseFilesystemAction<FILE>
       AbstractFilesystemTableBackendDetails tableDetails = getTableBackendDetails(AbstractFilesystemTableBackendDetails.class, table);
       if(StringUtils.hasContent(tableDetails.getBasePath()))
       {
-         fullPath += File.separatorChar + tableDetails.getBasePath();
+         fullPath += getPathSeparator() + tableDetails.getBasePath();
       }
 
-      fullPath += File.separatorChar;
+      fullPath += getPathSeparator();
       fullPath = stripDuplicatedSlashes(fullPath);
 
       return fullPath;
@@ -776,7 +786,7 @@ public abstract class AbstractBaseFilesystemAction<FILE>
             {
                try
                {
-                  String fullPath = stripDuplicatedSlashes(getFullBasePath(table, backend) + File.separator + record.getValueString(tableDetails.getFileNameFieldName()));
+                  String fullPath = stripDuplicatedSlashes(getFullBasePath(table, backend) + getPathSeparator() + record.getValueString(tableDetails.getFileNameFieldName()));
                   writeFile(backend, table, record, fullPath, record.getValueByteArray(tableDetails.getContentsFieldName()));
                   record.addBackendDetail(FilesystemRecordBackendDetailFields.FULL_PATH, fullPath);
                   output.addRecord(record);

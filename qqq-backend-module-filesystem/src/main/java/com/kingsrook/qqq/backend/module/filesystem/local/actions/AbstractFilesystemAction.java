@@ -30,6 +30,8 @@ import java.nio.file.FileSystems;
 import java.nio.file.FileVisitResult;
 import java.nio.file.FileVisitor;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.nio.file.SimpleFileVisitor;
@@ -220,11 +222,44 @@ public class AbstractFilesystemAction extends AbstractBaseFilesystemAction<File>
     *******************************************************************************/
    private void validateTableFilePath(QBackendMetaData backend, QTableMetaData table, String filePath) throws IOException
    {
-      Path base = new File(getFullBasePath(table, backend)).getCanonicalFile().toPath();
-      Path file = new File(filePath).getCanonicalFile().toPath();
+      Path base = resolveLocalPath(Path.of(getFullBasePath(table, backend)));
+      Path file = resolveLocalPath(Path.of(filePath));
       if(file.equals(base) || !file.startsWith(base))
       {
          throw new IOException("File path must remain inside its table directory");
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Resolve native path semantics, including links and dot components. For new
+    ** output paths, resolve their existing ancestor before retaining the suffix.
+    ** An existing but dangling link must fail closed instead of becoming output.
+    *******************************************************************************/
+   protected Path resolveLocalPath(Path path) throws IOException
+   {
+      Path absolute = path.toAbsolutePath();
+      try
+      {
+         return (absolute.toRealPath());
+      }
+      catch(NoSuchFileException missing)
+      {
+         try
+         {
+            Files.readAttributes(absolute, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+         }
+         catch(NoSuchFileException absent)
+         {
+            Path parent = absolute.getParent();
+            if(parent == null)
+            {
+               throw missing;
+            }
+            return (resolveLocalPath(parent).resolve(absolute.getFileName()).normalize());
+         }
+         throw missing;
       }
    }
 
@@ -326,9 +361,9 @@ public class AbstractFilesystemAction extends AbstractBaseFilesystemAction<File>
    @Override
    public String stripBackendAndTableBasePathsFromFileName(String filePath, QBackendMetaData backend, QTableMetaData table)
    {
-      String tablePath    = getFullBasePath(table, backend);
-      String strippedPath = filePath.replaceFirst(".*" + tablePath, "");
-      return (strippedPath);
+      Path tablePath = Path.of(getFullBasePath(table, backend)).toAbsolutePath().normalize();
+      Path file = Path.of(filePath).toAbsolutePath().normalize();
+      return (tablePath.relativize(file).toString());
    }
 
 }

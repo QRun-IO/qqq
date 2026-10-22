@@ -143,6 +143,24 @@ class HelpBundlesTest extends BaseTest
 
 
    /*******************************************************************************
+    ** Filtered snapshot versions report the actual limit instead of missing fields.
+    *******************************************************************************/
+   @Test
+   void versionLengthBoundaryHasActionableError()
+   {
+      String template = "bundle: example\nversion: %s\nlayer: QBIT\nentries: []\n";
+      String maximum = "v".repeat(50);
+      assertEquals(maximum, HelpBundles.load("boundary.yaml", loader(template.formatted(maximum))).getVersion());
+      var failure = assertThrows(IllegalArgumentException.class,
+         () -> HelpBundles.load("oversized.yaml", loader(template.formatted("v".repeat(51)))));
+      assertThat(failure).hasMessageContaining("oversized.yaml").hasMessageContaining("51 characters")
+         .hasMessageContaining("maximum supported length is 50");
+      assertFalse(failure.getMessage().contains("are required"));
+   }
+
+
+
+   /*******************************************************************************
     ** Highest layer wins, with later registration breaking ties independently by role.
     *******************************************************************************/
    @Test

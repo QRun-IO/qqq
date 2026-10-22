@@ -131,9 +131,13 @@ public class HelpBundles implements QSupplementalInstanceMetaData
          yaml.put("id", id);
          HelpBundle bundle = new ObjectMapper().convertValue(yaml, HelpBundle.class);
          if(bundle.getId() == null || bundle.getId().isBlank() || bundle.getId().length() > 100
-            || bundle.getVersion() == null || bundle.getVersion().isBlank() || bundle.getVersion().length() > 50 || bundle.getLayer() == null || bundle.getEntries() == null)
+            || bundle.getVersion() == null || bundle.getVersion().isBlank() || bundle.getLayer() == null || bundle.getEntries() == null)
          {
             throw new IllegalArgumentException("bundle, version, layer and entries are required");
+         }
+         if(bundle.getVersion().length() > 50)
+         {
+            throw new IllegalArgumentException("Bundle version is " + bundle.getVersion().length() + " characters; maximum supported length is 50");
          }
          for(HelpBundleEntry entry : bundle.getEntries())
          {

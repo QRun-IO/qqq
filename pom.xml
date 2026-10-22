@@ -546,55 +546,6 @@
         <artifactId>exec-maven-plugin</artifactId>
         <groupId>org.codehaus.mojo</groupId>
         <version>3.6.3</version>
-        <executions>
-          <execution>
-            <id>test-coverage-summary</id>
-            <phase>verify</phase>
-            <goals>
-              <goal>exec</goal>
-            </goals>
-            <configuration>
-              <executable>sh</executable>
-              <arguments>
-                <argument>-c</argument>
-                <argument>
-                           <![CDATA[
-if [ ! -e target/site/jacoco/index.html ]; then
-   echo "No jacoco coverage report here.";
-   exit;
-fi
-
-echo
-echo "Jacoco coverage summary report for module: ${project.artifactId}"
-echo "   See also target/site/jacoco/index.html"
-echo "   and https://www.jacoco.org/jacoco/trunk/doc/counters.html"
-echo "------------------------------------------------------------"
-
-# Parse Jacoco HTML coverage summary
-if [ -f target/site/jacoco/index.html ]; then
-   echo -e "Instructions Missed\nInstruction Coverage\nBranches Missed\nBranch Coverage\nComplexity Missed\nComplexity Hit\nLines Missed\nLines Hit\nMethods Missed\nMethods Hit\nClasses Missed\nClasses Hit\n" > /tmp/$$.headers
-   sed 's/<\/\w\+>/&\n/g' target/site/jacoco/index.html | grep -A 12 '<tfoot>' | grep '<td' | sed 's/<td class="\w\+\d*">\([^<]*\)<\/td>/\1/' | grep -v Total > /tmp/$$.values
-   paste /tmp/$$.headers /tmp/$$.values | tail +2 | awk -v FS='\t' '{printf("%-20s %s\n",$1,$2)}'
-   rm /tmp/$$.headers /tmp/$$.values
-else
-   echo "Jacoco coverage summary was not found.";
-fi
-echo "-----------------------------"
-echo
-
-echo "Untested classes, per Jacoco for module: ${project.artifactId}"
-echo "-----------------------------"
-# Parse Jacoco XML reports directly to find classes with 0% coverage
-sed 's/<classs .*\?>/&\n/g;s/<\/class>/&\n/g' target/site/jacoco/jacoco.xml | grep -v 'counter type="CLASS" missed="0"' | sed 's/>.*//;s/.*\///;s/".*//'
-echo "-----------------------------"
-echo
-
-                           ]]>
-                        </argument>
-              </arguments>
-            </configuration>
-          </execution>
-        </executions>
       </plugin>
       <plugin>
         <groupId>org.jacoco</groupId>

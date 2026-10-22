@@ -36,6 +36,30 @@ public class RealtimeMetaData implements QSupplementalInstanceMetaData
    public static final String NAME = "realtime";
    @JsonIgnore
    private QCodeReference bus;
+   @JsonIgnore
+   private java.util.Map<String, QCodeReference> audienceProviders = new java.util.LinkedHashMap<>();
+
+   /***************************************************************************
+    ** Event-specific audience checks supplement normal channel permissions.
+    ***************************************************************************/
+   public java.util.Map<String, QCodeReference> getAudienceProviders()
+   {
+      return (java.util.Collections.unmodifiableMap(audienceProviders));
+   }
+
+   /***************************************************************************
+    ** Register an audience authorizer without replacing another component's policy.
+    ***************************************************************************/
+   public RealtimeMetaData withAudienceProvider(String event, QCodeReference provider)
+   {
+      if(event == null || event.isBlank() || provider == null || audienceProviders.containsKey(event))
+      {
+         throw (new IllegalArgumentException("A unique event and audience provider are required"));
+      }
+      audienceProviders.put(event, provider);
+      return (this);
+   }
+
    private int replaySeconds = 120;
    private int heartbeatSeconds = 25;
    private int maxChannelsPerConnection = 200;

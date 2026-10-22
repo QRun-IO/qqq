@@ -55,6 +55,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
+import com.kingsrook.qqq.backend.core.realtime.PresenceFieldVisibility;
 import com.kingsrook.qqq.backend.core.realtime.RealtimeBus;
 import com.kingsrook.qqq.backend.core.realtime.RealtimeMessage;
 import com.kingsrook.qqq.backend.core.realtime.RealtimeMetaData;
@@ -174,9 +175,9 @@ public class RealtimeHub implements AutoCloseable
       for(Frame frame : replay)
       {
          Map<String, Serializable> data = filtered(target, frame.channel(), frame.event(), frame.data());
-         if(data != null && (frame.channel() == null || (target.channels.contains(frame.channel()))))
+         if(data != null && audienceAllowed(target, frame.event(), frame.audience()) && (frame.channel() == null || (target.channels.contains(frame.channel()))))
          {
-            attachment.offer(new Frame(frame.sequence(), frame.id(), frame.channel(), frame.event(), data, frame.at()));
+            attachment.offer(new Frame(frame.sequence(), frame.id(), frame.channel(), frame.event(), data, frame.at(), frame.audience()));
          }
       }
       revoked.forEach(channel -> emit(target, null, "channel-revoked", Map.of("channel", channel)));
@@ -291,6 +292,43 @@ public class RealtimeHub implements AutoCloseable
    private Map<String, Serializable> filtered(Connection connection, String channel, String event, Map<String, Serializable> data)
    {
       Map<String, Serializable> result = new LinkedHashMap<>(data);
+      if("presence.changed".equals(event))
+      {
+         try
+         {
+            QContext.withTemporaryContext(new CapturedContext(instance, connection.session), () ->
+            {
+               var visible = PresenceFieldVisibility.visibleFieldNames(String.valueOf(data.get("table")));
+               var viewers = new ArrayList<Serializable>();
+               if(data.get("viewers") instanceof List<?> source)
+               {
+                  for(Object item : source)
+                  {
+                     if(item instanceof Map<?, ?> viewer)
+                     {
+                        var copy = new LinkedHashMap<String, Serializable>();
+                        for(String key : List.of("userId", "displayName", "mode"))
+                        {
+                           if(viewer.get(key) instanceof String value)
+                           {
+                              copy.put(key, value);
+                           }
+                        }
+                        Object field = viewer.get("fieldName");
+                        copy.put("fieldName", field instanceof String name && data.get("pk") != null && visible.contains(name) ? name : null);
+                        viewers.add(copy);
+                     }
+                  }
+               }
+               result.put("viewers", viewers);
+            });
+         }
+         catch(Exception e)
+         {
+            LOG.debug("Realtime presence hint could not be filtered", e);
+            return (null);
+         }
+      }
       if(event.startsWith("record."))
       {
          try
@@ -326,7 +364,16 @@ public class RealtimeHub implements AutoCloseable
     *******************************************************************************/
    private synchronized void receive(RealtimeMessage message)
    {
-      if("session-ended".equals(message.getEvent()) && message.getChannel().startsWith("session:"))
+      if(message.getAudience() == null && "resync".equals(message.getEvent()) && "instance".equals(message.getChannel()))
+      {
+         // Transport gaps affect every local stream, including those without an instance subscription.
+         for(Connection connection : List.copyOf(connections.values()))
+         {
+            emit(connection, null, "resync", Map.of());
+         }
+         return;
+      }
+      if(message.getAudience() == null && "session-ended".equals(message.getEvent()) && message.getChannel().startsWith("session:"))
       {
          endSession(message.getChannel().substring("session:".length()));
          return;
@@ -335,7 +382,7 @@ public class RealtimeHub implements AutoCloseable
       {
          if(connection.channels.contains(message.getChannel()))
          {
-            emit(connection, message.getChannel(), message.getEvent(), message.getData());
+            emit(connection, message.getChannel(), message.getEvent(), message.getData(), message.getAudience());
          }
       }
    }
@@ -347,13 +394,25 @@ public class RealtimeHub implements AutoCloseable
     *******************************************************************************/
    private void emit(Connection connection, String channel, String event, Map<String, Serializable> data)
    {
+      emit(connection, channel, event, data, null);
+   }
+
+   /***************************************************************************
+    ** Check recipient audience before retaining or delivering a scoped event.
+    ***************************************************************************/
+   private void emit(Connection connection, String channel, String event, Map<String, Serializable> data, String audience)
+   {
+      if(!audienceAllowed(connection, event, audience) || (audience != null && channel != null && !allowed(connection, channel)))
+      {
+         return;
+      }
       Map<String, Serializable> filtered = filtered(connection, channel, event, data);
       if(filtered == null)
       {
          return;
       }
       long sequence = ++connection.sequence;
-      Frame frame = new Frame(sequence, connection.id + ":" + sequence, channel, event, filtered, clock.instant());
+      Frame frame = new Frame(sequence, connection.id + ":" + sequence, channel, event, filtered, clock.instant(), audience);
       connection.replay.addLast(frame);
       trim(connection);
       if(connection.attachment != null && !connection.attachment.offer(frame))
@@ -362,6 +421,38 @@ public class RealtimeHub implements AutoCloseable
          connection.attachment = null;
          connection.detachedAt = clock.instant();
       }
+   }
+
+   /***************************************************************************
+    ** Audience metadata is server-only and revalidated with the recipient session.
+    ***************************************************************************/
+   private boolean audienceAllowed(Connection connection, String event, String audience)
+   {
+      var reference = metadata.getAudienceProviders().get(event);
+      if(reference == null)
+      {
+         return (audience == null);
+      }
+      if(audience == null || audience.isBlank())
+      {
+         return (false);
+      }
+      boolean[] result = {false};
+      try
+      {
+         QContext.withTemporaryContext(new CapturedContext(instance, connection.session), () ->
+         {
+            var provider = com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader.getAdHoc(
+               com.kingsrook.qqq.backend.core.realtime.RealtimeAudienceProvider.class, reference);
+            result[0] = provider.allows(audience);
+         });
+      }
+      catch(Exception failure)
+      {
+         // A failing host policy cannot disclose scoped activity or provider details.
+         return (false);
+      }
+      return (result[0]);
    }
 
 
@@ -500,8 +591,15 @@ public class RealtimeHub implements AutoCloseable
    /*******************************************************************************
     ** Wire frame, with a null event representing a comment ping.
     *******************************************************************************/
-   public record Frame(long sequence, String id, String channel, String event, Map<String, Serializable> data, Instant at)
+   public record Frame(long sequence, String id, String channel, String event, Map<String, Serializable> data, Instant at, String audience)
    {
+      /************************************************************************
+       ** Preserve the unscoped frame constructor for existing transports.
+       ************************************************************************/
+      public Frame(long sequence, String id, String channel, String event, Map<String, Serializable> data, Instant at)
+      {
+         this(sequence, id, channel, event, data, at, null);
+      }
    }
 
 

@@ -93,6 +93,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed the per-RC Next waiver owner-approval gate by owner decision on 2026-10-13; releases no longer require a comment on #798. The seven Next-owned successor features report missing/pending acceptance evidence without blocking releases. Failed tests and invalid supplied receipts still block strict coverage; non-Next requirements are unchanged.
 
 ### Fixed
+- **Record security on joined tables (#887):** a query that explicitly joins, or filters through, a table whose own record security lock walks a join chain the main table's lock also uses no longer writes that lock's criteria into an ON clause that references an alias defined later in the FROM clause. Scoped (non-all-access) sessions got `missing FROM-clause entry` on PostgreSQL (`Column ... not found` on H2). `JoinsContext` now re-uses a query join for that chain only when it hangs off the alias being walked, puts the criteria on the join that defines the alias, and gives a colliding security join a prefixed unique alias (`sj2_<alias>`). Also released as 4.0.1.
 - Application API requests now authenticate against their own instance when the legacy unversioned middleware API is disabled (#1268). Existing legacy session helper overloads retain their behavior.
 - **ESB listeners no longer publish from the JMS listener thread (qqq-esb)**: `EsbClusterBus`, `EsbRealtimeBus` and the ESB control channel now only parse a message on the JMS client thread and run subscribers on their own ordered worker (`EsbListenerDispatcher`), with the instance in `QContext`. Before, a cluster event handler that published (for example a realtime hint after another node changed the runtime metadata overlay) closed its JMS session on the listener thread, which Artemis refuses (AMQ139006): the message went out but each one leaked a broker session and logged a warning. Pausing or restarting an ESB trigger from a control message had the same problem. Cluster event handlers, `TableStateProvider`, the ESB outbox relay and `JobLogWriter` now build their system session with the instance, so it has its all-access keys on threads without a `QContext`. `SampleMultiNodeIT` checks that realtime hints cross nodes (directly, and from a cluster event handler on another node) with neither error logged; the sample's cluster mode now uses `EsbRealtimeBus`.
 - The cluster bus, the table state provider and the server's SIGTERM drain hook no longer hold a `QInstance` (or the server) strongly. Dropped instances were kept alive for the life of the JVM, which grew test suites that build many instances.
@@ -432,6 +433,11 @@ The seven affected Next contracts remain pending. Stable `4.0.0` remains availab
   explicitly; `withServeFrontendMaterialDashboard(true)` alone keeps Material (Next is then not served
   at the same root). Hosting both requires Material at another path. Deep links differ: Material uses
   `/<app>/<table>/<id>`, Next uses `/app/<table>/<id>`.
+
+## [4.0.1] - 2026-10-23
+
+### Fixed
+- **Record security on joined tables (#887):** a query that explicitly joins, or filters through, a table whose own record security lock walks a join chain the main table's lock also uses no longer writes that lock's criteria into an ON clause that references an alias defined later in the FROM clause. Scoped (non-all-access) sessions got `missing FROM-clause entry` on PostgreSQL (`Column ... not found` on H2). `JoinsContext` now re-uses a query join for that chain only when it hangs off the alias being walked, puts the criteria on the join that defines the alias, and gives a colliding security join a prefixed unique alias (`sj2_<alias>`).
 
 ## [4.0.0] - 2026-09-24
 

@@ -1232,4 +1232,82 @@ public class RDBMSQueryActionJoinsTest extends RDBMSActionTest
       assertEquals(0, emptySessionRecords.size(), "Empty session should see no lineItemExtrinsic rows");
    }
 
+
+   /*******************************************************************************
+    ** GH-887: lineItemExtrinsic's lock walks [orderJoinOrderLine,
+    ** orderLineJoinLineItemExtrinsic]; orderLine has its OWN lock on
+    ** [orderJoinOrderLine].  Selecting (or filtering through) an explicit join
+    ** to orderLine used to re-use the main table's implicit security join to
+    ** order, putting orderLine's security predicate in an ON clause that
+    ** referenced an alias joined later ("missing FROM-clause entry").
+    *******************************************************************************/
+   @Test
+   void testExplicitJoinToTableWhoseLockSharesTheMainTablesSecurityChain() throws QException
+   {
+      QContext.setQSession(new QSession().withSecurityKeyValue(TestUtils.SECURITY_KEY_STORE_ALL_ACCESS, true));
+      new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_LINE_ITEM_EXTRINSIC).withRecords(List.of(
+         new QRecord().withValue("orderLineId", 1).withValue("key", "color").withValue("value", "red"),
+         new QRecord().withValue("orderLineId", 1).withValue("key", "size").withValue("value", "large"),
+         new QRecord().withValue("orderLineId", 6).withValue("key", "color").withValue("value", "blue")
+      )));
+
+      for(QueryJoin.Type type : List.of(QueryJoin.Type.INNER, QueryJoin.Type.LEFT))
+      {
+         ///////////////////////////////////////////////////////////
+         // selected explicit join to the 1st hop of the chain    //
+         ///////////////////////////////////////////////////////////
+         assertExtrinsicOrderLineIds(Map.of(1, List.of(1, 1), 2, List.of(6), 5, List.of()), () -> List.of(
+            new QueryJoin(TestUtils.TABLE_NAME_ORDER_LINE).withType(type).withSelect(true)), null);
+
+         ///////////////////////////////////////////////////////////
+         // explicit joins along the whole chain (orderLine+order) //
+         ///////////////////////////////////////////////////////////
+         assertExtrinsicOrderLineIds(Map.of(1, List.of(1, 1), 2, List.of(6), 5, List.of()), () -> List.of(
+            new QueryJoin(TestUtils.TABLE_NAME_ORDER_LINE).withType(type).withSelect(true),
+            new QueryJoin(TestUtils.TABLE_NAME_ORDER_LINE, TestUtils.TABLE_NAME_ORDER).withType(type).withSelect(true)), null);
+      }
+
+      ///////////////////////////////////////////////////////////////////////////////
+      // filter through the join path, with no explicit join (implicitly joined) - //
+      // and a forged filter for another store's order returns nothing            //
+      ///////////////////////////////////////////////////////////////////////////////
+      assertExtrinsicOrderLineIds(Map.of(1, List.of(1, 1), 2, List.of(), 5, List.of()), List::of,
+         new QFilterCriteria(TestUtils.TABLE_NAME_ORDER_LINE + ".orderId", QCriteriaOperator.EQUALS, 1));
+      assertExtrinsicOrderLineIds(Map.of(1, List.of(), 2, List.of(6), 5, List.of()), List::of,
+         new QFilterCriteria(TestUtils.TABLE_NAME_ORDER_LINE + ".orderId", QCriteriaOperator.EQUALS, 4));
+
+      ///////////
+      // count //
+      ///////////
+      QContext.setQSession(new QSession().withSecurityKeyValue(TestUtils.TABLE_NAME_STORE, 1));
+      CountInput countInput = new CountInput(TestUtils.TABLE_NAME_LINE_ITEM_EXTRINSIC);
+      countInput.setFilter(new QQueryFilter(new QFilterCriteria(TestUtils.TABLE_NAME_ORDER_LINE + ".orderId", QCriteriaOperator.EQUALS, 1)));
+      countInput.setQueryJoins(List.of(new QueryJoin(TestUtils.TABLE_NAME_ORDER_LINE).withType(QueryJoin.Type.LEFT).withSelect(true)));
+      assertEquals(2, new CountAction().execute(countInput).getCount());
+   }
+
+
+
+   /*******************************************************************************
+    ** for each store key -> expected orderLineIds, query lineItemExtrinsic with
+    ** fresh joins (joins are mutated by the action) and an optional criteria.
+    *******************************************************************************/
+   private void assertExtrinsicOrderLineIds(Map<Integer, List<Integer>> expectedByStore, java.util.function.Supplier<List<QueryJoin>> joins, QFilterCriteria criteria) throws QException
+   {
+      for(Map.Entry<Integer, List<Integer>> entry : expectedByStore.entrySet())
+      {
+         QContext.setQSession(new QSession().withSecurityKeyValue(TestUtils.TABLE_NAME_STORE, entry.getKey()));
+         QueryInput queryInput = new QueryInput(TestUtils.TABLE_NAME_LINE_ITEM_EXTRINSIC);
+         queryInput.setQueryJoins(new java.util.ArrayList<>(joins.get()));
+         QQueryFilter filter = new QQueryFilter().withOrderBy(new QFilterOrderBy("orderLineId"));
+         if(criteria != null)
+         {
+            filter.addCriteria(criteria);
+         }
+         queryInput.setFilter(filter);
+         List<QRecord> records = new QueryAction().execute(queryInput).getRecords();
+         assertThat(records).as("store " + entry.getKey() + " joins " + joins.get()).extracting(r -> r.getValueInteger("orderLineId")).containsExactlyElementsOf(entry.getValue());
+      }
+   }
+
 }

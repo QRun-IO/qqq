@@ -505,7 +505,8 @@ public class JoinsContext
       String         securityFieldTableAlias = tableNameOrAlias;
       String         baseTableOrAlias        = tableNameOrAlias;
 
-      boolean chainIsInner = true;
+      boolean   chainIsInner       = true;
+      QueryJoin lastChainQueryJoin = null;
       if(sourceQueryJoin != null && QueryJoin.Type.isOuter(sourceQueryJoin.getType()))
       {
          chainIsInner = false;
@@ -516,10 +517,18 @@ public class JoinsContext
          //////////////////////////////////////////////////////////////////////////////////////////////////
          // check the joins currently in the query - if any are THIS join, then we don't need to add one //
          //////////////////////////////////////////////////////////////////////////////////////////////////
+         //////////////////////////////////////////////////////////////////////////////////////////////
+         // GH-887: for a lock on a JOINED table, only re-use a query join that hangs off the alias   //
+         // this chain is currently walking from.  A join with the same name elsewhere in the tree    //
+         // (e.g., the main table's own security chain) is a different row - and its alias may be    //
+         // written into the FROM clause after this join, giving a forward alias reference.           //
+         //////////////////////////////////////////////////////////////////////////////////////////////
+         String currentBaseTableOrAlias = baseTableOrAlias;
          List<QueryJoin> matchingQueryJoins = this.queryJoins.stream().filter(queryJoin ->
          {
             QJoinMetaData joinMetaData = queryJoin.getJoinMetaData();
-            return (joinMetaData != null && Objects.equals(joinMetaData.getName(), joinName));
+            return (joinMetaData != null && Objects.equals(joinMetaData.getName(), joinName)
+               && (sourceQueryJoin == null || isQueryJoinAttachedTo(queryJoin, currentBaseTableOrAlias)));
          }).toList();
 
          if(CollectionUtils.nullSafeHasContents(matchingQueryJoins))
@@ -531,6 +540,7 @@ public class JoinsContext
             log("- skipping join already in the query", logPair("joinName", joinName));
 
             QueryJoin matchedQueryJoin = matchingQueryJoins.get(0);
+            lastChainQueryJoin = matchedQueryJoin;
 
             if(matchedQueryJoin.getType().equals(QueryJoin.Type.LEFT) || matchedQueryJoin.getType().equals(QueryJoin.Type.RIGHT))
             {
@@ -571,7 +581,7 @@ public class JoinsContext
          QJoinMetaData join = instance.getJoin(joinName);
          if(join.getLeftTable().equals(tmpTable.getName()))
          {
-            securityFieldTableAlias = join.getRightTable() + "_forSecurityJoin_" + join.getName();
+            securityFieldTableAlias = makeUniqueSecurityJoinAlias(join.getRightTable() + "_forSecurityJoin_" + join.getName());
             QueryJoin queryJoin = new ImplicitQueryJoinForSecurityLock()
                .withJoinMetaData(join)
                .withType(chainIsInner ? QueryJoin.Type.INNER : QueryJoin.Type.LEFT)
@@ -592,11 +602,12 @@ public class JoinsContext
 
             addQueryJoin(queryJoin, "forRecordSecurityLock (non-flipped)", "- ");
             addedQueryJoins.add(queryJoin);
+            lastChainQueryJoin = queryJoin;
             tmpTable = getTable(join.getRightTable());
          }
          else if(join.getRightTable().equals(tmpTable.getName()))
          {
-            securityFieldTableAlias = join.getLeftTable() + "_forSecurityJoin_" + join.getName();
+            securityFieldTableAlias = makeUniqueSecurityJoinAlias(join.getLeftTable() + "_forSecurityJoin_" + join.getName());
             QueryJoin queryJoin = new ImplicitQueryJoinForSecurityLock()
                .withJoinMetaData(join.flip())
                .withType(chainIsInner ? QueryJoin.Type.INNER : QueryJoin.Type.LEFT)
@@ -617,6 +628,7 @@ public class JoinsContext
 
             addQueryJoin(queryJoin, "forRecordSecurityLock (flipped)", "- ");
             addedQueryJoins.add(queryJoin);
+            lastChainQueryJoin = queryJoin;
             tmpTable = getTable(join.getLeftTable());
          }
          else
@@ -637,13 +649,62 @@ public class JoinsContext
       QueryJoin lastAddedQueryJoin = addedQueryJoins.isEmpty() ? null : addedQueryJoins.get(addedQueryJoins.size() - 1);
       if(sourceQueryJoin != null && lastAddedQueryJoin == null)
       {
-         lastAddedQueryJoin = sourceQueryJoin;
+         ///////////////////////////////////////////////////////////////////////////////////////////////
+         // GH-887: if the chain was satisfied by joins already in the query (attached downstream of  //
+         // the source join), the security field lives on the last of those joins - put the criteria //
+         // in ITS on-clause, where the alias is defined, not in the source join's (which is written  //
+         // earlier in the FROM clause).                                                             //
+         ///////////////////////////////////////////////////////////////////////////////////////////////
+         lastAddedQueryJoin = Objects.requireNonNullElse(lastChainQueryJoin, sourceQueryJoin);
       }
       addSubFilterForRecordSecurityLock(recordSecurityLock, tmpTable, securityFieldTableAlias, !chainIsInner, lastAddedQueryJoin);
 
       log("Finished evaluating recordSecurityLock");
 
       return (addedQueryJoins);
+   }
+
+
+
+   /*******************************************************************************
+    ** GH-887: the same join can now be needed by two different security chains
+    ** (e.g., the main table's chain, and the chain for a joined table's own lock),
+    ** so the conventional alias may already be taken.  Keep the conventional name
+    ** when it's free (so existing SQL is unchanged); else PREFIX a counter (a
+    ** suffix could be lost to identifier-length truncation, e.g. 63 in postgres).
+    *******************************************************************************/
+   private String makeUniqueSecurityJoinAlias(String candidate)
+   {
+      String alias = candidate;
+      for(int i = 2; hasAliasOrTable(alias); i++)
+      {
+         alias = "sj" + i + "_" + candidate;
+      }
+      return (alias);
+   }
+
+
+
+   /*******************************************************************************
+    ** GH-887: is this query join attached to the given table-or-alias - i.e., is
+    ** that alias either its base (explicit, or the other side of its join meta
+    ** data when no base was given), or its own join-table-or-alias.
+    *******************************************************************************/
+   private boolean isQueryJoinAttachedTo(QueryJoin queryJoin, String tableOrAlias)
+   {
+      if(tableOrAlias == null || tableOrAlias.equals(queryJoin.getJoinTableOrItsAlias()))
+      {
+         return (true);
+      }
+
+      String base = queryJoin.getBaseTableOrAlias();
+      if(base == null)
+      {
+         QJoinMetaData joinMetaData = queryJoin.getJoinMetaData();
+         base = joinMetaData.getLeftTable().equals(queryJoin.getJoinTable()) ? joinMetaData.getRightTable() : joinMetaData.getLeftTable();
+      }
+
+      return (tableOrAlias.equals(base));
    }
 
 

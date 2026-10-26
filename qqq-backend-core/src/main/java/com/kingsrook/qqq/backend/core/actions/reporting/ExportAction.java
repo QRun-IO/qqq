@@ -494,7 +494,8 @@ public class ExportAction
          //////////////////////////////////////////
          // add fields for possible value labels //
          //////////////////////////////////////////
-         if(StringUtils.hasContent(field.getPossibleValueSourceName()))
+         if(StringUtils.hasContent(field.getPossibleValueSourceName())
+            && (!(field instanceof QVirtualFieldMetaData virtualField) || virtualField.getShouldTranslatePossibleValues()))
          {
             returnList.add(new QFieldMetaData(field.getName() + ":possibleValueLabel", QFieldType.STRING).withLabel(field.getLabel() + " Name"));
          }

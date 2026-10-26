@@ -1522,4 +1522,46 @@ public class RDBMSQueryActionTest extends RDBMSActionTest
       }
    }
 
+
+   /*******************************************************************************
+    ** Provider-only selections must produce valid SQL without exposing internal IDs.
+    *******************************************************************************/
+   @Test
+   void testProviderOnlyProjection() throws QException
+   {
+      QueryInput input = initQueryRequest();
+      input.getTable().withVirtualField(new QVirtualFieldMetaData("provided", QFieldType.STRING)
+         .withIsQuerySelectable(true).withValueProvider(new QCodeReference(IdentityValueProvider.class)));
+      input.setFieldNamesToInclude(java.util.Set.of("provided"));
+      var records = new com.kingsrook.qqq.backend.core.actions.tables.QueryAction().execute(input).getRecords();
+      assertEquals(5, records.size());
+      assertEquals(java.util.Set.of("provided"), input.getFieldNamesToInclude());
+      for(QRecord record : records)
+      {
+         assertEquals(java.util.Set.of("provided"), record.getValues().keySet());
+         assertTrue(record.getValueString("provided").startsWith("record-"));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Simulate a provider's batched lookup by reading each source identity.
+    *******************************************************************************/
+   public static class IdentityValueProvider implements com.kingsrook.qqq.backend.core.actions.tables.query.VirtualFieldValueProviderInterface
+   {
+      /***************************************************************************
+       ** Assert identity exists before deriving the selected value.
+       ***************************************************************************/
+      @Override
+      public void fill(QTableMetaData table, String fieldName, List<QRecord> records, QueryInput input)
+      {
+         for(QRecord record : records)
+         {
+            org.junit.jupiter.api.Assertions.assertNotNull(record.getValue(table.getPrimaryKeyField()));
+            record.setValue(fieldName, "record-" + record.getValue(table.getPrimaryKeyField()));
+         }
+      }
+   }
+
 }

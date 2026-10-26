@@ -48,16 +48,45 @@ import com.kingsrook.qqq.backend.core.model.metadata.security.FieldSecurityLock;
  * output, respectively.</p>
  *
  * <p>For a field to be {@code isQueryCriteria}, it must use a {@code fieldFunction} or criteria expander.
- * However, to be {@code isQuerySelectable}, it MAY either use a  {@code fieldFunction},
- * or alternatively, its table can have a {@link TableCustomizers#POST_QUERY_RECORD}.</p>
+ * To be {@code isQuerySelectable}, it may use a {@code fieldFunction}, a batched
+ * {@code valueProvider}, or its table's {@link TableCustomizers#POST_QUERY_RECORD}.</p>
  *******************************************************************************/
 public class QVirtualFieldMetaData extends QFieldMetaData implements Cloneable
 {
    private FieldFunction fieldFunction;
    private QCodeReference criteriaExpander;
+   private QCodeReference valueProvider;
+   private boolean shouldTranslatePossibleValues = true;
 
    private boolean isQueryCriteria   = false;
    private boolean isQuerySelectable = false;
+
+
+   /*******************************************************************************
+    ** A provider may return labels while retaining its possible values for filtering.
+    ** Translation remains enabled by default for fields whose values are IDs.
+    *******************************************************************************/
+   public boolean getShouldTranslatePossibleValues()
+   {
+      return (shouldTranslatePossibleValues);
+   }
+
+   /*******************************************************************************
+    ** Configure output translation independently from the filter picker metadata.
+    *******************************************************************************/
+   public void setShouldTranslatePossibleValues(boolean shouldTranslatePossibleValues)
+   {
+      this.shouldTranslatePossibleValues = shouldTranslatePossibleValues;
+   }
+
+   /*******************************************************************************
+    ** Fluent output-translation configuration.
+    *******************************************************************************/
+   public QVirtualFieldMetaData withShouldTranslatePossibleValues(boolean shouldTranslatePossibleValues)
+   {
+      setShouldTranslatePossibleValues(shouldTranslatePossibleValues);
+      return (this);
+   }
 
 
    /***************************************************************************
@@ -514,6 +543,37 @@ public class QVirtualFieldMetaData extends QFieldMetaData implements Cloneable
       this.isQuerySelectable = isQuerySelectable;
       return (this);
    }
+
+
+   /*******************************************************************************
+    ** Getter for the batched value provider.
+    *******************************************************************************/
+   public QCodeReference getValueProvider()
+   {
+      return (valueProvider);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for the batched value provider.
+    *******************************************************************************/
+   public void setValueProvider(QCodeReference valueProvider)
+   {
+      this.valueProvider = valueProvider;
+   }
+
+
+
+   /*******************************************************************************
+    ** Configure field values without occupying the table's customizer slot.
+    *******************************************************************************/
+   public QVirtualFieldMetaData withValueProvider(QCodeReference valueProvider)
+   {
+      this.valueProvider = valueProvider;
+      return (this);
+   }
+
 
 
    /*******************************************************************************

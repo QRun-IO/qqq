@@ -27,12 +27,14 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.ExamplePersonalizer;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
+import com.kingsrook.qqq.backend.core.actions.tables.query.VirtualFieldValueProviderInterface;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
@@ -43,8 +45,10 @@ import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportFormat;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
@@ -74,6 +78,60 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *******************************************************************************/
 class ExportActionTest extends BaseTest
 {
+   /*******************************************************************************
+    ** Provider-only exports retain every row and do not expose internal identities.
+    *******************************************************************************/
+   @Test
+   void exportsProviderValues() throws Exception
+   {
+      QContext.getQInstance().addPossibleValueSource(com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource.newForTable(TestUtils.TABLE_NAME_PERSON_MEMORY));
+      QContext.getQInstance().getTable(TestUtils.TABLE_NAME_PERSON_MEMORY).withVirtualField(
+         new QVirtualFieldMetaData("provided", QFieldType.STRING).withLabel("Provided").withIsQuerySelectable(true)
+            .withPossibleValueSourceName(TestUtils.TABLE_NAME_PERSON_MEMORY).withShouldTranslatePossibleValues(false)
+            .withValueProvider(new QCodeReference(ExportValueProvider.class)));
+      List<QRecord> records = new ArrayList<>();
+      for(int i = 1; i <= 205; i++)
+      {
+         records.add(new QRecord().withValue("id", i));
+      }
+      new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY).withRecords(records));
+      ByteArrayOutputStream output = new ByteArrayOutputStream();
+      ExportInput input = new ExportInput();
+      input.setTableName(TestUtils.TABLE_NAME_PERSON_MEMORY);
+      input.setFieldNames(List.of("provided"));
+      input.setReportDestination(new ReportDestination().withReportFormat(ReportFormat.CSV).withReportOutputStream(output));
+      new ExportAction().execute(input);
+      try(CSVParser csv = CSVParser.parse(output.toString(StandardCharsets.UTF_8), CSVFormat.DEFAULT.withFirstRecordAsHeader()))
+      {
+         assertEquals(List.of("Provided"), csv.getHeaderNames());
+         List<CSVRecord> exported = csv.getRecords();
+         assertEquals(205, exported.size());
+         assertEquals(records.stream().map(record -> "record-" + record.getValue("id")).collect(Collectors.toSet()),
+            exported.stream().map(record -> record.get("Provided")).collect(Collectors.toSet()));
+      }
+      assertEquals(List.of("provided"), input.getFieldNames());
+   }
+
+
+
+   /*******************************************************************************
+    ** Use the private identity selected by the query planner.
+    *******************************************************************************/
+   public static class ExportValueProvider implements VirtualFieldValueProviderInterface
+   {
+      @Override
+      public void fill(QTableMetaData table, String fieldName, List<QRecord> records, QueryInput input)
+      {
+         for(QRecord record : records)
+         {
+            assertNotNull(record.getValue(table.getPrimaryKeyField()));
+            record.setValue(fieldName, "record-" + record.getValue(table.getPrimaryKeyField()));
+         }
+      }
+   }
+
+
+
    @TempDir
    Path temporaryDirectory;
 

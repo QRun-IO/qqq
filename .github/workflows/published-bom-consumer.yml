@@ -10,6 +10,6 @@ permissions:
   contents: read
 jobs:
   verify:
-    uses: QRun-IO/qqq-orb/.github/workflows/core-published-bom-consumer.yml@0f33ddadf88b9a1b940b8883782fe2000ee1d2bd
+    uses: QRun-IO/qqq-orb/.github/workflows/core-published-bom-consumer.yml@1c389210e6dfda1630d053c07ae4dae523dd5576
     with:
       version: ${{ inputs.version || '' }}

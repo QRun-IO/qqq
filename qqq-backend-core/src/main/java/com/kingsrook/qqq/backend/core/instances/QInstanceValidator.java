@@ -176,18 +176,37 @@ public class QInstanceValidator
 
 
    /*******************************************************************************
-    **
+    ** Serialize enrichment per application while allowing same-thread recursion.
     *******************************************************************************/
    public void validate(QInstance qInstance) throws QInstanceValidationException
    {
-      if(qInstance.getHasBeenValidated() || qInstance.getValidationIsRunning())
+      synchronized(qInstance)
       {
-         ///////////////////////////////////////////////////////////////////////////////////////////////////////////
-         // don't re-validate if previously complete or currently running (avoids recursive re-validation chaos!) //
-         ///////////////////////////////////////////////////////////////////////////////////////////////////////////
-         return;
+         if(qInstance.getHasBeenValidated() || qInstance.getValidationIsRunning())
+         {
+            return;
+         }
+         try
+         {
+            validateUnderLock(qInstance);
+         }
+         finally
+         {
+            if(!qInstance.getHasBeenValidated() && qInstance.getValidationIsRunning())
+            {
+               qInstance.setHasBeenValidated(null);
+            }
+         }
       }
+   }
 
+
+
+   /*******************************************************************************
+    ** Enrich and validate while the caller owns the instance monitor.
+    *******************************************************************************/
+   private void validateUnderLock(QInstance qInstance) throws QInstanceValidationException
+   {
       ////////////////////////////////////
       // mark validation as running now //
       ////////////////////////////////////

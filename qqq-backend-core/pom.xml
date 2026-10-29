@@ -194,6 +194,12 @@
          <artifactId>jwks-rsa</artifactId>
          <version>0.24.1</version>
       </dependency>
+      <!-- Keep JWKS consumers above the Guava CVE-2026-102554 affected range. -->
+      <dependency>
+         <groupId>com.google.guava</groupId>
+         <artifactId>guava</artifactId>
+         <version>33.7.2-jre</version>
+      </dependency>
       <dependency>
          <groupId>io.github.cdimascio</groupId>
          <artifactId>dotenv-java</artifactId>

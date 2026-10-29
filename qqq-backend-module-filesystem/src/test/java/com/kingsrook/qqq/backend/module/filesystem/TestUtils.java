@@ -549,7 +549,7 @@ public class TestUtils
       return (new SFTPBackendMetaData()
          .withUsername(BaseSFTPTest.USERNAME)
          .withPassword(BaseSFTPTest.PASSWORD)
-         .withHostName(BaseSFTPTest.HOST_NAME)
+         .withHostName(BaseSFTPTest.getCurrentHost())
          .withPort(BaseSFTPTest.getCurrentPort())
          .withBasePath(BaseSFTPTest.BACKEND_FOLDER)
          .withName(BACKEND_NAME_SFTP));
@@ -580,7 +580,7 @@ public class TestUtils
       return (new SFTPBackendMetaData()
          .withUsername(BaseSFTPTest.USERNAME)
          .withPassword(BaseSFTPTest.PASSWORD)
-         .withHostName(BaseSFTPTest.HOST_NAME)
+         .withHostName(BaseSFTPTest.getCurrentHost())
          .withPort(BaseSFTPTest.getCurrentPort())
 
          ////////////////////////////////////

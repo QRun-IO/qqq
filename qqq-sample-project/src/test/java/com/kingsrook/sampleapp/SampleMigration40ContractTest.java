@@ -418,14 +418,14 @@ class SampleMigration40ContractTest
    {
       assertTrue(Runtime.version().feature() >= 21);
       assertEquals("javalin-7.2.3.jar", artifact(Javalin.class));
-      assertEquals("jetty-server-12.1.13.jar", artifact(Server.class));
-      assertEquals("jetty-ee10-servlet-12.1.13.jar", artifact(ServletContextHandler.class));
+      assertEquals("jetty-server-12.1.14.jar", artifact(Server.class));
+      assertEquals("jetty-ee10-servlet-12.1.14.jar", artifact(ServletContextHandler.class));
       List<String> jettyJars = List.of(System.getProperty("surefire.test.class.path").split(Pattern.quote(File.pathSeparator)))
          .stream().filter(path -> path.contains("/org/eclipse/jetty/") && path.endsWith(".jar")).toList();
       assertTrue(jettyJars.size() >= 5, jettyJars.toString());
       for(String path : jettyJars)
       {
-         assertTrue(path.endsWith("-12.1.13.jar"), path);
+         assertTrue(path.endsWith("-12.1.14.jar"), path);
       }
       String root = Files.readString(Path.of(System.getProperty("basedir"), "../pom.xml"));
       String sample = Files.readString(Path.of(System.getProperty("basedir"), "pom.xml"));

@@ -904,7 +904,7 @@ class SampleSftpAcceptanceTest
 
 
    /*******************************************************************************
-    ** Configured roots keep relative/leading-slash behavior; SSHD cannot delete through a parent link.
+    ** Configured roots keep relative/leading-slash behavior and support deletion through a root link.
     *******************************************************************************/
    @Test
    void testConfiguredRootsAndTableRootSymlink() throws Exception
@@ -939,11 +939,14 @@ class SampleSftpAcceptanceTest
       {
          assertEquals("through root alias", new String(stream.readAllBytes(), StandardCharsets.UTF_8));
       }
+      Files.writeString(configured.resolve("keep.txt"), "keep");
       var aliasedDelete = new DeleteAction().execute(new DeleteInput().withTableName(ONE).withPrimaryKey("alias.txt"));
-      assertEquals(0, aliasedDelete.getDeletedRecordCount());
-      assertEquals(1, aliasedDelete.getRecordsWithErrors().size());
-      assertTrue(aliasedDelete.getRecordsWithErrors().get(0).getErrorsAsString().contains("No such file"));
-      assertEquals("through root alias", Files.readString(configured.resolve("alias.txt")));
+      assertEquals(1, aliasedDelete.getDeletedRecordCount());
+      assertTrue(aliasedDelete.getRecordsWithErrors().isEmpty());
+      assertFalse(Files.exists(configured.resolve("alias.txt")));
+      assertEquals("keep", Files.readString(configured.resolve("keep.txt")));
+      assertTrue(Files.isSymbolicLink(root.resolve("configured root/table alias")));
+      assertTrue(Files.isDirectory(configured));
    }
 
 

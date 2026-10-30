@@ -266,6 +266,23 @@ class ClassifiedValueCanaryTest extends BaseTest
 
 
    /*******************************************************************************
+    ** Ordinary exception names must not collide with canaries; every leaked fragment must fail.
+    *******************************************************************************/
+   @Test
+   void canaryFragmentsDistinguishExceptionTypesFromValues()
+   {
+      String marker = "CANARY-PHI-" + canaryToken(UUID.fromString("03e01170-cb83-4a84-b44e-751d1dacc842"));
+      assertNoFragments(new QValueException("Value [***] could not be converted for null").toString(), marker);
+      for(int start = 0; start <= marker.length() - 5; start++)
+      {
+         String fragment = marker.substring(start, start + 5);
+         assertThrows(AssertionError.class, () -> assertNoFragments(fragment, marker));
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Every longer substring contains a five-character substring, so scanning five is sufficient.
     *******************************************************************************/
    private static void assertNoFragments(String output, String marker)
@@ -278,15 +295,25 @@ class ClassifiedValueCanaryTest extends BaseTest
 
 
    /*******************************************************************************
-    ** A random marker body made only of the letters g-v, so that no 5-character
-    ** window of it can coincide with hex ids, UUIDs or timestamps in a payload.
+    ** Alternate tildes with random letters so five-character body fragments cannot
+    ** coincide with ordinary names, hex ids, UUIDs or timestamps in captured output.
     *******************************************************************************/
    private static String canaryToken()
    {
+      return (canaryToken(UUID.randomUUID()));
+   }
+
+
+
+   /*******************************************************************************
+    ** Encode a supplied UUID so collision cases can be tested deterministically.
+    *******************************************************************************/
+   private static String canaryToken(UUID uuid)
+   {
       StringBuilder token = new StringBuilder();
-      for(char c : UUID.randomUUID().toString().replace("-", "").toCharArray())
+      for(char c : uuid.toString().replace("-", "").toCharArray())
       {
-         token.append((char) ('g' + Character.digit(c, 16)));
+         token.append(token.length() % 2 == 0 ? '~' : (char) ('g' + Character.digit(c, 16)));
       }
       return (token.toString());
    }

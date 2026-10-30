@@ -25,6 +25,7 @@ import java.io.Serializable;
 import java.lang.reflect.Field;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import com.kingsrook.qqq.backend.core.BaseTest;
@@ -37,6 +38,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 /*******************************************************************************
@@ -44,6 +48,43 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  *******************************************************************************/
 class AsyncRecordPipeLoopTest extends BaseTest
 {
+
+   /*******************************************************************************
+    ** A failed consumer must release a producer blocked on its full pipe.
+    *******************************************************************************/
+   @Test
+   void testConsumerFailureReleasesProducer() throws Exception
+   {
+      RecordPipe pipe = new RecordPipe(1);
+      CountDownLatch producerFinished = new CountDownLatch(1);
+      QException failure = new QException("Consumer failed");
+      try
+      {
+         assertSame(failure, assertThrows(QException.class, () -> new AsyncRecordPipeLoop().run("Failed consumer", null, pipe, callback ->
+         {
+            try
+            {
+               pipe.addRecords(Collections.nCopies(3, new QRecord()));
+               return true;
+            }
+            finally
+            {
+               producerFinished.countDown();
+            }
+         }, () ->
+         {
+            throw failure;
+         })));
+         assertTrue(producerFinished.await(2, TimeUnit.SECONDS), "Producer must not remain blocked after its consumer fails");
+      }
+      finally
+      {
+         pipe.terminate();
+         assertTrue(producerFinished.await(5, TimeUnit.SECONDS), "Test-owned producer must finish during cleanup");
+      }
+   }
+
+
 
    /*******************************************************************************
     **

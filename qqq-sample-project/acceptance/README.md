@@ -60,3 +60,14 @@ Every check is required when `--live-mysql` is selected. Without this switch,
 the runner covers compilation, metadata and no-DB auth behavior only; that
 shorter run is not generated-consumer acceptance. The #607/#608 source rows
 are mapped to the live reports. Published-artifact acceptance remains pending.
+
+When Docker runs outside the acceptance process's network namespace, pass
+`--mysql-host` with the database address reachable from that process and
+`--mysql-bind-address` with the address where Docker should publish port3306.
+For example, an isolated runner using its Docker bridge can pass
+`--mysql-host 172.17.0.1 --mysql-bind-address 172.17.0.1`. Both default to
+127.0.0.1. Port3306 must be available on the Docker host; the application still
+uses local port8000. The selected database host is applied to both the packaged
+application and the copied starter's Surefire configuration, so the live
+permission test uses the same database. Original source checkouts remain
+unchanged, and all live acceptance checks are still required.

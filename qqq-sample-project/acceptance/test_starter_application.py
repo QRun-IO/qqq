@@ -5,16 +5,53 @@ import unittest
 import os
 import subprocess
 import xml.etree.ElementTree as ET
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
+from types import SimpleNamespace
 from pathlib import Path
 
 from run_starter_application import (GENERATED_PACKAGE, assert_source_install, copy_tracked_source,
                                      main, maven_base, qqq_version, resolve_candidate_version,
-                                     source_install_command, stage_starter, stage_template)
+                                     source_install_command, stage_starter, stage_template, run_live_mysql)
 from live_starter_application import exercise
 
 
 class DisposableCopyTest(unittest.TestCase):
+    def test_live_mysql_endpoint_reaches_application_and_docker(self):
+        for host, bind in (("127.0.0.1", "127.0.0.1"), ("172.17.0.1", "172.17.0.1")):
+            with self.subTest(host=host), tempfile.TemporaryDirectory() as root:
+                work = Path(root)
+                starter = work / "starter"
+                (starter / "target").mkdir(parents=True)
+                (starter / "target/qqq-app-starter-test.jar").touch()
+                server = MagicMock()
+                server.poll.return_value = None
+                response = MagicMock()
+                response.__enter__.return_value.status = 200
+
+                def child(command, **kwargs):
+                    if command[0] == "java":
+                        self.assertFalse(any(key.startswith("RDBMS_") for key in kwargs["env"]))
+                        return SimpleNamespace(returncode=1, stdout="Missing at least one env. var", stderr="")
+                    return SimpleNamespace(returncode=0)
+
+                with patch("run_starter_application.require_free_port") as ports, \
+                     patch("run_starter_application.run") as run, \
+                     patch("run_starter_application.subprocess.run", side_effect=child), \
+                     patch("run_starter_application.subprocess.Popen", return_value=server) as launch, \
+                     patch("run_starter_application.urlopen", return_value=response), \
+                     patch("run_starter_application.exercise") as exercise_live, \
+                     patch("run_starter_application.expect_server_error") as negative:
+                    options = {} if host == "127.0.0.1" else {
+                        "mysql_host": host, "mysql_bind_address": bind}
+                    run_live_mysql(["mvn"], starter, work, "4.1.0-SNAPSHOT", **options)
+                docker = run.call_args_list[0].args[0]
+                self.assertEqual(f"{bind}:3306:3306", docker[docker.index("-p") + 1])
+                self.assertEqual(host, launch.call_args.kwargs["env"]["RDBMS_HOSTNAME"])
+                self.assertEqual([3306, 8000] if host == "127.0.0.1" else [8000],
+                                 [call.args[0] for call in ports.call_args_list])
+                exercise_live.assert_called_once_with("http://127.0.0.1:8000")
+                self.assertEqual(2, negative.call_count)
+
     def test_qqq_revision_uses_literal_source_version_across_release_cycles(self):
         with tempfile.TemporaryDirectory() as root:
             pom = Path(root) / "pom.xml"
@@ -172,6 +209,15 @@ class StarterApplicationFixtureTest(unittest.TestCase):
         self.assertIn('produce(qInstance, "acceptance")', provider)
         self.assertIn("withBackendName(RDBMS_BACKEND_NAME)", provider)
         self.assertNotIn("orderdesk-app", (self.starter / "pom.xml").read_text())
+
+    def test_stages_remote_mysql_for_permission_tests_without_changing_source(self):
+        original = (self.starter / "pom.xml").read_bytes()
+        stage_starter(self.starter, self.root / "remote-starter", mysql_host="172.17.0.1")
+        pom = ET.parse(self.root / "remote-starter/pom.xml")
+        ns = {"m": "http://maven.apache.org/POM/4.0.0"}
+        hosts = pom.findall(".//m:environmentVariables/m:RDBMS_HOSTNAME", ns)
+        self.assertEqual(["172.17.0.1"], [host.text for host in hosts])
+        self.assertEqual(original, (self.starter / "pom.xml").read_bytes())
 
     def test_live_probe_rejects_non_loopback_urls(self):
         with self.assertRaises(ValueError):

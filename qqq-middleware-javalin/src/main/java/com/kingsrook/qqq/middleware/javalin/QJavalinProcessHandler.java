@@ -472,6 +472,13 @@ public class QJavalinProcessHandler
          QBadRequestException badRequest = ExceptionUtils.findClassInRootChain(e, QBadRequestException.class);
          BadMessageException badMessage = ExceptionUtils.findClassInRootChain(e, BadMessageException.class);
          HttpResponseException httpResponse = ExceptionUtils.findClassInRootChain(e, HttpResponseException.class);
+         // Jetty may fail multipart cleanup after writing the response. Do not
+         // advertise a reusable HTTP/1.1 connection that it will then close.
+         if(badMessage != null && badMessage.getCode() == 400 && context.isMultipartFormData()
+            && "HTTP/1.1".equals(context.req().getProtocol()))
+         {
+            context.header("Connection", "close");
+         }
          if(badRequest != null)
          {
             context.status(HttpStatus.BAD_REQUEST_400);

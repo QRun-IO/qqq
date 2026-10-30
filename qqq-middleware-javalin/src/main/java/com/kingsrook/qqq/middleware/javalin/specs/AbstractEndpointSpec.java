@@ -542,6 +542,12 @@ public abstract class AbstractEndpointSpec<
                      BadMessageException badMessage = ExceptionUtils.findClassInRootChain(e, BadMessageException.class);
                      if(badMessage != null && badMessage.getCode() == 400)
                      {
+                        // Multipart cleanup can fail after the response is sent.
+                        // Tell HTTP/1.1 clients to use a fresh connection next time.
+                        if("HTTP/1.1".equals(context.req().getProtocol()))
+                        {
+                           context.header("Connection", "close");
+                        }
                         throw new QRuntimeException(new QBadRequestException("Malformed multipart request", e));
                      }
                      throw e;

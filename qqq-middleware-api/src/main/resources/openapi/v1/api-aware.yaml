@@ -301,6 +301,43 @@ components:
                   \ grant, then send the access token as Authorization: Bearer. Absent\
                   \ when the app has no native client. Since 1.6.0."
                 type: "string"
+              nativeSessionLogin:
+                description: "Optional configured native browser-to-QQQ cookie-session\
+                  \ login policy (1.9.0). Uses clientId/scopes, not nativeClientId.\
+                  \ Absent means this flow is unavailable."
+                properties:
+                  codeChallengeMethod:
+                    enum:
+                    - "S256"
+                    type: "string"
+                  discoveryUrl:
+                    description: "Explicit public HTTPS OIDC discovery document URL,\
+                      \ without credentials, query or fragment."
+                    type: "string"
+                  flow:
+                    description: "Send this exact authenticationFlow to POST /manageSession\
+                      \ with code, codeVerifier and redirectUri."
+                    enum:
+                    - "AUTHORIZATION_CODE_PKCE_SESSION"
+                    type: "string"
+                  issuer:
+                    description: "Explicit public HTTPS issuer. Match the discovery\
+                      \ document issuer exactly; never infer it from baseUrl."
+                    type: "string"
+                  prompt:
+                    description: "Request fresh provider authentication in the external\
+                      \ browser. This is not provider-global logout or proof of authentication\
+                      \ time."
+                    enum:
+                    - "login"
+                    type: "string"
+                  redirectUris:
+                    description: "Exact allowed native callback URIs. Use only a callback\
+                      \ owned by this installed client; do not alter or infer one."
+                    items:
+                      type: "string"
+                    type: "array"
+                type: "object"
               scopes:
                 description: "OAuth2 scopes to request (space-separated)"
                 type: "string"
@@ -2148,6 +2185,39 @@ components:
           description: "Map of all widgets within the QQQ Instance (that the user\
             \ has permission to see that they exist)."
           type: "object"
+      type: "object"
+    NativeSessionLogin:
+      properties:
+        codeChallengeMethod:
+          enum:
+          - "S256"
+          type: "string"
+        discoveryUrl:
+          description: "Explicit public HTTPS OIDC discovery document URL, without\
+            \ credentials, query or fragment."
+          type: "string"
+        flow:
+          description: "Send this exact authenticationFlow to POST /manageSession\
+            \ with code, codeVerifier and redirectUri."
+          enum:
+          - "AUTHORIZATION_CODE_PKCE_SESSION"
+          type: "string"
+        issuer:
+          description: "Explicit public HTTPS issuer. Match the discovery document\
+            \ issuer exactly; never infer it from baseUrl."
+          type: "string"
+        prompt:
+          description: "Request fresh provider authentication in the external browser.\
+            \ This is not provider-global logout or proof of authentication time."
+          enum:
+          - "login"
+          type: "string"
+        redirectUris:
+          description: "Exact allowed native callback URIs. Use only a callback owned\
+            \ by this installed client; do not alter or infer one."
+          items:
+            type: "string"
+          type: "array"
       type: "object"
     OrderBy:
       properties:
@@ -8231,7 +8301,7 @@ info:
     \ its own\nconfiguration, identity and permission administration, audits, API\
     \ keys or secrets), exactly as if the user had\nno permission for them.\n"
   title: "QQQ Middleware API"
-  version: "1.8.0"
+  version: "1.9.0"
 openapi: "3.0.3"
 paths:
   /qqq/v1/{applicationApiPath}/{applicationApiVersion}/version:
@@ -8765,6 +8835,15 @@ paths:
               description: "Data required to create the session.  Specific needs may\
                 \ vary based on the AuthenticationModule type in the QQQ Backend."
               properties:
+                authenticationFlow:
+                  description: "Optional explicit native cookie-session flow (1.9.0).\
+                    \ Requires advertised nativeSessionLogin, code, an RFC7636 verifier\
+                    \ and an exact configured redirectUri. Cannot be combined with\
+                    \ accessToken, sessionUUID, uuid or Authorization. Omit for existing\
+                    \ web sign-in and session resume."
+                  enum:
+                  - "AUTHORIZATION_CODE_PKCE_SESSION"
+                  type: "string"
                 accessToken:
                   description: "An access token from a downstream authentication provider\
                     \ (e.g., Auth0), to use as the basis for authentication and authorization."

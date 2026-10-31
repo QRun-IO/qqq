@@ -86,7 +86,7 @@ class VersionExecutorTest
       VersionResponseV1 output = execute();
 
       assertThat(output.getFeatures()).doesNotContain(AVATARS);
-      List<String> expected = MiddlewareVersionV1.FEATURES.stream().filter(f -> !AVATARS.equals(f)).toList();
+      List<String> expected = MiddlewareVersionV1.FEATURES.stream().filter(f -> !AVATARS.equals(f) && !"nativeSessionLogin".equals(f)).toList();
       assertThat(output.getFeatures()).containsExactlyElementsOf(expected);
    }
 
@@ -105,7 +105,7 @@ class VersionExecutorTest
       VersionResponseV1 output = execute();
 
       assertThat(output.getFeatures()).contains(AVATARS);
-      assertThat(output.getFeatures()).containsExactlyElementsOf(MiddlewareVersionV1.FEATURES);
+      assertThat(output.getFeatures()).containsExactlyElementsOf(MiddlewareVersionV1.FEATURES.stream().filter(f -> !"nativeSessionLogin".equals(f)).toList());
    }
 
 

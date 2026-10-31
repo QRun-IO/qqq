@@ -32,6 +32,38 @@ public class ManageSessionInput extends AbstractMiddlewareInput
    private String redirectUri;
    private String sessionUUID;
    private String basicAuthString;
+   private String authenticationFlow;
+
+
+
+   /*******************************************************************************
+    ** Getter for the explicit optional native session flow marker.
+    *******************************************************************************/
+   public String getAuthenticationFlow()
+   {
+      return (authenticationFlow);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for the explicit optional native session flow marker.
+    *******************************************************************************/
+   public void setAuthenticationFlow(String authenticationFlow)
+   {
+      this.authenticationFlow = authenticationFlow;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for the explicit optional native session flow marker.
+    *******************************************************************************/
+   public ManageSessionInput withAuthenticationFlow(String authenticationFlow)
+   {
+      this.authenticationFlow = authenticationFlow;
+      return (this);
+   }
 
 
 

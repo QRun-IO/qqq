@@ -28,7 +28,10 @@ import java.util.Map;
 import com.kingsrook.qqq.backend.core.actions.profile.UserProfiles;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
+import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2AuthenticationMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2NativeSessionLoginMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
@@ -51,6 +54,7 @@ public class ManageSessionExecutor extends AbstractMiddlewareExecutor<ManageSess
    @Override
    public void execute(ManageSessionInput input, ManageSessionOutputInterface output) throws QException
    {
+      validateNativeSessionLogin(input);
       QAuthenticationModuleDispatcher qAuthenticationModuleDispatcher = new QAuthenticationModuleDispatcher();
       QAuthenticationModuleInterface  authenticationModule            = qAuthenticationModuleDispatcher.getQModule(QContext.getQInstance().getAuthentication());
 
@@ -147,6 +151,34 @@ public class ManageSessionExecutor extends AbstractMiddlewareExecutor<ManageSess
       if(value != null)
       {
          authContext.put(key, value);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Native opt-in is checked before any provider exchange. Marker-free requests
+    ** keep the established web, Auth0, TABLE_BASED and session-resume behavior.
+    *******************************************************************************/
+   private static void validateNativeSessionLogin(ManageSessionInput input) throws QBadRequestException
+   {
+      if(input.getAuthenticationFlow() == null)
+      {
+         return;
+      }
+      if(!OAuth2NativeSessionLoginMetaData.FLOW.equals(input.getAuthenticationFlow())
+         || !(QContext.getQInstance().getAuthentication() instanceof OAuth2AuthenticationMetaData oauth2)
+         || oauth2.getNativeSessionLogin() == null || !oauth2.getNativeSessionLogin().isValid())
+      {
+         throw (new QBadRequestException("The requested native session login flow is not configured."));
+      }
+      if(input.getAccessToken() != null || input.getSessionUUID() != null || input.getBasicAuthString() != null
+         || !StringUtils.hasContent(input.getCode()) || input.getCodeVerifier() == null
+         || !input.getCodeVerifier().matches("[A-Za-z0-9._~-]{43,128}")
+         || input.getRedirectUri() == null
+         || !oauth2.getNativeSessionLogin().getRedirectUris().contains(input.getRedirectUri()))
+      {
+         throw (new QBadRequestException("Native session login requires an authorization code, a valid PKCE verifier and an allowed redirect URI, without other credentials."));
       }
    }
 

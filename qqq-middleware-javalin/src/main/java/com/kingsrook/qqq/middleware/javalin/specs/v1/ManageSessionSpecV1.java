@@ -25,6 +25,8 @@ import java.io.Serializable;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2NativeSessionLoginMetaData;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleDispatcher;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
@@ -51,6 +53,7 @@ import com.kingsrook.qqq.openapi.model.Type;
 import io.javalin.http.ContentType;
 import io.javalin.http.Context;
 import io.javalin.http.HttpStatus;
+import org.json.JSONObject;
 
 
 /*******************************************************************************
@@ -166,6 +169,9 @@ public class ManageSessionSpecV1 extends AbstractEndpointSpec<ManageSessionInput
             .withSchema(new Schema()
                .withDescription("Data required to create the session.  Specific needs may vary based on the AuthenticationModule type in the QQQ Backend.")
                .withType(Type.OBJECT)
+               .withProperty("authenticationFlow", new Schema().withType(Type.STRING)
+                  .withEnumValues(List.of(OAuth2NativeSessionLoginMetaData.FLOW))
+                  .withDescription("Optional explicit native cookie-session flow (1.9.0). Requires advertised nativeSessionLogin, code, an RFC7636 verifier and an exact configured redirectUri. Cannot be combined with accessToken, sessionUUID, uuid or Authorization. Omit for existing web sign-in and session resume."))
                .withProperty("accessToken", new Schema()
                   .withType(Type.STRING)
                   .withDescription("An access token from a downstream authentication provider (e.g., Auth0), to use as the basis for authentication and authorization.")
@@ -216,7 +222,9 @@ public class ManageSessionSpecV1 extends AbstractEndpointSpec<ManageSessionInput
    @Override
    public ManageSessionInput buildInput(Context context) throws Exception
    {
+      validateNativeRequestBody(context);
       ManageSessionInput manageSessionInput = new ManageSessionInput();
+      manageSessionInput.setAuthenticationFlow(getRequestParam(context, "authenticationFlow"));
       manageSessionInput.setAccessToken(getRequestParam(context, "accessToken"));
       manageSessionInput.setCode(getRequestParam(context, "code"));
       manageSessionInput.setCodeVerifier(getRequestParam(context, "codeVerifier"));
@@ -240,6 +248,7 @@ public class ManageSessionSpecV1 extends AbstractEndpointSpec<ManageSessionInput
       // reading the (HttpOnly) cookie in the browser (QRun-IO/qqq#733)           //
       //////////////////////////////////////////////////////////////////////////////
       boolean namesCredentialsOrSession = StringUtils.hasContent(manageSessionInput.getAccessToken())
+         || manageSessionInput.getAuthenticationFlow() != null
          || StringUtils.hasContent(manageSessionInput.getCode())
          || StringUtils.hasContent(manageSessionInput.getCodeVerifier())
          || StringUtils.hasContent(manageSessionInput.getRedirectUri())
@@ -253,6 +262,32 @@ public class ManageSessionSpecV1 extends AbstractEndpointSpec<ManageSessionInput
       }
 
       return (manageSessionInput);
+   }
+
+
+
+   /*******************************************************************************
+    ** Check native-only JSON types and mixed aliases before generic parameter
+    ** extraction, which intentionally reads only schema-declared properties.
+    *******************************************************************************/
+   private void validateNativeRequestBody(Context context) throws QBadRequestException
+   {
+      JSONObject body = getRequestBodyAsJsonObject(context);
+      if(body == null || !body.has("authenticationFlow"))
+      {
+         return;
+      }
+      for(String field : List.of("authenticationFlow", "code", "codeVerifier", "redirectUri"))
+      {
+         if(body.has(field) && !(body.get(field) instanceof String))
+         {
+            throw (new QBadRequestException("Native session login fields must be strings."));
+         }
+      }
+      if(context.header("Authorization") != null || body.has("accessToken") || body.has("sessionUUID") || body.has("uuid"))
+      {
+         throw (new QBadRequestException("Native session login cannot be combined with other credentials."));
+      }
    }
 
 

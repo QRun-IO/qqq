@@ -378,7 +378,7 @@ public class TableBasedAuthenticationModule implements QAuthenticationModuleInte
 
       try
       {
-         LOG.debug("Re-validating session (validation interval passed, never set, or idle): " + session.getIdReference());
+         LOG.debug("Re-validating session (validation interval passed, never set, or idle)");
          revalidateSession(instance, session.getIdReference(), lastActivity.orElse(null));
          rememberValidation(session.getIdReference(), now);
          return (true);

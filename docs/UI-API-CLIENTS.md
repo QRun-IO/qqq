@@ -30,7 +30,8 @@ Related docs: `UI-API-EXTENSIONS.md` covers the extension point and in-process i
    1.0.0 surface. Use `features` and `extensions` to decide which areas to show.
 2. `GET /metaData/authentication` returns the provider type. Web clients sign in with it, then call
    `POST /manageSession`; the session is the `sessionUUID` cookie. CLI, TUI and native clients sign
-   in as in section 7 and send `Authorization: Bearer <token>` on every call.
+   in as in section 7; configured native clients may use the explicit 1.9 cookie-session
+   flow, while bearer clients send `Authorization: Bearer <token>` on every call.
 3. `GET /metaData` returns the apps, tables, processes, reports and widgets the user may use. Build
    the navigation from apps (`children`, `sections`) only. Never hard-code table or process names.
 4. Use the table, process, widget and report operations as the user moves around.
@@ -195,6 +196,15 @@ and sql-workbench payloads; `materialDashboard` settings, now `uiSettings`; form
 views, sharing, audits and bulk processes, now `clientCapabilities`) are closed as of 1.6.0.
 
 ## 7. Authentication for CLI, TUI and native clients
+
+**Configured native cookie sessions (1.9.0).** When `GET /version` advertises
+`nativeSessionLogin` and OAuth2 authentication metadata includes
+`values.nativeSessionLogin`, use the [explicit native session contract](NATIVE-SESSION-LOGIN.md).
+It uses an external browser, S256 PKCE, an owned exact allowed callback and existing
+`POST /manageSession`. It uses `values.clientId`, not the separate bearer `nativeClientId`.
+Without the feature and descriptor, do not infer this flow from an OAuth2 URL.
+
+The remaining section describes the separate bearer-token client:
 
 Read `GET /qqq/v1/metaData/authentication`. For `type: OAUTH2`, `values` gives the issuer
 (`baseUrl`), the scopes, and, when the app has one, `nativeClientId`: a **public** OAuth2 client

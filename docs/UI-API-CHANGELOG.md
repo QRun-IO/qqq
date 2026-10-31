@@ -80,6 +80,21 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 
 ## Versions
 
+### 1.9.0 (unreleased) - explicit native cookie-session login
+
+- `GET /metaData/authentication` optionally includes typed `values.nativeSessionLogin`
+  for configured OAuth2 applications: fixed `AUTHORIZATION_CODE_PKCE_SESSION` flow,
+  `S256`, fixed `prompt: login`, explicit public HTTPS issuer/discovery URL and an exact callback allowlist.
+  It uses existing `values.clientId` and `values.scopes`; it is distinct from the
+  separate native bearer client. No configuration means no descriptor or
+  `nativeSessionLogin` feature in `GET /version`.
+- `POST /manageSession` accepts optional `authenticationFlow` to select that
+  advertised flow. Unknown/unconfigured flows, invalid PKCE verifiers, unlisted
+  callbacks and mixed credentials are rejected before provider exchange. Requests
+  without the marker retain existing web, TABLE_BASED, Auth0 and resume behavior.
+- See [NATIVE-SESSION-LOGIN.md](NATIVE-SESSION-LOGIN.md) for configuration and the
+  native client contract. Existing release baselines remain unchanged.
+
 ### 1.8.0 (QQQ 4.1.0-RC.17) - profiles and avatars
 See [USER-PROFILE-AVATARS.md](USER-PROFILE-AVATARS.md).
 

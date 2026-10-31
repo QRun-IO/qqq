@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2AuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.ClientChannelsMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.profile.UserProfilesMetaData;
 import com.kingsrook.qqq.middleware.javalin.executors.io.VersionInput;
@@ -81,8 +82,11 @@ public class VersionExecutor extends AbstractMiddlewareExecutor<VersionInput, Ve
    static List<String> advertisedFeatures(List<String> features)
    {
       boolean profilesInstalled = UserProfilesMetaData.of(QContext.getQInstance()) != null;
+      boolean nativeSessionLogin = QContext.getQInstance().getAuthentication() instanceof OAuth2AuthenticationMetaData oauth2
+         && oauth2.getNativeSessionLogin() != null && oauth2.getNativeSessionLogin().isValid();
       return (features.stream()
          .filter(feature -> profilesInstalled || !FEATURE_AVATARS.equals(feature))
+         .filter(feature -> nativeSessionLogin || !"nativeSessionLogin".equals(feature))
          .toList());
    }
 

@@ -233,7 +233,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
                QRecord redirectStateRecord = GetAction.execute(oauth2MetaData.getRedirectStateTableName(), Map.of("state", requestContext.get("state")));
                if(redirectStateRecord == null)
                {
-                  LOG.warn("OAuth callback state not found", logPair("state", requestContext.get("state")));
+                  LOG.warn("OAuth callback state not found");
                   throw (new QAuthenticationException("State not found"));
                }
                redirectUri.set(redirectStateRecord.getValueString("redirectUri"));
@@ -583,12 +583,11 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
       {
          ErrorObject errorObject = tokenResponse.toErrorResponse().getErrorObject();
          LOG.warn("Token request failed",
-            logPair("code", errorObject.getCode()),
-            logPair("description", errorObject.getDescription()),
+            logPair("code", safeOAuthErrorCode(errorObject.getCode())),
             logPair("httpStatus", errorObject.getHTTPStatusCode()),
             logPair("tokenEndpoint", tokenRequest.getEndpointURI()),
             logPair("clientId", tokenRequest.getClientAuthentication() != null ? tokenRequest.getClientAuthentication().getClientID() : null));
-         throw (new QAuthenticationException(errorObject.getDescription()));
+         throw (new QAuthenticationException("OAuth2 token request failed"));
       }
    }
 
@@ -621,7 +620,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
          DecodedJWT jwt         = JWT.decode(accessToken);
          if(jwt.getExpiresAtAsInstant().isBefore(Instant.now()))
          {
-            LOG.debug("accessToken is expired", logPair("sessionUUID", session.getUuid()));
+            LOG.debug("accessToken is expired");
             return (false);
          }
 
@@ -1073,7 +1072,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
                DecodedJWT jwt = JWT.decode(accessToken);
                if(jwt.getExpiresAtAsInstant().isBefore(Instant.now()))
                {
-                  LOG.warn("Session accessToken is expired", logPair("sessionUUID", sessionUUID));
+                  LOG.warn("Session accessToken is expired");
                   throw (new QAuthenticationException("accessToken is expired"));
                }
 
@@ -1089,7 +1088,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
 
                if(storedUserId != null && tokenIdentity != null && !storedUserId.equals(tokenIdentity))
                {
-                  LOG.warn("Session userId mismatch", logPair("sessionUUID", sessionUUID), logPair("storedUserId", storedUserId), logPair("tokenIdentity", tokenIdentity));
+                  LOG.warn("Session userId mismatch", logPair("storedUserId", storedUserId), logPair("tokenIdentity", tokenIdentity));
                   throw (new QAuthenticationException("Session identity mismatch"));
                }
             }
@@ -1221,11 +1220,11 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
          ///////////////////////////////////////////
          clearAccessTokenCache(sessionUUID);
 
-         LOG.debug("Logged out session", logPair("sessionUUID", sessionUUID));
+         LOG.debug("Logged out session");
       }
       catch(Exception e)
       {
-         LOG.warn("Error during logout", e, logPair("sessionUUID", sessionUUID));
+         LOG.warn("Error during logout", e);
       }
       finally
       {
@@ -1332,7 +1331,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
          }
          catch(QException e)
          {
-            LOG.warn("Not storing refresh token for session - it could not be encrypted", logPair("sessionUUID", sessionUuid), logPair("reason", e.getMessage()));
+            LOG.warn("Not storing refresh token for session - it could not be encrypted", logPair("reason", e.getMessage()));
             return;
          }
 
@@ -1348,7 +1347,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
             ////////////////////////////////////////////////////////////////////
             // not fatal for the login - the session just won't be refreshable //
             ////////////////////////////////////////////////////////////////////
-            LOG.warn("Error storing refresh token for session", logPair("sessionUUID", sessionUuid), logPair("errors", inserted.getErrorsAsString()));
+            LOG.warn("Error storing refresh token for session", logPair("errors", inserted.getErrorsAsString()));
          }
       });
    }
@@ -1443,7 +1442,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
          }
          catch(QException e)
          {
-            LOG.warn("Stored refresh token could not be decrypted - ending session", logPair("sessionUUID", sessionUUID), logPair("reason", e.getMessage()));
+            LOG.warn("Stored refresh token could not be decrypted - ending session", logPair("reason", e.getMessage()));
             endSession(tableName, sessionUUID);
             throw (new QAuthenticationException("Session has ended (stored refresh token is unusable)"));
          }
@@ -1459,7 +1458,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
          boolean refreshExpired    = storedRefreshToken.getRefreshTokenExpiresAt() != null && storedRefreshToken.getRefreshTokenExpiresAt().isBefore(now);
          if(lifetimeExceeded || refreshExpired)
          {
-            LOG.info("Not refreshing OAuth2 session", logPair("sessionUUID", sessionUUID), logPair("reason", lifetimeExceeded ? "maxSessionLifetimeExceeded" : "refreshTokenExpired"));
+            LOG.info("Not refreshing OAuth2 session", logPair("reason", lifetimeExceeded ? "maxSessionLifetimeExceeded" : "refreshTokenExpired"));
             removeStoredRefreshToken(qInstance, sessionUUID, lifetimeExceeded);
             return (null);
          }
@@ -1472,7 +1471,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
       }
       catch(Exception e)
       {
-         LOG.warn("Error refreshing OAuth2 session", logPair("sessionUUID", sessionUUID), logPair("exceptionType", e.getClass().getSimpleName()));
+         LOG.warn("Error refreshing OAuth2 session", logPair("exceptionType", e.getClass().getSimpleName()));
          return (null);
       }
       finally
@@ -1498,7 +1497,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
       httpRequest.setConnectTimeout(TOKEN_ENDPOINT_TIMEOUT_MILLIS);
       httpRequest.setReadTimeout(TOKEN_ENDPOINT_TIMEOUT_MILLIS);
 
-      LOG.debug("Sending refresh token request", logPair("tokenEndpoint", tokenEndpoint), logPair("sessionUUID", sessionUUID));
+      LOG.debug("Sending refresh token request", logPair("tokenEndpoint", tokenEndpoint));
       TokenResponse tokenResponse = TokenResponse.parse(httpRequest.send());
 
       if(tokenResponse.indicatesSuccess())
@@ -1532,7 +1531,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
             .withValue("accessToken", newAccessToken)));
 
          clearAccessTokenCache(sessionUUID);
-         LOG.info("Refreshed OAuth2 session access token", logPair("sessionUUID", sessionUUID), logPair("rotatedRefreshToken", rotatedToken != null));
+         LOG.info("Refreshed OAuth2 session access token", logPair("rotatedRefreshToken", rotatedToken != null));
          return (newAccessToken);
       }
 
@@ -1556,7 +1555,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
             }
          }
 
-         LOG.info("Refresh token was rejected by the provider - ending session", logPair("sessionUUID", sessionUUID), logPair("code", errorObject.getCode()));
+         LOG.info("Refresh token was rejected by the provider - ending session", logPair("code", safeOAuthErrorCode(errorObject.getCode())));
          endSession(tableName, sessionUUID);
          throw (new QAuthenticationException("Session has ended (refresh token was rejected)"));
       }
@@ -1566,11 +1565,25 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
       // keep the stored token, so a later request can try again.               //
       ////////////////////////////////////////////////////////////////////////////
       LOG.warn("Refresh token request failed",
-         logPair("code", errorObject.getCode()),
+         logPair("code", safeOAuthErrorCode(errorObject.getCode())),
          logPair("httpStatus", errorObject.getHTTPStatusCode()),
-         logPair("tokenEndpoint", tokenEndpoint),
-         logPair("sessionUUID", sessionUUID));
+         logPair("tokenEndpoint", tokenEndpoint));
       return (null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Provider error values are untrusted; retain only known OAuth categories.
+    *******************************************************************************/
+   private static String safeOAuthErrorCode(String code)
+   {
+      return (switch(Objects.toString(code, ""))
+      {
+         case "invalid_request", "invalid_client", "invalid_grant", "unauthorized_client",
+              "unsupported_grant_type", "invalid_scope", "access_denied", "server_error", "temporarily_unavailable" -> code;
+         default -> "unknown";
+      });
    }
 
 
@@ -1707,7 +1720,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
             }
             catch(QException e)
             {
-               LOG.info("Not revoking stored refresh token - it could not be decrypted", logPair("sessionUUID", sessionUUID), logPair("reason", e.getMessage()));
+               LOG.info("Not revoking stored refresh token - it could not be decrypted", logPair("reason", e.getMessage()));
             }
          }
       }
@@ -1739,12 +1752,12 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
          HTTPResponse httpResponse = httpRequest.send();
          if(!httpResponse.indicatesSuccess())
          {
-            LOG.info("Refresh token revocation was not successful", logPair("sessionUUID", sessionUUID), logPair("httpStatus", httpResponse.getStatusCode()));
+            LOG.info("Refresh token revocation was not successful", logPair("httpStatus", httpResponse.getStatusCode()));
          }
       }
       catch(Exception e)
       {
-         LOG.info("Error revoking refresh token", logPair("sessionUUID", sessionUUID), logPair("exceptionType", e.getClass().getSimpleName()));
+         LOG.info("Error revoking refresh token", logPair("exceptionType", e.getClass().getSimpleName()));
       }
    }
 

@@ -601,7 +601,7 @@ public class Auth0AuthenticationModule implements QAuthenticationModuleInterface
 
          try
          {
-            LOG.debug("Re-validating token due to validation interval being passed: " + session.getIdReference());
+            LOG.debug("Re-validating token due to validation interval being passed");
             revalidateTokenAndBuildSession(instance, session.getIdReference());
 
             //////////////////////////////////////////////////////////////////

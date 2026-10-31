@@ -23,15 +23,21 @@ package com.kingsrook.qqq.backend.core.modules.authentication.implementations;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import com.auth0.jwt.JWT;
+import com.auth0.jwt.interfaces.DecodedJWT;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -47,17 +53,28 @@ import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleCustomizerInterface;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.model.UserSession;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryBackendModule;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.appender.AbstractAppender;
+import org.apache.logging.log4j.core.config.Property;
 import org.json.JSONObject;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.when;
 
 
 /*******************************************************************************
@@ -70,6 +87,182 @@ class OAuth2AuthenticationModuleIntegrationTest extends BaseTest
 
    private WireMockServer wireMockServer;
    private QInstance      qInstance;
+
+
+
+   /*******************************************************************************
+    ** Exercise the final expiry check after a token expires during lookup. The
+    ** clock boundary is simulated by successive expiry reads, not by sleeping.
+    *******************************************************************************/
+   @Test
+   void expiredSessionDebugLogOmitsCredentials() throws Exception
+   {
+      String uuid = UUID.randomUUID().toString();
+      String token = createTestJwt("log-user", "Log User", Map.of());
+      insertUserSession(uuid, token, "log-user");
+      DecodedJWT decoded = spy(JWT.decode(token));
+      Instant future = Instant.now().plusSeconds(3600);
+      Instant past = Instant.now().minusSeconds(60);
+      QSession session = new QSession();
+      session.setUuid(uuid);
+      when(decoded.getExpiresAtAsInstant()).thenReturn(future, future, future, past);
+      try(OAuthLogCapture capture = new OAuthLogCapture(); MockedStatic<JWT> jwt = mockStatic(JWT.class))
+      {
+         jwt.when(() -> JWT.decode(token)).thenReturn(decoded);
+         assertFalse(new OAuth2AuthenticationModule().isSessionValid(qInstance, session));
+         capture.assertEventWithoutSecrets("accessToken is expired", uuid, token);
+         assertTrue(capture.appender.getEventList().stream().anyMatch(event -> event.getLevel() == Level.DEBUG
+            && event.getMessage().getFormattedMessage().contains("accessToken is expired")));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** An invalid callback retains a useful event without copying state or code.
+    *******************************************************************************/
+   @Test
+   void missingCallbackStateLogOmitsCredentials()
+   {
+      String state = "state-canary-" + UUID.randomUUID();
+      String code = "code-canary-" + UUID.randomUUID();
+      try(OAuthLogCapture capture = new OAuthLogCapture())
+      {
+         QAuthenticationException exception = assertThrows(QAuthenticationException.class, () -> new OAuth2AuthenticationModule()
+            .createSession(qInstance, Map.of("state", state, "code", code)));
+         assertEquals("State not found", exception.getMessage(), () -> String.valueOf(exception.getCause()));
+         capture.assertEventWithoutSecrets("OAuth callback state not found", state, code);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Successful logout keeps its DEBUG event and removes the stored session.
+    *******************************************************************************/
+   @Test
+   void logoutDebugLogOmitsCredentials() throws Exception
+   {
+      String uuid = UUID.randomUUID().toString();
+      String token = createTestJwt("log-user", "Log User", Map.of());
+      insertUserSession(uuid, token, "log-user");
+      try(OAuthLogCapture capture = new OAuthLogCapture())
+      {
+         OAuth2AuthenticationModule module = new OAuth2AuthenticationModule();
+         module.logout(qInstance, uuid);
+         capture.assertEventWithoutSecrets("Logged out session", uuid, token);
+         assertThrows(QAuthenticationException.class, () -> module.createSession(qInstance, Map.of("sessionUUID", uuid)));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A provider can echo credentials in either error field. Neither its free
+    ** text description nor an unknown error code may reach logs or the caller.
+    *******************************************************************************/
+   @Test
+   void providerRejectionOmitsUntrustedErrorDetails() throws Exception
+   {
+      stubOidcDiscovery();
+      String description = "provider-description-canary-" + UUID.randomUUID();
+      String errorCode = "provider-code-canary-" + UUID.randomUUID();
+      wireMockServer.stubFor(post(urlEqualTo("/oauth/token"))
+         .willReturn(aResponse().withStatus(400).withHeader("Content-Type", "application/json")
+            .withBody(new JSONObject().put("error", errorCode).put("error_description", description).toString())));
+      try(OAuthLogCapture capture = new OAuthLogCapture())
+      {
+         QAuthenticationException exception = assertThrows(QAuthenticationException.class, () -> new OAuth2AuthenticationModule()
+            .createSession(qInstance, Map.of("code", "authorization-code-canary", "redirectUri", "https://app.example.test/callback",
+               "codeVerifier", "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk")));
+         assertEquals("OAuth2 token request failed", exception.getMessage());
+         capture.assertEventWithoutSecrets("Token request failed", description, errorCode, "authorization-code-canary", "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk");
+         assertTrue(capture.appender.getEventList().stream().anyMatch(event -> event.getMessage().getFormattedMessage().contains("unknown")));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Capture actual formatted Log4j events, including DEBUG, with scoped cleanup.
+    *******************************************************************************/
+   private static class OAuthLogCapture implements AutoCloseable
+   {
+      private final CapturingAppender appender = new CapturingAppender();
+      private final org.apache.logging.log4j.core.Logger logger = (org.apache.logging.log4j.core.Logger) LogManager.getLogger(OAuth2AuthenticationModule.class);
+      private final Level previousLevel = logger.getLevel();
+
+      /***************************************************************************
+       ** Enable DEBUG only for this logger and attach the actual output sink.
+       ***************************************************************************/
+      private OAuthLogCapture()
+      {
+         logger.setLevel(Level.DEBUG);
+         appender.start();
+         logger.addAppender(appender);
+      }
+
+      /***************************************************************************
+       ** A required event prevents a vacuous assertion against an empty capture.
+       ***************************************************************************/
+      private void assertEventWithoutSecrets(String eventText, String... secrets)
+      {
+         String output = appender.getEventList().stream()
+            .map(event -> event.getMessage().getFormattedMessage() + String.valueOf(event.getThrown()))
+            .reduce("", String::concat);
+         assertTrue(output.contains(eventText));
+         for(String secret : secrets)
+         {
+            assertFalse(output.contains(secret), "Authentication credential reached the OAuth2 logger");
+         }
+      }
+
+      /***************************************************************************
+       ** Restore the logger even when the regression assertion fails.
+       ***************************************************************************/
+      @Override
+      public void close()
+      {
+         logger.removeAppender(appender);
+         logger.setLevel(previousLevel);
+         appender.stop();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** In-memory appender used only by these credential-redaction regressions.
+    *******************************************************************************/
+   private static class CapturingAppender extends AbstractAppender
+   {
+      private final List<LogEvent> events = new ArrayList<>();
+
+      /***************************************************************************
+       ** Preserve real formatted events without applying a test-only redactor.
+       ***************************************************************************/
+      private CapturingAppender()
+      {
+         super("OAuthCredentialCapture", null, null, true, Property.EMPTY_ARRAY);
+      }
+
+      /***************************************************************************
+       ** Store an immutable copy before Log4j can reuse the original event.
+       ***************************************************************************/
+      @Override
+      public void append(LogEvent event)
+      {
+         events.add(event.toImmutable());
+      }
+
+      /***************************************************************************
+       ** Captured events for assertions.
+       ***************************************************************************/
+      private List<LogEvent> getEventList()
+      {
+         return (events);
+      }
+   }
 
 
 
@@ -347,6 +540,7 @@ class OAuth2AuthenticationModuleIntegrationTest extends BaseTest
          .withName(REDIRECT_STATE_TABLE)
          .withBackendName(BACKEND_NAME)
          .withPrimaryKeyField("id")
+         .withUniqueKey(new UniqueKey("state"))
          .withField(new QFieldMetaData("id", QFieldType.INTEGER))
          .withField(new QFieldMetaData("state", QFieldType.STRING).withMaxLength(100))
          .withField(new QFieldMetaData("redirectUri", QFieldType.STRING)));

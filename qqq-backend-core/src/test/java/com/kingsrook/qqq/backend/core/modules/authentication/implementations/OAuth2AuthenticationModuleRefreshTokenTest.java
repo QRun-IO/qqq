@@ -572,7 +572,8 @@ class OAuth2AuthenticationModuleRefreshTokenTest extends BaseTest
       stubTokenEndpoint("refresh_token", 200, tokenResponse(createJwt(3600), null));
 
       assertSessionEndedWithoutRefresh(sessionUuid);
-      assertThat(collectingLogger.getCollectedMessages()).anyMatch(m -> m.getMessage().contains("could not be decrypted") && m.getMessage().contains("authenticationFailed") && m.getMessage().contains(sessionUuid));
+      assertThat(collectingLogger.getCollectedMessages()).anyMatch(m -> m.getMessage().contains("could not be decrypted") && m.getMessage().contains("authenticationFailed"));
+      assertNoLogContains(collectingLogger, sessionUuid);
       assertNoLogContains(collectingLogger, refresh);
       assertNoLogContains(collectingLogger, storedValue);
    }

@@ -21,6 +21,7 @@
 package com.kingsrook.qqq.backend.core.modules.authentication.implementations;
 
 
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -56,6 +57,10 @@ import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.Mem
 import com.kingsrook.qqq.backend.core.state.InMemoryStateProvider;
 import com.kingsrook.qqq.backend.core.state.SimpleStateKey;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.appender.OutputStreamAppender;
+import org.apache.logging.log4j.core.layout.PatternLayout;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -74,6 +79,44 @@ public class TableBasedAuthenticationModuleTest extends BaseTest
    public static final String USERNAME  = "jdoe";
    public static final String PASSWORD  = "abc123";
    public static final String FULL_NAME = "John Doe";
+
+
+
+   /*******************************************************************************
+    ** Real DEBUG revalidation must retain its event without the session secret.
+    *******************************************************************************/
+   @Test
+   void revalidationLogOmitsSessionCredential() throws Exception
+   {
+      QInstance instance = getQInstance();
+      insertTestUser(instance, USERNAME, PASSWORD, FULL_NAME);
+      String uuid = insertTestSession(instance, USERNAME, Instant.now());
+      QSession session = new QSession();
+      session.setIdReference(uuid);
+      session.setUuid(uuid);
+      QContext.setQSession(session);
+      ByteArrayOutputStream output = new ByteArrayOutputStream();
+      OutputStreamAppender appender = OutputStreamAppender.newBuilder().setName("TableAuthCredentialCapture")
+         .setTarget(output).setLayout(PatternLayout.newBuilder().withPattern("%m %X%n").build()).build();
+      org.apache.logging.log4j.core.Logger logger = (org.apache.logging.log4j.core.Logger) LogManager.getLogger(TableBasedAuthenticationModule.class);
+      Level previous = logger.getLevel();
+      logger.setLevel(Level.DEBUG);
+      appender.start();
+      logger.addAppender(appender);
+      try
+      {
+         assertTrue(new TableBasedAuthenticationModule().isSessionValid(instance, session));
+         String captured = output.toString(StandardCharsets.UTF_8);
+         assertTrue(captured.contains("Re-validating session"));
+         assertFalse(captured.contains(uuid));
+      }
+      finally
+      {
+         logger.removeAppender(appender);
+         logger.setLevel(previous);
+         appender.stop();
+      }
+   }
 
 
 

@@ -21,7 +21,9 @@
 package com.kingsrook.qqq.backend.core.modules.authentication.implementations;
 
 
+import java.io.ByteArrayOutputStream;
 import java.io.Serializable;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
@@ -53,6 +55,10 @@ import com.kingsrook.qqq.backend.core.state.SimpleStateKey;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.appender.OutputStreamAppender;
+import org.apache.logging.log4j.core.layout.PatternLayout;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 import static com.kingsrook.qqq.backend.core.modules.authentication.implementations.Auth0AuthenticationModule.ACCESS_TOKEN_KEY;
@@ -82,6 +88,38 @@ public class Auth0AuthenticationModuleTest extends BaseTest
    private static final String UNDECODABLE_TOKEN = "UNDECODABLE";
 
    private static final QLogger LOG = QLogger.getLogger(Auth0AuthenticationModuleTest.class);
+
+
+
+   /*******************************************************************************
+    ** Revalidation of an invalid token must log the event without its raw value.
+    *******************************************************************************/
+   @Test
+   void revalidationLogOmitsTokenCredential()
+   {
+      String token = "auth0-revalidation-secret-canary";
+      ByteArrayOutputStream output = new ByteArrayOutputStream();
+      OutputStreamAppender appender = OutputStreamAppender.newBuilder().setName("Auth0CredentialCapture")
+         .setTarget(output).setLayout(PatternLayout.newBuilder().withPattern("%m %X%n").build()).build();
+      org.apache.logging.log4j.core.Logger logger = (org.apache.logging.log4j.core.Logger) LogManager.getLogger(Auth0AuthenticationModule.class);
+      Level previous = logger.getLevel();
+      logger.setLevel(Level.DEBUG);
+      appender.start();
+      logger.addAppender(appender);
+      try
+      {
+         assertFalse(testLastTimeChecked(Instant.now().minusSeconds(Auth0AuthenticationModule.ID_TOKEN_VALIDATION_INTERVAL_SECONDS + 60), token));
+         String captured = output.toString(StandardCharsets.UTF_8);
+         assertTrue(captured.contains("Re-validating token"));
+         assertFalse(captured.contains(token));
+      }
+      finally
+      {
+         logger.removeAppender(appender);
+         logger.setLevel(previous);
+         appender.stop();
+      }
+   }
 
 
 

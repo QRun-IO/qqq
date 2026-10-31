@@ -239,6 +239,35 @@ class IsolatedSpaRouteProviderTest
 
 
    /*******************************************************************************
+    ** File URLs must decode spaces and preserve native drive paths for assets and
+    ** the filesystem index used by deep links.
+    *******************************************************************************/
+   @Test
+   void testFilesystemResourceWithEncodedSpace() throws Exception
+   {
+      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/portable", "test spa resources/")
+         .withSpaIndexFile("test spa resources/index.html").withLoadFromJar(false);
+      provider.setQInstance(qInstance);
+      Javalin service = Javalin.create(provider::acceptJavalinConfig).start(0);
+      try(HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build())
+      {
+         HttpResponse<String> asset = request(client, service, "/portable/fixture.js");
+         assertEquals(200, asset.statusCode());
+         assertTrue(asset.body().contains("portableSpaFixture"));
+         HttpResponse<String> deepLink = request(client, service, "/portable/deep/link");
+         assertEquals(200, deepLink.statusCode());
+         assertTrue(deepLink.body().contains("Portable SPA fixture"));
+         assertTrue(deepLink.body().contains("<base href=\"/portable/\">"));
+      }
+      finally
+      {
+         service.stop();
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Same-path SPAs belong to their server, including after another is recreated.
     *******************************************************************************/
    @Test

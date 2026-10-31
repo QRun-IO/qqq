@@ -586,7 +586,12 @@ public abstract class AbstractEndpointSpec<
       for(String key : jsonObject.keySet())
       {
          Object value = jsonObject.get(key);
-         if(value instanceof Serializable s)
+         if(value == JSONObject.NULL)
+         {
+            // Preserve an explicit field clear; omission and a present null have different semantics.
+            map.put(key, null);
+         }
+         else if(value instanceof Serializable s)
          {
             map.put(key, s);
          }

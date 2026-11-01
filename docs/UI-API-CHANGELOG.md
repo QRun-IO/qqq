@@ -80,6 +80,15 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 
 ## Versions
 
+### 1.9.0 (next release) - terminal client findings
+
+Fixes for issues found while building the terminal clients (`qqq-cli`).
+
+- **`tableVariant` on insert, update and delete** (#1351): `POST /table/{tableName}`,
+  `PATCH /table/{tableName}/{primaryKey}` and `DELETE /table/{tableName}/{primaryKey}` accept the
+  optional `tableVariant` query parameter (a JSON object with `type` and `id`, as on get) and write
+  to that variant. A value that is not a JSON object answers 400.
+
 ### 1.8.0 (QQQ 4.1.0-RC.17) - profiles and avatars
 See [USER-PROFILE-AVATARS.md](USER-PROFILE-AVATARS.md).
 

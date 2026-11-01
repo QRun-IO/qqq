@@ -8231,7 +8231,7 @@ info:
     \ its own\nconfiguration, identity and permission administration, audits, API\
     \ keys or secrets), exactly as if the user had\nno permission for them.\n"
   title: "QQQ Middleware API"
-  version: "1.8.0"
+  version: "1.9.0"
 openapi: "3.0.3"
 paths:
   /qqq/v1/{applicationApiPath}/{applicationApiVersion}/version:
@@ -10545,6 +10545,14 @@ paths:
         required: true
         schema:
           type: "string"
+      - description: "For tables that use variant backends, JSON object naming the\
+          \ variant to delete from (the same `type` and `id` as in query requests)."
+        example: "{\"type\":\"store\",\"id\":\"1\"}"
+        in: "query"
+        name: "tableVariant"
+        required: false
+        schema:
+          type: "string"
       responses:
         200:
           content:
@@ -10750,6 +10758,14 @@ paths:
         in: "path"
         name: "primaryKey"
         required: true
+        schema:
+          type: "string"
+      - description: "For tables that use variant backends, JSON object naming the\
+          \ variant to write to (the same `type` and `id` as in query requests)."
+        example: "{\"type\":\"store\",\"id\":\"1\"}"
+        in: "query"
+        name: "tableVariant"
+        required: false
         schema:
           type: "string"
       requestBody:
@@ -11135,6 +11151,14 @@ paths:
         in: "path"
         name: "tableName"
         required: true
+        schema:
+          type: "string"
+      - description: "For tables that use variant backends, JSON object naming the\
+          \ variant to write to (the same `type` and `id` as in query requests)."
+        example: "{\"type\":\"store\",\"id\":\"1\"}"
+        in: "query"
+        name: "tableVariant"
+        required: false
         schema:
           type: "string"
       requestBody:

@@ -31,13 +31,17 @@ import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
+import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.TableVariant;
 import com.kingsrook.qqq.openapi.model.Content;
+import com.kingsrook.qqq.openapi.model.In;
+import com.kingsrook.qqq.openapi.model.Parameter;
 import com.kingsrook.qqq.openapi.model.RequestBody;
 import com.kingsrook.qqq.openapi.model.Schema;
 import com.kingsrook.qqq.openapi.model.Type;
 import io.javalin.http.ContentType;
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 
@@ -168,5 +172,47 @@ public class QuerySpecUtils
       }
 
       return null;
+   }
+
+
+
+   /*******************************************************************************
+    ** OpenAPI definition of the (optional) tableVariant query parameter of a
+    ** table route:  a JSON object with the variant's `type` and `id`.
+    *******************************************************************************/
+   public static Parameter defineTableVariantQueryParameter(String verb)
+   {
+      return (new Parameter()
+         .withName("tableVariant")
+         .withDescription("For tables that use variant backends, JSON object naming the variant to " + verb + " (the same `type` and `id` as in query requests).")
+         .withRequired(false)
+         .withSchema(new Schema().withType(Type.STRING))
+         .withExample("""
+            {"type":"store","id":"1"}""")
+         .withIn(In.QUERY));
+   }
+
+
+
+   /*******************************************************************************
+    ** Parse a tableVariant query parameter value (a JSON object with `type` and
+    ** `id`) - null when absent; a value that is not a JSON object is a bad request.
+    *******************************************************************************/
+   public static TableVariant parseTableVariantParam(String tableVariantParam) throws QBadRequestException
+   {
+      if(!StringUtils.hasContent(tableVariantParam))
+      {
+         return (null);
+      }
+
+      try
+      {
+         JSONObject variant = new JSONObject(tableVariantParam);
+         return (new TableVariant().withType(variant.optString("type", null)).withId(variant.has("id") ? String.valueOf(variant.get("id")) : null));
+      }
+      catch(JSONException e)
+      {
+         throw (new QBadRequestException("tableVariant must be a JSON object with a type and an id."));
+      }
    }
 }

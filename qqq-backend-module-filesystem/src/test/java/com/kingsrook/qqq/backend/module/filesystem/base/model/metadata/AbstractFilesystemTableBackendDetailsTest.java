@@ -31,6 +31,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.module.filesystem.BaseTest;
 import com.kingsrook.qqq.backend.module.filesystem.TestUtils;
 import com.kingsrook.qqq.backend.module.filesystem.local.model.metadata.FilesystemTableBackendDetails;
+import com.kingsrook.qqq.backend.module.filesystem.s3.model.metadata.S3BackendMetaData;
 import com.kingsrook.qqq.backend.module.filesystem.s3.model.metadata.S3TableBackendDetails;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -53,6 +54,40 @@ class AbstractFilesystemTableBackendDetailsTest extends BaseTest
    void testValidInstancePasses() throws QInstanceValidationException
    {
       new QInstanceValidator().validate(QContext.getQInstance());
+   }
+
+
+
+   /*******************************************************************************
+    ** A table on a filesystem backend without backend details must fail
+    ** validation, instead of failing every query with an NPE (#1364).
+    *******************************************************************************/
+   @Test
+   void testMissingBackendDetails() throws QException
+   {
+      assertValidationFailureReasons((QInstance qInstance) ->
+      {
+         qInstance.getTable(TestUtils.TABLE_NAME_PERSON_LOCAL_FS_JSON).setBackendDetails(null);
+      }, false, "Table " + TestUtils.TABLE_NAME_PERSON_LOCAL_FS_JSON + " on filesystem backend " + TestUtils.BACKEND_NAME_LOCAL_FS + " has no backend details");
+
+      assertValidationFailureReasons((QInstance qInstance) ->
+      {
+         qInstance.getTable(TestUtils.TABLE_NAME_PERSON_S3).setBackendDetails(null);
+      }, false, "Table " + TestUtils.TABLE_NAME_PERSON_S3 + " on filesystem backend " + TestUtils.BACKEND_NAME_S3 + " has no backend details");
+   }
+
+
+
+   /*******************************************************************************
+    ** An S3 backend needs its bucket (#1364).
+    *******************************************************************************/
+   @Test
+   void testMissingS3Bucket() throws QException
+   {
+      assertValidationFailureReasons((QInstance qInstance) ->
+      {
+         ((S3BackendMetaData) qInstance.getBackend(TestUtils.BACKEND_NAME_S3)).setBucketName(null);
+      }, false, "Missing bucketName for S3 backend: " + TestUtils.BACKEND_NAME_S3);
    }
 
 

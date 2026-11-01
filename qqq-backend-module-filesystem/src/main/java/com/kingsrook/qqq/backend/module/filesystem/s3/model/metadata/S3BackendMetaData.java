@@ -21,8 +21,10 @@
 package com.kingsrook.qqq.backend.module.filesystem.s3.model.metadata;
 
 
+import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
+import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.module.filesystem.base.model.metadata.AbstractFilesystemBackendMetaData;
 import com.kingsrook.qqq.backend.module.filesystem.s3.S3BackendModule;
 
@@ -90,6 +92,22 @@ public class S3BackendMetaData extends AbstractFilesystemBackendMetaData
    {
       super();
       setBackendType(S3BackendModule.class);
+   }
+
+
+
+   /*******************************************************************************
+    ** Every S3 action addresses the backend's bucket, so it is required (unless
+    ** the backend takes its settings from variants).
+    *******************************************************************************/
+   @Override
+   public void performValidation(QInstanceValidator qInstanceValidator)
+   {
+      super.performValidation(qInstanceValidator);
+      if(!Boolean.TRUE.equals(getUsesVariants()))
+      {
+         qInstanceValidator.assertCondition(StringUtils.hasContent(bucketName), "Missing bucketName for S3 backend: " + getName());
+      }
    }
 
 

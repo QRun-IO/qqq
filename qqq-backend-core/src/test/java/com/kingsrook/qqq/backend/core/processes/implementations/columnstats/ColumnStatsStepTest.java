@@ -28,13 +28,16 @@ import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.ExamplePersonalizer;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.security.FieldSecurityLock;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.junit.jupiter.api.Test;
@@ -245,6 +248,50 @@ class ColumnStatsStepTest extends BaseTest
       input.addValue("ColumnStatsTableConfig", new ColumnStatsTableConfig().withFailIfCountOverLimit(2));
       assertThatThrownBy(() -> new ColumnStatsStep().run(input, new RunBackendStepOutput()))
          .rootCause().hasMessageContaining("Unable to calculate Column Statistics.  Your filter matches too many rows (4). The limit for this table is 2.");
+   }
+
+
+
+   /*******************************************************************************
+    ** Statistics are refused for a field the caller cannot read in full, even
+    ** when the process run does not enforce field access; and the results are
+    ** tagged with the analysed table, so process-record field access keeps them
+    ** instead of withholding table-less records (#1367).
+    *******************************************************************************/
+   @Test
+   void testFieldAccess() throws QException
+   {
+      new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY).withRecords(List.of(
+         new QRecord().withValue("firstName", "Homer").withValue("lastName", "Simpson"),
+         new QRecord().withValue("firstName", "Marge").withValue("lastName", "Simpson"))));
+
+      QContext.getQInstance().getTable(TestUtils.TABLE_NAME_PERSON_MEMORY).getField("lastName")
+         .setFieldSecurityLock(new FieldSecurityLock().withDefaultBehavior(FieldSecurityLock.Behavior.MASK));
+
+      RunBackendStepInput restrictedInput = new RunBackendStepInput();
+      restrictedInput.addValue("tableName", TestUtils.TABLE_NAME_PERSON_MEMORY);
+      restrictedInput.addValue("fieldName", "lastName");
+      assertThat(restrictedInput.isFieldAccessEnforced()).isFalse();
+      assertThatThrownBy(() -> new ColumnStatsStep().run(restrictedInput, new RunBackendStepOutput()))
+         .isInstanceOf(QPermissionDeniedException.class);
+
+      RunBackendStepInput input = new RunBackendStepInput();
+      input.addValue("tableName", TestUtils.TABLE_NAME_PERSON_MEMORY);
+      input.addValue("fieldName", "firstName");
+      RunBackendStepOutput output = new RunBackendStepOutput();
+      new ColumnStatsStep().run(input, output);
+
+      @SuppressWarnings("unchecked")
+      List<QRecord> valueCounts = (List<QRecord>) output.getValues().get("valueCounts");
+      QRecord       statsRecord = (QRecord) output.getValues().get("statsRecord");
+      assertThat(valueCounts).hasSize(2).allMatch(record -> TestUtils.TABLE_NAME_PERSON_MEMORY.equals(record.getTableName()));
+      assertThat(statsRecord.getTableName()).isEqualTo(TestUtils.TABLE_NAME_PERSON_MEMORY);
+
+      FieldAccessHelper.applyToProcessRecords("columnStats", null, valueCounts);
+      FieldAccessHelper.applyToProcessRecords("columnStats", null, List.of(statsRecord));
+      assertThat(valueCounts.get(0).getValueString("firstName")).isIn("Homer", "Marge");
+      assertThat(valueCounts.get(0).getValueInteger("count")).isEqualTo(1);
+      assertThat(statsRecord.getValueInteger("count")).isEqualTo(2);
    }
 
 }

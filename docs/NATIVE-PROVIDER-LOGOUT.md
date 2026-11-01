@@ -10,6 +10,17 @@ exact `postLogoutRedirectUris`. Register those URIs with the provider **for logo
 Give the OAuth2 provider an explicit nonblank metadata name; that name is part of
 the encrypted session binding and capability eligibility.
 Reusing the Android login callback does not imply provider logout registration.
+
+For Authentik, choose the provider's invalidation flow to match the intended
+behavior. Its default `default-provider-invalidation-flow` preserves the main
+Authentik SSO session. Explicit company sign-out requires an invalidation flow
+containing the User Logout stage, such as the built-in `default-invalidation-flow`.
+This can also sign out other applications; ordinary QQQ local logout remains
+separate. See [Authentik's provider logout settings](https://docs.goauthentik.io/add-secure-apps/providers/single-logout/).
+Do not treat a successful RP logout callback as proof that the company session
+ended: verify fresh credentials and the next operator's principal in the same
+retained browser context.
+
 Configure the existing refresh-token encryption key/key IDs for private session
 material; a refresh token, refresh grant or refresh-token table is not required.
 

@@ -30,12 +30,14 @@ import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import com.kingsrook.qqq.backend.core.actions.async.AsyncJobManager;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.jobs.DurableJobs;
 import com.kingsrook.qqq.backend.core.jobs.DurableJobsMetaData;
 import com.kingsrook.qqq.backend.core.jobs.DurableJobsMetaDataProvider;
 import com.kingsrook.qqq.backend.core.jobs.DurableJobsSecurity;
+import com.kingsrook.qqq.backend.core.jobs.DurableJobsTables;
 import com.kingsrook.qqq.backend.core.jobs.model.ChunkStatus;
 import com.kingsrook.qqq.backend.core.jobs.model.JobStatus;
 import com.kingsrook.qqq.backend.core.jobs.model.LaunchRequest;
@@ -46,6 +48,8 @@ import com.kingsrook.qqq.backend.core.jobs.runtime.JobClaimer;
 import com.kingsrook.qqq.backend.core.jobs.store.DurableJobStore;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleCustomizerInterface;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.MockAuthenticationModule;
@@ -111,6 +115,12 @@ class JobsSpecV1Test extends SpecTestBase
    {
       QInstance instance = TestUtils.defineInstance();
       new DurableJobsMetaDataProvider().defineAll(instance, TestUtils.BACKEND_NAME_MEMORY, null);
+
+      /////////////////////////////////////////////////////////////////////
+      // the fixture instance leaves tables unprotected; protect jobs_job //
+      // so its read permission (jobs_job.read) is what grants /jobs     //
+      /////////////////////////////////////////////////////////////////////
+      instance.getTable(DurableJobsTables.TABLE_JOB).setPermissionRules(new QPermissionRules().withLevel(PermissionLevel.READ_WRITE_PERMISSIONS));
       instance.withSupplementalMetaData(new DurableJobsMetaData().withWorkerThreads(0).withEffectDispatcherThreads(0).withEligibleProcessName("greet"));
       instance.getAuthentication().withCustomizer(new QCodeReference(Permissions.class));
       return (instance);
@@ -129,6 +139,14 @@ class JobsSpecV1Test extends SpecTestBase
       @Override
       public void customizeSession(QInstance instance, QSession session, Map<String, Object> context)
       {
+         if("derived".equals(session.getUuid()))
+         {
+            ///////////////////////////////////////////////////////////////
+            // an app that grants every permission its metadata declares //
+            ///////////////////////////////////////////////////////////////
+            PermissionsHelper.getAllAvailablePermissionNames(instance).forEach(session::withPermission);
+            return;
+         }
          if(!"denied".equals(session.getUuid()))
          {
             session.withPermission("jobs_job.read");
@@ -176,6 +194,23 @@ class JobsSpecV1Test extends SpecTestBase
       assertThat(get("/jobs?limit=-1", "owner").getStatus()).isEqualTo(400);
       assertThat(get("/jobs?state=unknown", "owner").getStatus()).isEqualTo(400);
       assertThat(get("/jobs/" + id, "admin").getStatus()).isEqualTo(200);
+   }
+
+
+
+   /*******************************************************************************
+    ** A session holding every permission the instance declares may read jobs
+    ** and list all of them: jobs_job.read comes from the table's permission
+    ** rules, and jobs_admin is declared (#1362).
+    *******************************************************************************/
+   @Test
+   void derivedPermissionsAreEnough() throws Exception
+   {
+      assertThat(PermissionsHelper.getAllAvailablePermissionNames(serverQInstance)).contains("jobs_job.read", "jobs_admin");
+      Integer id = launch("owner");
+      assertThat(get("/jobs", "derived").getStatus()).isEqualTo(200);
+      assertThat(json(get("/jobs?scope=all", "derived")).getJSONArray("jobs")).hasSize(1);
+      assertThat(get("/jobs/" + id, "derived").getStatus()).isEqualTo(200);
    }
 
 

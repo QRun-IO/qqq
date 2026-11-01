@@ -48,6 +48,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaDataInterface;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.ClientChannelsMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.DeclaredPermissionsMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.DenyBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.MetaDataWithName;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.MetaDataWithPermissionRules;
@@ -553,6 +554,12 @@ public class PermissionsHelper
          {
             addEffectiveAvailablePermission(rules, PrivatePermissionSubType.HAS_ACCESS, rs, baseName, widgetMetaData, "Widget");
          }
+      }
+
+      DeclaredPermissionsMetaData declaredPermissions = DeclaredPermissionsMetaData.of(instance);
+      if(declaredPermissions != null)
+      {
+         rs.addAll(declaredPermissions.getPermissions());
       }
 
       return (rs);

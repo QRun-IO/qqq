@@ -43,6 +43,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.functions.implementa
 import com.kingsrook.qqq.backend.core.model.metadata.fields.functions.implementations.WeekdayOfDateTimeFunction;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.module.rdbms.RDBMSBackendModule;
+import com.kingsrook.qqq.backend.module.rdbms.fieldfunctions.H2RDBMSWeekdayOfDateFunction;
 import com.kingsrook.qqq.backend.module.rdbms.fieldfunctions.RDBMSFieldFunctionAdapterInterface;
 import com.kingsrook.qqq.backend.module.rdbms.fieldfunctions.RDBMSStringLengthFunction;
 import com.kingsrook.qqq.backend.module.rdbms.fieldfunctions.RDBMSSubStringFunction;
@@ -115,6 +116,15 @@ public class RDBMSBackendMetaData extends QBackendMetaData implements Assessable
       registerBackendFieldFunctionAdapter(SubStringFunction.IDENTIFIER, RDBMSSubStringFunction.class);
       registerBackendFieldFunctionAdapter(WeekdayOfDateFunction.IDENTIFIER, RDBMSWeekdayOfDateFunction.class);
       registerBackendFieldFunctionAdapter(WeekdayOfDateTimeFunction.IDENTIFIER, RDBMSWeekdayOfDateTimeFunction.class);
+
+      //////////////////////////////////////////////////////////////////
+      // the adapters above render MySQL SQL; H2 has no WEEKDAY(), so //
+      // it gets its own weekday adapter (same ISO-8601 values)       //
+      //////////////////////////////////////////////////////////////////
+      if(VENDOR_H2.equals(vendor))
+      {
+         registerBackendFieldFunctionAdapter(WeekdayOfDateFunction.IDENTIFIER, H2RDBMSWeekdayOfDateFunction.class);
+      }
       wasBackendFieldFunctionAdapterRegistryPopulated = true;
    }
 
@@ -193,6 +203,7 @@ public class RDBMSBackendMetaData extends QBackendMetaData implements Assessable
    public void setVendor(String vendor)
    {
       this.vendor = vendor;
+      wasBackendFieldFunctionAdapterRegistryPopulated = false;
    }
 
 
@@ -204,6 +215,7 @@ public class RDBMSBackendMetaData extends QBackendMetaData implements Assessable
    public RDBMSBackendMetaData withVendor(String vendor)
    {
       this.vendor = vendor;
+      wasBackendFieldFunctionAdapterRegistryPopulated = false;
       return (this);
    }
 

@@ -35,6 +35,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
@@ -62,6 +63,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaDat
 import com.kingsrook.qqq.backend.core.model.metadata.fields.functions.FieldFunction;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.functions.implementations.StringLengthFunction;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.functions.implementations.SubStringFunction;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.functions.implementations.WeekdayOfDateFunction;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.functions.implementations.WeekdayOfDateTimeFunction;
 import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLock;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
@@ -1228,6 +1230,30 @@ public class RDBMSQueryActionTest extends RDBMSActionTest
          new QFilterCriteria("firstName", QCriteriaOperator.LESS_THAN, 7)
             .withFieldFunction(new FieldFunction().withFieldName("firstName").withFunctionTypeIdentifier(StringLengthFunction.IDENTIFIER))));
       assertEquals(2, records.size());
+   }
+
+
+
+   /*******************************************************************************
+    ** A WeekdayOfDate criterion runs on H2 (which has no MySQL WEEKDAY()), with
+    ** the same ISO-8601 values (Monday=1 ... Sunday=7) - #1355.
+    *******************************************************************************/
+   @Test
+   void testFilterByWeekdayOfDateOnH2() throws Exception
+   {
+      FieldFunction weekday = new FieldFunction().withFieldName("birthDate").withFunctionTypeIdentifier(WeekdayOfDateFunction.IDENTIFIER);
+
+      ////////////////////////////////////////////////////////////////////////
+      // test data: 1980-05-15 and 1981-01-01 are Thursdays (4); 1980-05-31 //
+      // is a Saturday (6); 1976-05-28 is a Friday (5)                      //
+      ////////////////////////////////////////////////////////////////////////
+      List<QRecord> thursdays = QueryAction.execute(TestUtils.TABLE_NAME_PERSON, new QQueryFilter(
+         new QFilterCriteria("birthDate", QCriteriaOperator.IN, List.of(4)).withFieldFunction(weekday)));
+      assertEquals(Set.of(2, 5), thursdays.stream().map(r -> r.getValueInteger("id")).collect(Collectors.toSet()));
+
+      List<QRecord> weekend = QueryAction.execute(TestUtils.TABLE_NAME_PERSON, new QQueryFilter(
+         new QFilterCriteria("birthDate", QCriteriaOperator.IN, List.of(6, 7)).withFieldFunction(weekday)));
+      assertEquals(Set.of(1), weekend.stream().map(r -> r.getValueInteger("id")).collect(Collectors.toSet()));
    }
 
 

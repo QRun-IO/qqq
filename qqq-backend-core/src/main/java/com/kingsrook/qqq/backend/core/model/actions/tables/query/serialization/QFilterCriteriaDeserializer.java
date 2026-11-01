@@ -23,15 +23,22 @@ package com.kingsrook.qqq.backend.core.model.actions.tables.query.serialization;
 
 import java.io.IOException;
 import java.io.Serializable;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
+import java.util.Set;
 import com.fasterxml.jackson.core.JacksonException;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
+import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.CriteriaOption;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.CriteriaOptionInterface;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.expressions.AbstractFilterExpression;
@@ -126,7 +133,45 @@ public class QFilterCriteriaDeserializer extends StdDeserializer<QFilterCriteria
       criteria.setValues(values);
       criteria.setOtherFieldName(otherFieldName);
       criteria.setFieldFunction(fieldFunction);
+      criteria.setOptions(readOptions(node.get("options")));
 
       return (criteria);
+   }
+
+
+
+   /*******************************************************************************
+    ** Read a criteria's options:  an array of CriteriaOption names (null when
+    ** absent or empty).  An unknown name is a bad request (a QBadRequestException
+    ** cause on a JsonMappingException - jackson drops the cause of a plain
+    ** IOException thrown from a deserializer).
+    *******************************************************************************/
+   private static Set<CriteriaOptionInterface> readOptions(JsonNode optionsNode) throws IOException
+   {
+      if(optionsNode == null || optionsNode.isNull())
+      {
+         return (null);
+      }
+
+      if(!optionsNode.isArray())
+      {
+         throw (new JsonMappingException(null, "Criteria options must be an array.", new QBadRequestException("Criteria options must be an array of option names.").withFieldError("options", "Must be an array of option names.")));
+      }
+
+      Set<CriteriaOptionInterface> options = new HashSet<>();
+      for(JsonNode optionNode : optionsNode)
+      {
+         String name = optionNode.asText();
+         try
+         {
+            options.add(CriteriaOption.valueOf(name));
+         }
+         catch(IllegalArgumentException e)
+         {
+            String message = "Unknown criteria option [" + name + "].  Known options: " + Arrays.toString(CriteriaOption.values()) + ".";
+            throw (new JsonMappingException(null, message, new QBadRequestException(message).withFieldError("options", message)));
+         }
+      }
+      return (options.isEmpty() ? null : options);
    }
 }

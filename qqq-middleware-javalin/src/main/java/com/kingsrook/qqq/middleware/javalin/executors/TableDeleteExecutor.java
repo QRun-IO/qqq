@@ -58,6 +58,8 @@ public class TableDeleteExecutor extends AbstractMiddlewareExecutor<TableDeleteI
    {
       try
       {
+         ExecutorSessionUtils.setTableVariantInSession(input.getTableVariant());
+
          DeleteInput deleteInput = new DeleteInput();
          deleteInput.setTableName(input.getTableName());
          deleteInput.setInputSource(QInputSource.USER);

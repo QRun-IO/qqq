@@ -61,6 +61,8 @@ public class TableInsertExecutor extends AbstractMiddlewareExecutor<TableInsertI
    {
       try
       {
+         ExecutorSessionUtils.setTableVariantInSession(input.getTableVariant());
+
          InsertInput insertInput = new InsertInput();
          insertInput.setTableName(input.getTableName());
          insertInput.setInputSource(QInputSource.USER);

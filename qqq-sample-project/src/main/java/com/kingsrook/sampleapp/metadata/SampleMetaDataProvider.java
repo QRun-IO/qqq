@@ -768,6 +768,12 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
       process.setName(PROCESS_NAME_CLONE_PEOPLE);
       process.setTableName(TABLE_NAME_PERSON);
 
+      /////////////////////////////////////////////////////////////////////////
+      // the extract step refuses a run with no selected records, so publish //
+      // that minimum in the process metadata (QRun-IO/qqq#1341)             //
+      /////////////////////////////////////////////////////////////////////////
+      process.setMinInputRecords(1);
+
       process.getFrontendStep(StreamedETLWithFrontendProcess.STEP_NAME_REVIEW)
          .withRecordListField(new QFieldMetaData("firstName", QFieldType.STRING))
          .withRecordListField(new QFieldMetaData("lastName", QFieldType.STRING))

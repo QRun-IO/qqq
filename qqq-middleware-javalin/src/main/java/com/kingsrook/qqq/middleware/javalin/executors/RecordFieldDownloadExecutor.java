@@ -43,6 +43,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldAdornment;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
+import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import com.kingsrook.qqq.middleware.javalin.executors.io.RecordFieldDownloadInput;
@@ -114,7 +115,7 @@ public class RecordFieldDownloadExecutor extends AbstractMiddlewareExecutor<Reco
       // determine content type from field adornment if available //
       //////////////////////////////////////////////////////////////
       String                           mimeType              = null;
-      Optional<FieldAdornment>         fileDownloadAdornment = fieldMetaData.getAdornments().stream().filter(a -> a.getType().equals(AdornmentType.FILE_DOWNLOAD)).findFirst();
+      Optional<FieldAdornment>         fileDownloadAdornment = CollectionUtils.nonNullList(fieldMetaData.getAdornments()).stream().filter(a -> a.getType().equals(AdornmentType.FILE_DOWNLOAD)).findFirst();
       Map<String, Serializable>        adornmentValues       = null;
       if(fileDownloadAdornment.isPresent())
       {

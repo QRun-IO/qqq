@@ -38,6 +38,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QBackendStepMetaData;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -124,6 +125,30 @@ public class RunBackendStepActionTest extends BaseTest
       assertThatThrownBy(() -> new RunBackendStepAction().execute(inputSupplier.get()))
          .isInstanceOf(QUserFacingException.class)
          .hasMessageContaining("Too many records");
+   }
+
+
+
+   /*******************************************************************************
+    ** A required input field with no value (and no callback to ask for it) is a
+    ** user-facing error naming the field (#1348).
+    *******************************************************************************/
+   @Test
+   void testMissingRequiredInputIsUserFacing()
+   {
+      QBackendStepMetaData step = (QBackendStepMetaData) QContext.getQInstance().getProcess(TestUtils.PROCESS_NAME_GREET_PEOPLE).getStep("prepare");
+      step.getInputMetaData().getFieldList().stream()
+         .filter(field -> "greetingPrefix".equals(field.getName()))
+         .forEach(field -> field.withIsRequired(true).withLabel("Greeting Prefix"));
+
+      RunBackendStepInput input = new RunBackendStepInput();
+      input.setProcessName(TestUtils.PROCESS_NAME_GREET_PEOPLE);
+      input.setStepName("prepare");
+      input.setRecords(List.of(new QRecord().withValue("firstName", "Darin")));
+
+      assertThatThrownBy(() -> new RunBackendStepAction().execute(input))
+         .isInstanceOf(QUserFacingException.class)
+         .hasMessageContaining("Missing values for required fields: Greeting Prefix");
    }
 
 

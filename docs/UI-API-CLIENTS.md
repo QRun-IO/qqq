@@ -30,7 +30,8 @@ Related docs: `UI-API-EXTENSIONS.md` covers the extension point and in-process i
    1.0.0 surface. Use `features` and `extensions` to decide which areas to show.
 2. `GET /metaData/authentication` returns the provider type. Web clients sign in with it, then call
    `POST /manageSession`; the session is the `sessionUUID` cookie. CLI, TUI and native clients sign
-   in as in section 7 and send `Authorization: Bearer <token>` on every call.
+   in as in section 7 (OAuth2, or `TABLE_BASED` username and password) and send
+   `Authorization: Bearer <token>` on every call.
 3. `GET /metaData` returns the apps, tables, processes, reports and widgets the user may use. Build
    the navigation from apps (`children`, `sections`) only. Never hard-code table or process names.
 4. Use the table, process, widget and report operations as the user moves around.
@@ -49,6 +50,11 @@ General rules:
   (`UNAUTHENTICATED`: sign in again or refresh the token; `PERMISSION_DENIED`; `NOT_FOUND`;
   `CONFLICT`; `RATE_LIMITED`: back off; `BAD_REQUEST`: show `fieldErrors` by field), and print
   `traceId` with any failure the user may report. Treat an unknown `code` by the HTTP status.
+- **Records: `get` wraps, `query` does not.** `GET /table/{t}/{pk}` (`getRecord`) answers
+  `{ "record": { "tableName", "recordLabel", "values", "displayValues", ... } }`, while
+  `POST /table/{t}/query` (`queryTable`) answers `{ "records": [ { "tableName", ... }, ... ] }` with each element a
+  bare record. Unwrap `record` from a get; read the elements of `records` as they are. A missing
+  record is a 404 (`NOT_FOUND`).
 - **Client channel.** Send `X-QQQ-Client: cli` (or `tui`, `ios`, ... optionally `/<detail>`, e.g.
   `cli/qqq-cli 0.1.0`) so audits and the client-channel permissions attribute your calls. A
   credential-scoped token is always attributed to `token:<id>` instead.
@@ -71,7 +77,7 @@ selections, go in the JSON body; query parameters are also accepted.
 | type | Meaning | Web | CLI | TUI | iOS |
 |---|---|---|---|---|---|
 | statistics | one headline number (`count`), with an optional comparison (`percentageAmount`, `increaseIsGood`) | stat tile | `label: count (Â±x%)` | boxed number | stat cell |
-| multiStatistics | several statistics groups | tiles row | one line per stat | grid of boxes | grouped cells |
+| multiStatistics | `statisticsGroupData[]`: groups (`header`, `subheader`, `icon`, `iconColor`), each with its stats in `statisticList[]` (`label`, `value`, `url`; the name is singular) | tiles row | one line per stat | grid of boxes | grouped cells |
 | table, multiTable | columns plus rows; a column of type `hidden` is not shown | data table | aligned text table, or CSV with `--csv` | scrollable table | list with detail rows |
 | chart, barChart, horizontalBarChart, stackedBarChart, lineChart, smallLineChart, pieChart | `chartData.labels` plus `chartData.datasets[]` (label and data) | chart | table of labels Ã— datasets | sparkline or bar chart in characters | Swift Charts |
 | html | `html` content | rendered HTML | text (tags stripped) | text | attributed string |
@@ -159,7 +165,9 @@ Hints describe meaning, never markup:
   (TEXT/HTML/MARKDOWN) and `content`.
 - **Possible values and the record picker.** A field with a possible value source shows a picker.
   The `picker` hints say how to present it as a list or a media grid, and which subtitle and
-  thumbnail fields to use. Search with `POST /table/{t}/possibleValues/{field}`.
+  thumbnail fields to use. Search with `POST /table/{t}/possibleValues/{field}`: `searchTerm`
+  matches the start of a label (table sources: of a search field), ignoring case; ids, dates and
+  numbers match exactly. A picker request (`picker`) matches anywhere in the text instead.
 - **App home.** Apps list `widgets` (the home dashboard) and `sections` (groups of tables, processes
   and reports). Render the widgets first, then the sections.
 - **Table capabilities.** `clientCapabilities` on table metadata says what to offer beyond CRUD, for
@@ -243,6 +251,23 @@ shortly before `exp`, refresh at the provider: `POST {token_endpoint}` with
 - *Session UUID:* a native app that used `POST /manageSession` (auth code + PKCE with the app's own
   client) may send `Authorization: Bearer {sessionUUID}` instead of the cookie; the server keeps
   that session's tokens refreshed.
+
+**`TABLE_BASED` (username and password).** When `GET /metaData/authentication` says
+`type: TABLE_BASED`, the app checks passwords against its own user table; there is no OAuth2
+provider, and the same recipe serves browsers and native clients:
+1. Ask for the username and password, and `POST /manageSession` with
+   `Authorization: Basic base64(username:password)` (UTF-8) and the body `{}`. The body has no
+   username or password properties; the credentials only travel in that header. `401` means they
+   were refused; after repeated failures the username is locked out for a while (the message says
+   so).
+2. Keep the session's `uuid` from the response. A server that sets `HttpOnly` session cookies
+   leaves `uuid` out of the body; read it from the `sessionUUID` cookie in the `Set-Cookie` header
+   instead.
+3. Send `Authorization: Bearer {uuid}` on every later call (sending the `sessionUUID` cookie works
+   too). Never resend the Basic header per call: each one is a new sign-in, with a new session row.
+4. `POST /logout` with the same bearer ends the session; a `401` on any call means the session
+   ended or expired, so sign in again. Store the uuid like a token (keychain or a 0600 file), and
+   never store the password.
 
 ## 8. Several servers (replicas)
 

@@ -24,7 +24,6 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1;
 import java.util.List;
 import java.util.UUID;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
-import com.kingsrook.qqq.middleware.javalin.TestUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
 import com.kingsrook.qqq.middleware.javalin.specs.SpecTestBase;
 import kong.unirest.HttpResponse;
@@ -149,6 +148,22 @@ class ProcessCancelSpecV1Test extends SpecTestBase
       JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
       assertThat(jsonObject.has("error")).isTrue();
       assertThat(jsonObject.getString("error")).isNotEmpty();
+   }
+
+
+
+   /*******************************************************************************
+    ** A processUUID that is not a UUID is a bad request (#1346).
+    *******************************************************************************/
+   @Test
+   void testCancelMalformedUUID()
+   {
+      HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/processes/greet/nonexistent-uuid/cancel")
+         .cookie("sessionId", "v1-process-session")
+         .asString();
+
+      assertEquals(400, response.getStatus(), response.getBody());
+      assertEquals("processUUID", JsonUtils.toJSONObject(response.getBody()).getJSONArray("fieldErrors").getJSONObject(0).getString("field"));
    }
 
 }

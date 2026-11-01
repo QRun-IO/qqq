@@ -115,6 +115,14 @@ public class ProcessStepSpecV1 extends AbstractEndpointSpec<ProcessInitOrStepInp
             .withExample("inputForm")
             .withIn(In.PATH),
 
+         new Parameter()
+            .withName("isStepBack")
+            .withDescription("When true, go back:  stepName names the process's back step (the `backStep` of the current step), and the process restarts at it instead of continuing after it.")
+            .withRequired(false)
+            .withSchema(new Schema().withType(Type.BOOLEAN))
+            .withExample("true")
+            .withIn(In.QUERY),
+
          ProcessSpecUtilsV1.defineTableVariantQueryParameter()
       );
    }
@@ -127,7 +135,7 @@ public class ProcessStepSpecV1 extends AbstractEndpointSpec<ProcessInitOrStepInp
    @Override
    public RequestBody defineRequestBody()
    {
-      return new RequestBody()
+      RequestBody requestBody = new RequestBody()
          .withContent(ContentType.MULTIPART_FORM_DATA.getMimeType(), new Content()
             .withSchema(new Schema()
                .withType(Type.OBJECT)
@@ -149,6 +157,8 @@ public class ProcessStepSpecV1 extends AbstractEndpointSpec<ProcessInitOrStepInp
                .withProperty(ProcessSpecUtilsV1.TABLE_VARIANT_PARAM, ProcessSpecUtilsV1.defineTableVariantFormProperty())
             )
          );
+
+      return (ProcessSpecUtilsV1.withUrlEncodedFormContent(requestBody));
    }
 
 

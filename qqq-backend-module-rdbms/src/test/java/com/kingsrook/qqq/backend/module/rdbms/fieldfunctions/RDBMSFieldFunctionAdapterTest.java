@@ -30,6 +30,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.functions.implementa
 import com.kingsrook.qqq.backend.core.model.metadata.fields.functions.implementations.WeekdayOfDateFunction;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.functions.implementations.WeekdayOfDateTimeFunction;
 import com.kingsrook.qqq.backend.module.rdbms.BaseTest;
+import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSBackendMetaData;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -144,6 +145,26 @@ class RDBMSFieldFunctionAdapterTest extends BaseTest
          .withFieldName("birthDate");
 
       assertEquals("WEEKDAY(birth_date) + 1", adapter.wrapColumnName("birth_date", ff, s -> s));
+   }
+
+
+
+   /***************************************************************************
+    ** An h2 backend gets the H2 weekday adapter (ISO_DAY_OF_WEEK); other
+    ** vendors keep the MySQL one (#1355).
+    ***************************************************************************/
+   @Test
+   void testH2BackendUsesH2WeekdayOfDateAdapter()
+   {
+      FieldFunction ff = new FieldFunction().withFunctionTypeIdentifier(WeekdayOfDateFunction.IDENTIFIER).withFieldName("birthDate");
+
+      RDBMSFieldFunctionAdapterInterface h2Adapter = new RDBMSBackendMetaData().withVendor(RDBMSBackendMetaData.VENDOR_H2).getFieldFunctionAdapter(WeekdayOfDateFunction.IDENTIFIER);
+      assertEquals("ISO_DAY_OF_WEEK(birth_date)", h2Adapter.wrapColumnName("birth_date", ff, s -> s));
+      assertEquals("MOD(ISO_DAY_OF_WEEK(birth_date), 7)", h2Adapter.wrapColumnNameForOrderBy("birth_date",
+         new FieldFunction().withFunctionTypeIdentifier(WeekdayOfDateFunction.IDENTIFIER).withArguments(Map.of(WeekdayOfDateFunction.PARAM_SORT_SUNDAY_FIRST, true)), s -> s));
+
+      RDBMSFieldFunctionAdapterInterface mysqlAdapter = new RDBMSBackendMetaData().withVendor(RDBMSBackendMetaData.VENDOR_MYSQL).getFieldFunctionAdapter(WeekdayOfDateFunction.IDENTIFIER);
+      assertEquals("WEEKDAY(birth_date) + 1", mysqlAdapter.wrapColumnName("birth_date", ff, s -> s));
    }
 
 

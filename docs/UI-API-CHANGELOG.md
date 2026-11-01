@@ -80,6 +80,66 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 
 ## Versions
 
+### 1.9.0 (next QQQ 4.1 release) - terminal client findings and native-client contract fixes
+
+Fixes for issues found while building the terminal clients (`qqq-cli`) and native clients.
+
+- **`tableVariant` on insert, update and delete** (#1351): `POST /table/{tableName}`,
+  `PATCH /table/{tableName}/{primaryKey}` and `DELETE /table/{tableName}/{primaryKey}` accept the
+  optional `tableVariant` query parameter (a JSON object with `type` and `id`, as on get) and write
+  to that variant. A value that is not a JSON object answers 400.
+- **Export request errors are 400** (#1345, behaviour fix, no schema change): `POST
+  /table/{tableName}/export` answers 400 `BAD_REQUEST` (was 500) for an unsupported or missing
+  `format` and for an unknown or unqueryable name in `fieldNames`, with `fieldErrors` naming
+  `format` or `fieldNames`. `fieldErrors` is now filled for any bad request that names its fields.
+- **Export joins** (#1352): the `exportTable` body accepts `joins` (QueryJoin objects, as in
+  query requests), and `fieldNames` may name a joined field as `joinTableOrAlias.fieldName`. A
+  joined name whose table is not among the joins is joined automatically (LEFT) when the instance
+  can join it (before, only exposed joins worked, so e.g. `pet.name` on `person` answered 500); a
+  table that cannot be joined answers 400 with a `joins` field error.
+- **Possible-value ids are checked** (#1338, behaviour fix, no schema change): an `ids` entry
+  that is not a number, for a table source whose id field is numeric, answers 400 with an `ids`
+  field error (was a 500 from the failed query on RDBMS backends).
+- **Malformed process UUID on cancel is 400** (#1346, behaviour fix): `POST
+  /processes/{processName}/{processUUID}/cancel` answers 400 with a `processUUID` field error (was
+  500) when the UUID is malformed. A cancelled run still keeps its state and can be stepped; making
+  cancel terminal is deferred (see `SampleProcessCancellationContractTest`).
+- **`stepProcess` declares `isStepBack`** (#1347): the optional boolean query parameter it already
+  honored (go back: restart at the named back step).
+- **Url-encoded process bodies** (#1336): `initProcess` and `stepProcess` also declare an
+  `application/x-www-form-urlencoded` body (the multipart fields without file uploads), and read
+  it; before, a url-encoded `values` was silently ignored. The in-process invoker
+  (`UiApiInvoker`) still sends form fields to them as multipart.
+- **`GET /version` features reflect what is installed** (#1337, #1343, behaviour fix):
+  `durableJobs` is listed only when the durable jobs tables are installed (the `/jobs` routes are
+  bound only then), and `recordSearch` only when a record search provider is configured or some
+  table declares search fields. Deployments that have them see no change.
+- **Null process values** (#1356, behaviour fix): a JSON `null` in a process init or step `values`
+  is a cleared value (was a 500 "Non-serializable value in param map").
+- **Criteria `options`** (#1358): `FilterCriteria` declares `options`, an array of option names
+  (today `CASE_INSENSITIVE`, which makes string operators such as `CONTAINS` match regardless of
+  case on any backend), and the server reads it (before, it was silently dropped). An unknown name
+  answers 400 with an `options` field error.
+- **Realtime events keep empty values** (#1354, behaviour fix, no schema change): the stream
+  serialises event data omitting only nulls, so an empty list (e.g. `presence.changed`
+  `viewers: []`, or an empty `fields` on `record.*`), an empty object or an empty string is sent
+  instead of the key being dropped.
+- **`WidgetDataMultiStatistics.statisticsGroupData`** is typed (#1353): each group has `header`,
+  `subheader`, `icon`, `iconColor` and `statisticList` (`label`, `value`, `url`). The list name is
+  `statisticList`, singular, as the server has always sent it and the web UI reads it; no payload
+  changed.
+- **`TABLE_BASED` native sign-in** (#1342, behaviour fix, no schema change): after
+  `POST /manageSession` with `Authorization: Basic`, a client may send the session uuid as
+  `Authorization: Bearer {uuid}` (before, only the `sessionUUID`/`sessionId` cookies were read).
+  The `manageSession` description and `UI-API-CLIENTS.md` section 7 give the recipe.
+- **Possible-value search ignores case for table sources** (#1339, behaviour fix): `searchTerm`
+  matched a table source's search fields by prefix with the backend's own case rule, so on H2 and
+  PostgreSQL `can` did not find `Canada`. Table sources now match by prefix ignoring case, as enum
+  and default custom sources already did. Matching stays by prefix (picker requests match
+  anywhere), and the operations' `searchTerm` description now states the rule.
+- **Documentation:** `getRecord` wraps its record as `{ record }` while `queryTable` lists bare
+  records in `records` (#1340).
+
 ### 1.8.0 (QQQ 4.1.0-RC.17) - profiles and avatars
 See [USER-PROFILE-AVATARS.md](USER-PROFILE-AVATARS.md).
 

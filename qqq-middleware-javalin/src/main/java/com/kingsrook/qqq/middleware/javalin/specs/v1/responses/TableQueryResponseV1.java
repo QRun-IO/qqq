@@ -36,7 +36,7 @@ import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.Output
  *******************************************************************************/
 public class TableQueryResponseV1 implements TableQueryOutputInterface, ToSchema
 {
-   @OpenAPIDescription("List of records that satisfy the query request")
+   @OpenAPIDescription("List of records that satisfy the query request.  Each element is a record object itself (no wrapper), unlike the get response, which wraps its one record as `{ record }`.")
    @OpenAPIListItems(value = OutputRecord.class, useRef = true)
    private List<OutputRecord> records;
 

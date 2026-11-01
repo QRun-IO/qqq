@@ -24,6 +24,7 @@ package com.kingsrook.qqq.middleware.javalin.executors.io;
 import java.io.Serializable;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.TableVariant;
 
 
 /*******************************************************************************
@@ -34,6 +35,7 @@ public class TableUpdateInput extends AbstractMiddlewareInput
    private String expectedVersion;
 
    private String                    tableName;
+   private TableVariant tableVariant;
    private String                    primaryKey;
    private Map<String, Serializable> recordValues;
    private QRecord record;
@@ -202,4 +204,36 @@ public class TableUpdateInput extends AbstractMiddlewareInput
       setExpectedVersion(expectedVersion);
       return (this);
    }
+
+
+
+   /*******************************************************************************
+    ** Getter for tableVariant
+    *******************************************************************************/
+   public TableVariant getTableVariant()
+   {
+      return (tableVariant);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for tableVariant
+    *******************************************************************************/
+   public void setTableVariant(TableVariant tableVariant)
+   {
+      this.tableVariant = tableVariant;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for tableVariant
+    *******************************************************************************/
+   public TableUpdateInput withTableVariant(TableVariant tableVariant)
+   {
+      this.tableVariant = tableVariant;
+      return (this);
+   }
+
 }

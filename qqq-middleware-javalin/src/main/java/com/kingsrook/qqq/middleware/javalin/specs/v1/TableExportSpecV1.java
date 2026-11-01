@@ -110,9 +110,14 @@ public class TableExportSpecV1 extends AbstractEndpointSpec<TableExportInput, Ta
          .withDescription("QueryFilter to specify matching records to export")
          .withRef("#/components/schemas/QueryFilter"));
       properties.put("fieldNames", new Schema()
-         .withDescription("Optional subset of field names to include in the export")
+         .withDescription("Optional subset of field names to include in the export.  A joined table's field is named joinTableOrAlias.fieldName (e.g. orderLine.sku); its table is joined (LEFT) when it is not one of the joins.")
          .withType(Type.ARRAY)
          .withItems(new Schema().withType(Type.STRING)));
+      properties.put("joins", new Schema()
+         .withDescription("QueryJoin objects (as in query requests) specifying tables to be joined into the export, whose fields fieldNames may name.")
+         .withType(Type.ARRAY)
+         .withItems(new Schema()
+            .withRef("#/components/schemas/QueryJoin")));
       properties.put("limit", new Schema()
          .withDescription("Optional maximum number of records to export")
          .withType(Type.INTEGER));
@@ -186,6 +191,7 @@ public class TableExportSpecV1 extends AbstractEndpointSpec<TableExportInput, Ta
             input.setIncludeHeaderRow(requestBody.getBoolean("includeHeaderRow"));
          }
 
+         input.setJoins(QuerySpecUtils.getJoinsFromRequestBody(requestBody));
          input.setTableVariant(QuerySpecUtils.getTableVariantFromRequestBody(requestBody));
       }
 

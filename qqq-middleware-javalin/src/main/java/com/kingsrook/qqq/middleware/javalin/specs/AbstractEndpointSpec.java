@@ -553,6 +553,10 @@ public abstract class AbstractEndpointSpec<
                      throw e;
                   }
                }
+               else if("application/x-www-form-urlencoded".equals(requestContentType))
+               {
+                  value = context.formParam(name);
+               }
                else if(ContentType.APPLICATION_JSON.getMimeType().equals(requestContentType))
                {
                   JSONObject jsonObject = getRequestBodyAsJsonObject(context);
@@ -592,7 +596,15 @@ public abstract class AbstractEndpointSpec<
       for(String key : jsonObject.keySet())
       {
          Object value = jsonObject.get(key);
-         if(value instanceof Serializable s)
+         if(JSONObject.NULL.equals(value))
+         {
+            /////////////////////////////////////////////////////////
+            // a JSON null is a cleared value (e.g. a field a user //
+            // emptied on a process screen), not an error          //
+            /////////////////////////////////////////////////////////
+            map.put(key, null);
+         }
+         else if(value instanceof Serializable s)
          {
             map.put(key, s);
          }

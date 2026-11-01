@@ -31,6 +31,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.function.Function;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -63,11 +64,14 @@ import com.kingsrook.qqq.middleware.javalin.executors.io.ProcessInitOrStepOrStat
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.ProcessInitOrStepOrStatusResponseV1;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.TableVariant;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.WidgetBlock;
+import com.kingsrook.qqq.openapi.model.Content;
 import com.kingsrook.qqq.openapi.model.Example;
 import com.kingsrook.qqq.openapi.model.In;
 import com.kingsrook.qqq.openapi.model.Parameter;
+import com.kingsrook.qqq.openapi.model.RequestBody;
 import com.kingsrook.qqq.openapi.model.Schema;
 import com.kingsrook.qqq.openapi.model.Type;
+import io.javalin.http.ContentType;
 import io.javalin.http.Context;
 import io.javalin.http.UploadedFile;
 import org.json.JSONArray;
@@ -83,6 +87,7 @@ public class ProcessSpecUtilsV1
    private static final QLogger LOG = QLogger.getLogger(ProcessSpecUtilsV1.class);
 
    public static final String TABLE_VARIANT_PARAM = "tableVariant";
+   public static final String FORM_URL_ENCODED    = "application/x-www-form-urlencoded";
 
    private static final String TABLE_VARIANT_DESCRIPTION = "For processes on tables that use variant backends, JSON object naming the variant to use (the same `type` and `id` as in table requests).";
    private static final String TABLE_VARIANT_EXAMPLE     = """
@@ -124,6 +129,38 @@ public class ProcessSpecUtilsV1
          .withSchema(new Schema().withType(Type.STRING))
          .withExample(TABLE_VARIANT_EXAMPLE)
          .withIn(In.QUERY));
+   }
+
+
+
+   /*******************************************************************************
+    ** Add an application/x-www-form-urlencoded body to a process request body
+    ** that declares a multipart one:  the same form fields, without the file
+    ** uploads (which only multipart can carry).  A url-encoded `values` field is
+    ** then read, rather than silently ignored.
+    *******************************************************************************/
+   public static RequestBody withUrlEncodedFormContent(RequestBody requestBody)
+   {
+      Content multipart = requestBody.getContent().get(ContentType.MULTIPART_FORM_DATA.getMimeType());
+      if(multipart == null || multipart.getSchema() == null || multipart.getSchema().getProperties() == null)
+      {
+         return (requestBody);
+      }
+
+      Map<String, Schema> properties = new LinkedHashMap<>();
+      for(Map.Entry<String, Schema> entry : multipart.getSchema().getProperties().entrySet())
+      {
+         if(!"binary".equals(entry.getValue().getFormat()))
+         {
+            properties.put(entry.getKey(), entry.getValue());
+         }
+      }
+
+      return (requestBody.withContent(FORM_URL_ENCODED, new Content()
+         .withSchema(new Schema()
+            .withType(Type.OBJECT)
+            .withDescription("The same fields as the multipart body, without file uploads.")
+            .withProperties(properties))));
    }
 
 
@@ -215,7 +252,7 @@ public class ProcessSpecUtilsV1
       errorResponse.setError("Illegal Argument Exception: NaN");
       errorResponse.setUserFacingError("The process could not be completed due to invalid input.");
 
-      Function<ProcessInitOrStepOrStatusResponseV1, Example> responseToExample = response -> new Example().withValue(convertResponseToJSONObject(response).toMap());
+      Function<ProcessInitOrStepOrStatusResponseV1, Example> responseToExample = response -> new Example().withValue(sortMapsByKey(convertResponseToJSONObject(response).toMap()));
 
       return MapBuilder.of(() -> new LinkedHashMap<String, Example>())
          .with("COMPLETE", responseToExample.apply(completeResponse))
@@ -224,6 +261,40 @@ public class ProcessSpecUtilsV1
          .with("RUNNING", responseToExample.apply(runningResponse))
          .with("ERROR", responseToExample.apply(errorResponse))
          .build();
+   }
+
+
+
+   /***************************************************************************
+    ** Copy a JSONObject.toMap() result with every nested map sorted by key.
+    ** JSONObject keeps its members in a HashMap, so the key order of an example
+    ** built from it depends on hashing and insertion order, which can differ
+    ** with what ran earlier in the JVM; sorting keeps the generated OpenAPI
+    ** document stable.
+    ***************************************************************************/
+   static Object sortMapsByKey(Object value)
+   {
+      if(value instanceof Map<?, ?> map)
+      {
+         TreeMap<String, Object> sorted = new TreeMap<>();
+         for(Map.Entry<?, ?> entry : map.entrySet())
+         {
+            sorted.put(String.valueOf(entry.getKey()), sortMapsByKey(entry.getValue()));
+         }
+         return (sorted);
+      }
+
+      if(value instanceof List<?> list)
+      {
+         List<Object> sortedList = new ArrayList<>();
+         for(Object element : list)
+         {
+            sortedList.add(sortMapsByKey(element));
+         }
+         return (sortedList);
+      }
+
+      return (value);
    }
 
 

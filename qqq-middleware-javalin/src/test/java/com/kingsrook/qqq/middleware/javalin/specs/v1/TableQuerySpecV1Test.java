@@ -142,6 +142,35 @@ class TableQuerySpecV1Test extends SpecTestBase
 
 
    /*******************************************************************************
+    ** A criterion's options are read: CASE_INSENSITIVE makes CONTAINS match
+    ** regardless of case on H2 (case-sensitive without it); an unknown option is
+    ** a 400 (#1358).
+    *******************************************************************************/
+   @Test
+   void testCaseInsensitiveOption()
+   {
+      String criterion = """
+         {"filter":{"criteria":[{"fieldName":"lastName","operator":"CONTAINS","values":["kelk"]%s}]}}""";
+
+      HttpResponse<String> without = Unirest.post(getBaseUrlAndPath() + "/table/person/query")
+         .contentType(ContentType.APPLICATION_JSON.getMimeType()).body(criterion.formatted("")).asString();
+      assertEquals(200, without.getStatus(), without.getBody());
+      assertEquals(0, JsonUtils.toJSONObject(without.getBody()).getJSONArray("records").length());
+
+      HttpResponse<String> with = Unirest.post(getBaseUrlAndPath() + "/table/person/query")
+         .contentType(ContentType.APPLICATION_JSON.getMimeType()).body(criterion.formatted(",\"options\":[\"CASE_INSENSITIVE\"]")).asString();
+      assertEquals(200, with.getStatus(), with.getBody());
+      assertThat(JsonUtils.toJSONObject(with.getBody()).getJSONArray("records").length()).isGreaterThan(0);
+
+      HttpResponse<String> unknown = Unirest.post(getBaseUrlAndPath() + "/table/person/query")
+         .contentType(ContentType.APPLICATION_JSON.getMimeType()).body(criterion.formatted(",\"options\":[\"SHOUTY\"]")).asString();
+      assertEquals(400, unknown.getStatus(), unknown.getBody());
+      assertThat(unknown.getBody()).contains("SHOUTY");
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    @Test

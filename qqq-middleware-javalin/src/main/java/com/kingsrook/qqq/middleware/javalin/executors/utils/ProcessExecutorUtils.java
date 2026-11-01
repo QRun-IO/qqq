@@ -26,9 +26,11 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
 import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.processes.ProcessState;
@@ -243,5 +245,23 @@ public class ProcessExecutorUtils
          values.put("audits", (Serializable) records);
       }
       return (values);
+   }
+
+
+
+   /*******************************************************************************
+    ** A processUUID path parameter that is not a UUID is a bad request (rather
+    ** than an IllegalArgumentException from the state lookup).
+    *******************************************************************************/
+   public static void requireValidProcessUUID(String processUUID) throws QBadRequestException
+   {
+      try
+      {
+         UUID.fromString(processUUID);
+      }
+      catch(IllegalArgumentException | NullPointerException e)
+      {
+         throw (new QBadRequestException("processUUID [" + processUUID + "] is not a valid UUID.").withFieldError("processUUID", "Not a valid UUID."));
+      }
    }
 }

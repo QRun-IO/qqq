@@ -23,6 +23,7 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components;
 
 import java.util.List;
 import java.util.stream.Collectors;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.CriteriaOption;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
@@ -93,6 +94,18 @@ public class FilterCriteria implements ToSchema
    public List<String> getValues()
    {
       return (CollectionUtils.nonNullList(this.wrapped.getValues()).stream().map(String::valueOf).collect(Collectors.toList()));
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @OpenAPIDescription("Options for how the criteria is applied, e.g. CASE_INSENSITIVE (string operators match regardless of case).  Since 1.9.0.")
+   @OpenAPIListItems(value = CriteriaOption.class, useRef = false)
+   public List<String> getOptions()
+   {
+      return (CollectionUtils.nonNullCollection(this.wrapped.getOptions()).stream().map(String::valueOf).collect(Collectors.toList()));
    }
 
 }

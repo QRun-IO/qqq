@@ -32,6 +32,7 @@ import com.kingsrook.qqq.middleware.javalin.specs.SpecTestBase;
 import io.javalin.http.ContentType;
 import kong.unirest.HttpResponse;
 import kong.unirest.Unirest;
+import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -126,17 +127,40 @@ class TableExportSpecV1Test extends SpecTestBase
 
 
    /*******************************************************************************
-    **
+    ** An unsupported format is a bad request naming the format field (#1345).
     *******************************************************************************/
    @Test
    void testExportInvalidFormat()
    {
       HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/table/person/export")
          .contentType(ContentType.APPLICATION_JSON.getMimeType())
-         .body(JsonUtils.toJson(Map.of("format", "invalidFormat")))
+         .body(JsonUtils.toJson(Map.of("format", "pdf")))
          .asString();
 
-      assertThat(response.getStatus()).isIn(400, 500);
+      assertEquals(400, response.getStatus(), response.getBody());
+      JSONObject body = new JSONObject(response.getBody());
+      assertEquals("BAD_REQUEST", body.getString("code"));
+      assertThat(body.getString("message")).contains("Unsupported report format: pdf.");
+      assertEquals("format", body.getJSONArray("fieldErrors").getJSONObject(0).getString("field"));
+   }
+
+
+
+   /*******************************************************************************
+    ** An unknown field name is a bad request naming the fieldNames field (#1345).
+    *******************************************************************************/
+   @Test
+   void testExportUnknownFieldName()
+   {
+      HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/table/person/export")
+         .contentType(ContentType.APPLICATION_JSON.getMimeType())
+         .body(JsonUtils.toJson(Map.of("format", "csv", "fieldNames", List.of("id", "bogus"))))
+         .asString();
+
+      assertEquals(400, response.getStatus(), response.getBody());
+      JSONObject fieldError = new JSONObject(response.getBody()).getJSONArray("fieldErrors").getJSONObject(0);
+      assertEquals("fieldNames", fieldError.getString("field"));
+      assertThat(fieldError.getString("message")).contains("bogus");
    }
 
 
@@ -181,6 +205,47 @@ class TableExportSpecV1Test extends SpecTestBase
       String body = response.getBody();
       assertThat(body).contains("First Name");
       assertThat(body).contains("Last Name");
+   }
+
+
+
+   /*******************************************************************************
+    ** A joined field name exports through a join given as in a query (here an
+    ** aliased self-join that is not an exposed join), and a joined field name
+    ** with no join given is joined automatically (#1352).
+    *******************************************************************************/
+   @Test
+   void testExportWithJoins()
+   {
+      HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/table/person/export")
+         .contentType(ContentType.APPLICATION_JSON.getMimeType())
+         .body(JsonUtils.toJson(Map.of(
+            "format", "csv",
+            "filter", new QQueryFilter(new QFilterCriteria("id", QCriteriaOperator.EQUALS, 1)),
+            "fieldNames", List.of("id", "partner.firstName"),
+            "joins", List.of(Map.of("joinTable", "person", "alias", "partner", "joinName", "PersonJoinPartnerPerson", "type", "LEFT"))
+         )))
+         .asString();
+      assertEquals(200, response.getStatus(), response.getBody());
+      assertThat(response.getBody()).contains("Person: First Name");
+      assertThat(response.getBody()).contains("Linda");
+
+      HttpResponse<String> automatic = Unirest.post(getBaseUrlAndPath() + "/table/person/export")
+         .contentType(ContentType.APPLICATION_JSON.getMimeType())
+         .body(JsonUtils.toJson(Map.of(
+            "format", "csv",
+            "filter", new QQueryFilter(new QFilterCriteria("lastName", QCriteriaOperator.EQUALS, "Kelkhoff")),
+            "fieldNames", List.of("id", "pet.name"))))
+         .asString();
+      assertEquals(200, automatic.getStatus(), automatic.getBody());
+      assertThat(automatic.getBody()).containsAnyOf("Chester", "Lucy");
+
+      HttpResponse<String> unknown = Unirest.post(getBaseUrlAndPath() + "/table/person/export")
+         .contentType(ContentType.APPLICATION_JSON.getMimeType())
+         .body(JsonUtils.toJson(Map.of("format", "csv", "fieldNames", List.of("id", "bogus.name"))))
+         .asString();
+      assertEquals(400, unknown.getStatus(), unknown.getBody());
+      assertEquals("fieldNames", new JSONObject(unknown.getBody()).getJSONArray("fieldErrors").getJSONObject(0).getString("field"));
    }
 
 }

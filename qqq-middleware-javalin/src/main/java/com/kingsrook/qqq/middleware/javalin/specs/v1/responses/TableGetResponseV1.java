@@ -33,7 +33,7 @@ import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.Output
  *******************************************************************************/
 public class TableGetResponseV1 implements TableGetOutputInterface, ToSchema
 {
-   @OpenAPIDescription("The record that was fetched")
+   @OpenAPIDescription("The record that was fetched.  The get response wraps it in this `record` property, while query responses list records unwrapped in `records`.")
    private OutputRecord record;
 
 

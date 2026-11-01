@@ -24,6 +24,7 @@ package com.kingsrook.qqq.backend.core.actions.processes;
 import java.util.UUID;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QCollectingLogger;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -63,6 +64,11 @@ public class CancelProcessActionTest extends BaseTest
       input.setProcessName(TestUtils.PROCESS_NAME_GREET_PEOPLE_INTERACTIVE);
       assertThatThrownBy(() -> new CancelProcessAction().execute(input))
          .hasMessageContaining("processUUID was not given");
+
+      input.setProcessUUID("not-a-uuid");
+      assertThatThrownBy(() -> new CancelProcessAction().execute(input))
+         .isInstanceOf(QBadRequestException.class)
+         .hasMessageContaining("is not a valid UUID");
 
       input.setProcessUUID(UUID.randomUUID().toString());
       assertThatThrownBy(() -> new CancelProcessAction().execute(input))

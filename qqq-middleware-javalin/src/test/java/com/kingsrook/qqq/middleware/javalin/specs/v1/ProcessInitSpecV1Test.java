@@ -34,6 +34,7 @@ import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.middleware.javalin.TestUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
 import com.kingsrook.qqq.middleware.javalin.specs.SpecTestBase;
+import com.kingsrook.qqq.openapi.model.Parameter;
 import kong.unirest.HttpResponse;
 import kong.unirest.Unirest;
 import org.json.JSONObject;
@@ -274,6 +275,70 @@ class ProcessInitSpecV1Test extends SpecTestBase
          .asString();
       assertThat(response.getStatus()).isGreaterThanOrEqualTo(400);
       assertThat(response.getBody()).contains("UploadFileArchiveTableName was not specified");
+   }
+
+
+
+   /*******************************************************************************
+    ** An application/x-www-form-urlencoded body is read like a multipart one -
+    ** its values are not silently ignored (#1336).
+    *******************************************************************************/
+   @Test
+   void testUrlEncodedFieldValues()
+   {
+      HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/processes/greet/init")
+         .field("recordsParam", "recordIds")
+         .field("recordIds", "2,3")
+         .field("values", new JSONObject()
+            .put("greetingPrefix", "Hey")
+            .put("greetingSuffix", "Jude")
+            .toString())
+         .asString();
+
+      assertEquals(200, response.getStatus(), response.getBody());
+      JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
+      assertEquals("COMPLETE", jsonObject.getString("type"), jsonObject.toString());
+      assertEquals("Hey X Jude", jsonObject.getJSONObject("values").getString("outputMessage"));
+   }
+
+
+
+   /*******************************************************************************
+    ** A JSON null in values is a cleared value, not a 500 (#1356).
+    *******************************************************************************/
+   @Test
+   void testNullFieldValue()
+   {
+      HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/processes/greet/init")
+         .multiPartContent()
+         .field("recordsParam", "recordIds")
+         .field("recordIds", "2,3")
+         .field("values", new JSONObject()
+            .put("greetingPrefix", JSONObject.NULL)
+            .put("greetingSuffix", "Jude")
+            .toString())
+         .asString();
+
+      assertEquals(200, response.getStatus(), response.getBody());
+      JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
+      assertEquals("COMPLETE", jsonObject.getString("type"), jsonObject.toString());
+   }
+
+
+
+   /*******************************************************************************
+    ** The step operation declares the isStepBack query parameter it honors
+    ** (#1347).
+    *******************************************************************************/
+   @Test
+   void testStepDeclaresIsStepBack()
+   {
+      Parameter isStepBack = new ProcessStepSpecV1().defineRequestParameters().stream()
+         .filter(parameter -> "isStepBack".equals(parameter.getName()))
+         .findFirst().orElseThrow();
+      assertEquals("query", isStepBack.getIn());
+      assertEquals("boolean", isStepBack.getSchema().getType());
+      assertThat(isStepBack.getRequired()).isNotEqualTo(Boolean.TRUE);
    }
 
 }

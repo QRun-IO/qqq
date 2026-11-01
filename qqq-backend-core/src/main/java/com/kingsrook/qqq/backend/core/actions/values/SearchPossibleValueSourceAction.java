@@ -289,7 +289,7 @@ public class SearchPossibleValueSourceAction
          catch(Exception e)
          {
             String message = "Id [" + id + "] is not a valid " + idField.getType().name().toLowerCase(Locale.ROOT) + " id for " + table.getLabel() + ".";
-            throw (new QBadRequestException(message).withFieldError("ids", message));
+            throw (new QBadRequestException(message, e).withFieldError("ids", message));
          }
       }
       return (rs);

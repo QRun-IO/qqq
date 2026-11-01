@@ -29,8 +29,8 @@ import java.util.Map;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
-import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.personalization.TableMetaDataPersonalizerInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QueryOrCountInputInterface;
@@ -79,7 +79,7 @@ public class FilterValidationHelper
 
       if(!unrecognizedFieldNames.isEmpty())
       {
-         throw (new QUserFacingException("Query Filter contained " + unrecognizedFieldNames.size() + " unrecognized field name" + StringUtils.plural(unrecognizedFieldNames) + ": " + StringUtils.join(",", unrecognizedFieldNames)));
+         throw (new QBadRequestException("Query Filter contained " + unrecognizedFieldNames.size() + " unrecognized field name" + StringUtils.plural(unrecognizedFieldNames) + ": " + StringUtils.join(",", unrecognizedFieldNames)));
       }
    }
 
@@ -92,24 +92,24 @@ public class FilterValidationHelper
    {
       if(depth > 64)
       {
-         throw (new QUserFacingException("Query filter nesting is too deep."));
+         throw (new QBadRequestException("Query filter nesting is too deep."));
       }
       if(filter == null)
       {
-         throw (new QUserFacingException("Query Filter contained a null subfilter"));
+         throw (new QBadRequestException("Query Filter contained a null subfilter"));
       }
       for(QFilterCriteria criteria : CollectionUtils.nonNullList(filter.getCriteria()))
       {
          if(criteria == null || !StringUtils.hasContent(criteria.getFieldName()) || criteria.getOperator() == null)
          {
-            throw (new QUserFacingException("Query Filter criteria must specify a field name and operator"));
+            throw (new QBadRequestException("Query Filter criteria must specify a field name and operator"));
          }
          if(criteria.getOperator() == QCriteriaOperator.CONTAINS_ALL)
          {
             QVirtualFieldMetaData virtualField = CollectionUtils.nonNullMap(mainTable.getVirtualFields()).get(criteria.getFieldName());
             if(virtualField == null || virtualField.getCriteriaExpander() == null)
             {
-               throw (new QUserFacingException("CONTAINS_ALL is only supported on virtual fields with a criteria expander."));
+               throw (new QBadRequestException("CONTAINS_ALL is only supported on virtual fields with a criteria expander."));
             }
          }
          for(Serializable value : CollectionUtils.nonNullList(criteria.getValues()))
@@ -118,12 +118,12 @@ public class FilterValidationHelper
             {
                if(criteria.getValues().size() != 1 || (criteria.getOperator() != QCriteriaOperator.IN && criteria.getOperator() != QCriteriaOperator.NOT_IN) || criteria.getOtherFieldName() != null)
                {
-                  throw (new QUserFacingException("A sub-query must be the single value of IN or NOT_IN."));
+                  throw (new QBadRequestException("A sub-query must be the single value of IN or NOT_IN."));
                }
                QTableMetaData subTable = QContext.getQInstance().getTable(subQuery.getTableName());
                if(subTable == null || subQuery.getFieldName() == null || !subTable.getFields().containsKey(subQuery.getFieldName()))
                {
-                  throw (new QUserFacingException("Sub-query must select an existing field from an existing table."));
+                  throw (new QBadRequestException("Sub-query must select an existing field from an existing table."));
                }
                QueryInput inner = new QueryInput(subQuery.getTableName()).withFilter(subQuery.getFilter());
                inner.setInputSource(queryOrCountInputInterface.getInputSource());
@@ -150,7 +150,7 @@ public class FilterValidationHelper
          }
          if(!StringUtils.hasContent(fieldName))
          {
-            throw (new QUserFacingException("Query Filter order by must specify a field name"));
+            throw (new QBadRequestException("Query Filter order by must specify a field name"));
          }
          if(orderBy instanceof QFilterOrderByAggregate || orderBy instanceof QFilterOrderByGroupBy)
          {

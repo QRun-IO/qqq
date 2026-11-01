@@ -105,6 +105,13 @@ public class RunProcessAction
 
    public static final String PROCESS_TRACER_CODE_REFERENCE_FIELD = "processTracerCodeReference";
 
+   /////////////////////////////////////////////////////////////////////////////////
+   // the record selection a process was started with (a JSON QQueryFilter), kept //
+   // in the process state, so a step on a later call (e.g., after a frontend     //
+   // form) can still find the selected records.  set by the middleware at init.  //
+   /////////////////////////////////////////////////////////////////////////////////
+   public static final String INIT_RECORDS_FILTER_JSON = "initRecordsFilterJSON";
+
    ////////////////////////////////////////////////////////////////////////////////////////////////
    // indicator that the timestamp field should be updated - e.g., the execute step is finished. //
    ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -170,6 +177,7 @@ public class RunProcessAction
       {
          validateFieldAccessInput(runProcessInput, process);
       }
+      restoreInitRecordsCallback(runProcessInput);
 
       /////////////////////////////////////////////////////////////////////////////////////////////////////////////
       // these should always be clear when we're starting a run - so make sure they haven't leaked from previous //
@@ -650,6 +658,10 @@ public class RunProcessAction
       {
          ProcessStateAccess.requireAccess(optionalProcessState.get().getStateAccess(), process.getName(), runProcessInput.getProcessUUID());
       }
+      if(optionalProcessState.isPresent() && optionalProcessState.get().getIsCancelled())
+      {
+         throw (new QBadRequestException("This process was cancelled, so it cannot run any more steps."));
+      }
       if(optionalProcessState.isEmpty())
       {
          if(runProcessInput.getStartAfterStep() == null)
@@ -715,6 +727,29 @@ public class RunProcessAction
 
       ProcessState processState = optionalProcessState.get();
       return processState;
+   }
+
+
+
+   /*******************************************************************************
+    ** A call without a records callback (e.g., a later step over HTTP) gets one
+    ** for the selection the process was started with, if one is in its state, so
+    ** a step that reads the selected records finds them whichever call runs it.
+    *******************************************************************************/
+   private void restoreInitRecordsCallback(RunProcessInput runProcessInput) throws QException
+   {
+      String filterJSON = runProcessInput.getValueString(INIT_RECORDS_FILTER_JSON);
+      if(runProcessInput.getCallback() == null && StringUtils.hasContent(filterJSON))
+      {
+         try
+         {
+            runProcessInput.setCallback(QProcessCallbackFactory.forFilter(JsonUtils.toObject(filterJSON, QQueryFilter.class)));
+         }
+         catch(java.io.IOException e)
+         {
+            throw (new QBadRequestException("Invalid process records filter."));
+         }
+      }
    }
 
 
@@ -941,7 +976,7 @@ public class RunProcessAction
     ** Store the process state from a function result to the state provider
     **
     *******************************************************************************/
-   private void storeState(UUIDAndTypeStateKey stateKey, ProcessState processState)
+   protected void storeState(UUIDAndTypeStateKey stateKey, ProcessState processState)
    {
       getStateProvider().put(stateKey, processState);
    }
@@ -1287,7 +1322,7 @@ public class RunProcessAction
             .map(QFieldMetaData::getDefaultValue).filter(Objects::nonNull).map(String::valueOf).findFirst().orElse(null);
       }
       QTableMetaData table = QContext.getQInstance().getTable(tableName);
-      for(String name : List.of("queryFilterJson", "filterJSON", "defaultQueryFilter"))
+      for(String name : List.of("queryFilterJson", "filterJSON", "defaultQueryFilter", INIT_RECORDS_FILTER_JSON))
       {
          Serializable supplied = input.getValue(name);
          if(supplied == null || supplied instanceof String string && string.isBlank())

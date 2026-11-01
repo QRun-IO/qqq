@@ -502,6 +502,7 @@ public class EsbStatusBuilder
     ** A destination: { name, type, provider, brokerName, counters, queueInfo,
     ** capabilities }.  queueInfo is only for queues (a topic's messages are on
     ** its triggers' subscriptions), and needs the provider's managementUrl.
+    ** The counters include the consumption of the destination's triggers.
     *******************************************************************************/
    private Map<String, Object> buildDestination(QEsbDestinationMetaData destination)
    {
@@ -532,10 +533,30 @@ public class EsbStatusBuilder
       result.put("type", enumName(destination.getType()));
       result.put("provider", destination.getProviderName());
       result.put("brokerName", brokerName);
-      result.put("counters", buildCounters(EsbStats.getInstance().destination(destination.getName())));
+      result.put("counters", buildCounters(buildDestinationCounters(destination)));
       result.put("queueInfo", queueInfo);
       result.put("capabilities", capabilitiesView);
       return (result);
+   }
+
+
+
+   /*******************************************************************************
+    ** The destination's counters with its triggers' consumption rolled up:
+    ** consumption is counted per trigger, so without this a destination (a
+    ** topic in particular) would show its messages as never consumed.
+    *******************************************************************************/
+   private EsbCounterSnapshot buildDestinationCounters(QEsbDestinationMetaData destination)
+   {
+      List<EsbCounterSnapshot> triggerCounters = new ArrayList<>();
+      for(TriggerReference triggerReference : findTriggers())
+      {
+         if(Objects.equals(triggerReference.destination().getName(), destination.getName()))
+         {
+            triggerCounters.add(EsbStats.getInstance().trigger(triggerReference.trigger().getName(triggerReference.process().getName())));
+         }
+      }
+      return (EsbStats.getInstance().destination(destination.getName()).withTriggers(triggerCounters));
    }
 
 

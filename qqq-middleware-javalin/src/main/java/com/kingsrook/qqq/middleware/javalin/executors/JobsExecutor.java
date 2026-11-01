@@ -29,6 +29,8 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.tables.CountAction;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
@@ -40,6 +42,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.jobs.DurableJobs;
 import com.kingsrook.qqq.backend.core.jobs.DurableJobsSecurity;
+import com.kingsrook.qqq.backend.core.jobs.DurableJobsTables;
 import com.kingsrook.qqq.backend.core.jobs.model.JobAction;
 import com.kingsrook.qqq.backend.core.jobs.model.JobStatus;
 import com.kingsrook.qqq.backend.core.jobs.progress.JobProgressLifecycle;
@@ -98,10 +101,11 @@ public class JobsExecutor extends AbstractMiddlewareExecutor<JobsInput, JobsOutp
    @Override
    public void execute(JobsInput input, JobsOutput output) throws QException
    {
-      if(!QContext.getQSession().hasPermission("jobs_job.read"))
-      {
-         throw (new QPermissionDeniedException("Permission denied."));
-      }
+      /////////////////////////////////////////////////////////////////////////
+      // reading jobs is reading the jobs_job table: check it by the table's //
+      // permission rules (jobs_job.read under the default rules)            //
+      /////////////////////////////////////////////////////////////////////////
+      PermissionsHelper.checkTablePermissionThrowing(new QueryInput(TABLE_JOB), TablePermissionSubType.READ);
       DurableJobsSecurity.ensureSessionKeys(QContext.getQSession());
       DurableJobStore store = new DurableJobStore(DurableJobs.settings());
       if("list".equals(input.getOperation()))
@@ -202,7 +206,7 @@ public class JobsExecutor extends AbstractMiddlewareExecutor<JobsInput, JobsOutp
     *******************************************************************************/
    private JobListResponseV1 list(JobsInput input) throws QException
    {
-      if("all".equals(input.getScope()) && !QContext.getQSession().hasPermission("jobs_admin"))
+      if("all".equals(input.getScope()) && !QContext.getQSession().hasPermission(DurableJobsTables.PERMISSION_ADMIN))
       {
          throw (new QPermissionDeniedException("scope=all requires jobs_admin."));
       }

@@ -22,6 +22,7 @@ package com.kingsrook.qqq.esb.stats;
 
 
 import java.time.Instant;
+import java.util.List;
 
 
 /*******************************************************************************
@@ -29,6 +30,8 @@ import java.time.Instant;
  * (spec section 7).  Component names match the endpoint contract's Counter.
  *
  * Destinations count published and publishFailures; triggers count the rest.
+ * withTriggers rolls a destination's triggers up into its snapshot, so the
+ * destination also shows what was consumed from it.
  * avgMs (rounded) and maxMs are over succeeded runs.  lastActivity is the time
  * of the latest count of any kind, and lastError the message of the latest
  * failure; both are null until there is one.
@@ -51,4 +54,53 @@ public record EsbCounterSnapshot(
     ** The snapshot for a destination or trigger that hasn't counted anything.
     *******************************************************************************/
    public static final EsbCounterSnapshot EMPTY = new EsbCounterSnapshot(0L, 0L, 0L, 0L, 0L, 0L, 0L, 0, null, 0L, 0L, null);
+
+
+
+   /*******************************************************************************
+    ** This (destination) snapshot with its triggers' consumption added: consumed,
+    ** succeeded, failed, retried, deadLettered and inFlight are summed over the
+    ** triggers (on a topic each subscribed trigger consumes its own copy of a
+    ** message, so each delivery counts); avgMs is the average over all their
+    ** succeeded runs, maxMs the longest; lastActivity is the latest of all, and
+    ** lastError this snapshot's, else the latest trigger's.
+    *******************************************************************************/
+   public EsbCounterSnapshot withTriggers(List<EsbCounterSnapshot> triggers)
+   {
+      long    consumedSum     = consumed;
+      long    succeededSum    = succeeded;
+      long    failedSum       = failed;
+      long    retriedSum      = retried;
+      long    deadLetteredSum = deadLettered;
+      int     inFlightSum     = inFlight;
+      long    totalMs         = avgMs * succeeded;
+      long    longestMs       = maxMs;
+      Instant latest          = lastActivity;
+      Instant latestError     = null;
+      String  error           = lastError;
+
+      for(EsbCounterSnapshot trigger : triggers)
+      {
+         consumedSum += trigger.consumed();
+         succeededSum += trigger.succeeded();
+         failedSum += trigger.failed();
+         retriedSum += trigger.retried();
+         deadLetteredSum += trigger.deadLettered();
+         inFlightSum += trigger.inFlight();
+         totalMs += trigger.avgMs() * trigger.succeeded();
+         longestMs = Math.max(longestMs, trigger.maxMs());
+         if(trigger.lastActivity() != null && (latest == null || trigger.lastActivity().isAfter(latest)))
+         {
+            latest = trigger.lastActivity();
+         }
+         if(lastError == null && trigger.lastError() != null && (latestError == null || (trigger.lastActivity() != null && trigger.lastActivity().isAfter(latestError))))
+         {
+            error = trigger.lastError();
+            latestError = trigger.lastActivity();
+         }
+      }
+
+      long average = (succeededSum == 0) ? 0 : Math.round((double) totalMs / succeededSum);
+      return (new EsbCounterSnapshot(published, publishFailures, consumedSum, succeededSum, failedSum, retriedSum, deadLetteredSum, inFlightSum, latest, average, longestMs, error));
+   }
 }

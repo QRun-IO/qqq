@@ -34,6 +34,7 @@ import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.middleware.javalin.TestUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
 import com.kingsrook.qqq.middleware.javalin.specs.SpecTestBase;
+import com.kingsrook.qqq.openapi.model.Parameter;
 import kong.unirest.HttpResponse;
 import kong.unirest.Unirest;
 import org.json.JSONObject;
@@ -274,6 +275,23 @@ class ProcessInitSpecV1Test extends SpecTestBase
          .asString();
       assertThat(response.getStatus()).isGreaterThanOrEqualTo(400);
       assertThat(response.getBody()).contains("UploadFileArchiveTableName was not specified");
+   }
+
+
+
+   /*******************************************************************************
+    ** The step operation declares the isStepBack query parameter it honors
+    ** (#1347).
+    *******************************************************************************/
+   @Test
+   void testStepDeclaresIsStepBack()
+   {
+      Parameter isStepBack = new ProcessStepSpecV1().defineRequestParameters().stream()
+         .filter(parameter -> "isStepBack".equals(parameter.getName()))
+         .findFirst().orElseThrow();
+      assertEquals("query", isStepBack.getIn());
+      assertEquals("boolean", isStepBack.getSchema().getType());
+      assertThat(isStepBack.getRequired()).isNotEqualTo(Boolean.TRUE);
    }
 
 }

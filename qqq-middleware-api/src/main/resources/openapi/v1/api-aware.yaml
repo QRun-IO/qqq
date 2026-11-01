@@ -12990,6 +12990,15 @@ paths:
         required: true
         schema:
           type: "string"
+      - description: "When true, go back:  stepName names the process's back step\
+          \ (the `backStep` of the current step), and the process restarts at it instead\
+          \ of continuing after it."
+        example: "true"
+        in: "query"
+        name: "isStepBack"
+        required: false
+        schema:
+          type: "boolean"
       - description: "For processes on tables that use variant backends, JSON object\
           \ naming the variant to use (the same `type` and `id` as in table requests)."
         example: "{\"type\":\"store\",\"id\":\"1\"}"

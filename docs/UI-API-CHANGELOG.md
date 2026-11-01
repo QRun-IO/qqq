@@ -104,6 +104,8 @@ Fixes for issues found while building the terminal clients (`qqq-cli`).
   /processes/{processName}/{processUUID}/cancel` answers 400 with a `processUUID` field error (was
   500) when the UUID is malformed. A cancelled run still keeps its state and can be stepped; making
   cancel terminal is deferred (see `SampleProcessCancellationContractTest`).
+- **`stepProcess` declares `isStepBack`** (#1347): the optional boolean query parameter it already
+  honored (go back: restart at the named back step).
 - **Realtime events keep empty values** (#1354, behaviour fix, no schema change): the stream
   serialises event data omitting only nulls, so an empty list (e.g. `presence.changed`
   `viewers: []`, or an empty `fields` on `record.*`), an empty object or an empty string is sent

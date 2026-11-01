@@ -28,6 +28,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import com.kingsrook.qqq.backend.core.actions.interfaces.QStorageInterface;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
@@ -103,7 +104,15 @@ public class FilesystemStorageAction extends AbstractFilesystemAction implements
       {
          throw new QBadRequestException("Storage reference must be a relative file path");
       }
-      Path referencePath = Path.of(reference);
+      Path referencePath;
+      try
+      {
+         referencePath = Path.of(reference);
+      }
+      catch(InvalidPathException ignored)
+      {
+         throw new QBadRequestException("Storage reference must be a relative file path");
+      }
       if(referencePath.getRoot() != null)
       {
          throw new QBadRequestException("Storage reference must be a relative file path");

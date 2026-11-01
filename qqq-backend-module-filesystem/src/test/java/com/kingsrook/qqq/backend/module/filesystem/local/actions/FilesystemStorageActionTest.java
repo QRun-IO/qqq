@@ -39,6 +39,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -91,7 +92,7 @@ class FilesystemStorageActionTest extends FilesystemActionTest
       Path outsideDirectory = Files.createDirectories(directory.resolve("outside"));
       Files.createSymbolicLink(base.resolve("escape-directory"), outsideDirectory);
       StorageAction action = new StorageAction();
-      for(String reference : Arrays.asList(null, "", ".", "..", "../private.txt", "reports/../inside.txt", outside.toString(), "escape.txt", "escape-directory/new.txt", "escape-directory/../private.txt"))
+      for(String reference : Arrays.asList(null, "", ".", "..", "bad\0name", "../private.txt", "reports/../inside.txt", outside.toString(), "escape.txt", "escape-directory/new.txt", "escape-directory/../private.txt"))
       {
          StorageInput input = new StorageInput(TestUtils.TABLE_NAME_BLOB_LOCAL_FS).withReference(reference);
          assertThrows(QBadRequestException.class, () -> action.getInputStream(input), "read: " + reference);
@@ -99,6 +100,10 @@ class FilesystemStorageActionTest extends FilesystemActionTest
          assertThrows(QBadRequestException.class, () -> action.getDownloadURL(input), "URL: " + reference);
          assertThrows(QBadRequestException.class, () -> action.deleteObject(input), "delete: " + reference);
       }
+      QBadRequestException invalidPath = assertThrows(QBadRequestException.class,
+         () -> action.getInputStream(new StorageInput(TestUtils.TABLE_NAME_BLOB_LOCAL_FS).withReference("bad\0name")));
+      assertEquals("Storage reference must be a relative file path", invalidPath.getMessage());
+      assertNull(invalidPath.getCause());
       assertEquals("owned-private-marker", Files.readString(outside));
       assertFalse(Files.exists(outsideDirectory.resolve("new.txt")));
       Files.createSymbolicLink(base.resolve("dangling"), directory.resolve("absent.txt"));

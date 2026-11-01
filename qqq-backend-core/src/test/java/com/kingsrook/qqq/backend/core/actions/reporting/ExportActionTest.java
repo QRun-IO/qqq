@@ -44,6 +44,7 @@ import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportFormat;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
@@ -293,6 +294,45 @@ class ExportActionTest extends BaseTest
       assertEquals("fieldNames", exception.getFieldErrors().get(0).field());
       assertThat(exception.getFieldErrors().get(0).message()).contains("Foo");
       assertThat(exception.getFieldErrors().get(1).message()).contains("Bar");
+   }
+
+
+
+   /*******************************************************************************
+    ** Fields of a join the caller gives (here, by an alias that is not an exposed
+    ** join) can be exported; a joined name whose table cannot be joined is a bad
+    ** request about the joins (#1352).
+    *******************************************************************************/
+   @Test
+   void testGivenQueryJoins() throws QException, IOException
+   {
+      QInstance qInstance = QContext.getQInstance();
+      QContext.getQSession().withSecurityKeyValue(TestUtils.SECURITY_KEY_TYPE_STORE_ALL_ACCESS, true);
+
+      TestUtils.insertRecords(qInstance.getTable(TestUtils.TABLE_NAME_ORDER), List.of(
+         new QRecord().withValue("id", 1).withValue("orderNo", "ORD1").withValue("storeId", 1)));
+      TestUtils.insertRecords(qInstance.getTable(TestUtils.TABLE_NAME_LINE_ITEM), List.of(
+         new QRecord().withValue("id", 1).withValue("orderId", 1).withValue("sku", "A").withValue("quantity", 10)));
+
+      ExportInput exportInput = new ExportInput();
+      exportInput.setTableName(TestUtils.TABLE_NAME_ORDER);
+      ByteArrayOutputStream reportOutputStream = new ByteArrayOutputStream();
+      exportInput.setReportDestination(new ReportDestination().withReportFormat(ReportFormat.CSV).withReportOutputStream(reportOutputStream));
+      exportInput.setQueryJoins(List.of(new QueryJoin(TestUtils.TABLE_NAME_LINE_ITEM).withAlias("line").withType(QueryJoin.Type.LEFT)));
+      exportInput.setFieldNames(List.of("id", "line.sku"));
+      new ExportAction().execute(exportInput);
+
+      CSVParser parse     = CSVParser.parse(reportOutputStream.toString(StandardCharsets.UTF_8), CSVFormat.DEFAULT.withFirstRecordAsHeader());
+      CSVRecord csvRecord = parse.iterator().next();
+      assertEquals("1", csvRecord.get("Id"));
+      assertEquals("A", csvRecord.get("Order Line: SKU"));
+
+      ExportInput unjoinable = new ExportInput();
+      unjoinable.setTableName(TestUtils.TABLE_NAME_ORDER);
+      unjoinable.setReportDestination(new ReportDestination().withReportFormat(ReportFormat.CSV).withReportOutputStream(new ByteArrayOutputStream()));
+      unjoinable.setFieldNames(List.of("id", TestUtils.TABLE_NAME_SHAPE + ".name"));
+      QBadRequestException exception = assertThrows(QBadRequestException.class, () -> new ExportAction().preExecute(unjoinable));
+      assertEquals("joins", exception.getFieldErrors().get(0).field());
    }
 
 

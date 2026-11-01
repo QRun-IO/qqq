@@ -207,4 +207,45 @@ class TableExportSpecV1Test extends SpecTestBase
       assertThat(body).contains("Last Name");
    }
 
+
+
+   /*******************************************************************************
+    ** A joined field name exports through a join given as in a query (here an
+    ** aliased self-join that is not an exposed join), and a joined field name
+    ** with no join given is joined automatically (#1352).
+    *******************************************************************************/
+   @Test
+   void testExportWithJoins()
+   {
+      HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/table/person/export")
+         .contentType(ContentType.APPLICATION_JSON.getMimeType())
+         .body(JsonUtils.toJson(Map.of(
+            "format", "csv",
+            "filter", new QQueryFilter(new QFilterCriteria("id", QCriteriaOperator.EQUALS, 1)),
+            "fieldNames", List.of("id", "partner.firstName"),
+            "joins", List.of(Map.of("joinTable", "person", "alias", "partner", "joinName", "PersonJoinPartnerPerson", "type", "LEFT"))
+         )))
+         .asString();
+      assertEquals(200, response.getStatus(), response.getBody());
+      assertThat(response.getBody()).contains("Person: First Name");
+      assertThat(response.getBody()).contains("Linda");
+
+      HttpResponse<String> automatic = Unirest.post(getBaseUrlAndPath() + "/table/person/export")
+         .contentType(ContentType.APPLICATION_JSON.getMimeType())
+         .body(JsonUtils.toJson(Map.of(
+            "format", "csv",
+            "filter", new QQueryFilter(new QFilterCriteria("lastName", QCriteriaOperator.EQUALS, "Kelkhoff")),
+            "fieldNames", List.of("id", "pet.name"))))
+         .asString();
+      assertEquals(200, automatic.getStatus(), automatic.getBody());
+      assertThat(automatic.getBody()).containsAnyOf("Chester", "Lucy");
+
+      HttpResponse<String> unknown = Unirest.post(getBaseUrlAndPath() + "/table/person/export")
+         .contentType(ContentType.APPLICATION_JSON.getMimeType())
+         .body(JsonUtils.toJson(Map.of("format", "csv", "fieldNames", List.of("id", "bogus.name"))))
+         .asString();
+      assertEquals(400, unknown.getStatus(), unknown.getBody());
+      assertEquals("fieldNames", new JSONObject(unknown.getBody()).getJSONArray("fieldErrors").getJSONObject(0).getString("field"));
+   }
+
 }

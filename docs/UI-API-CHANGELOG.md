@@ -92,6 +92,11 @@ Fixes for issues found while building the terminal clients (`qqq-cli`).
   /table/{tableName}/export` answers 400 `BAD_REQUEST` (was 500) for an unsupported or missing
   `format` and for an unknown or unqueryable name in `fieldNames`, with `fieldErrors` naming
   `format` or `fieldNames`. `fieldErrors` is now filled for any bad request that names its fields.
+- **Export joins** (#1352): the `exportTable` body accepts `joins` (QueryJoin objects, as in
+  query requests), and `fieldNames` may name a joined field as `joinTableOrAlias.fieldName`. A
+  joined name whose table is not among the joins is joined automatically (LEFT) when the instance
+  can join it (before, only exposed joins worked, so e.g. `pet.name` on `person` answered 500); a
+  table that cannot be joined answers 400 with a `joins` field error.
 - **Realtime events keep empty values** (#1354, behaviour fix, no schema change): the stream
   serialises event data omitting only nulls, so an empty list (e.g. `presence.changed`
   `viewers: []`, or an empty `fields` on `record.*`), an empty object or an empty string is sent

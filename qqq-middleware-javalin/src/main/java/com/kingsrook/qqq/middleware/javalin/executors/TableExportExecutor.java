@@ -100,6 +100,7 @@ public class TableExportExecutor extends AbstractMiddlewareExecutor<TableExportI
 
          exportInput.setQueryFilter(input.getFilter());
          exportInput.setFieldNames(input.getFieldNames());
+         exportInput.setQueryJoins(input.getJoins());
          exportInput.setLimit(input.getLimit());
 
          if(input.getIncludeHeaderRow() != null)

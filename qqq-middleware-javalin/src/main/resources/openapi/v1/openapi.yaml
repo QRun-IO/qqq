@@ -14202,9 +14202,19 @@ paths:
                   $ref: "#/components/schemas/QueryFilter"
                   description: "QueryFilter to specify matching records to export"
                 fieldNames:
-                  description: "Optional subset of field names to include in the export"
+                  description: "Optional subset of field names to include in the export.\
+                    \  A joined table's field is named joinTableOrAlias.fieldName\
+                    \ (e.g. orderLine.sku); its table is joined (LEFT) when it is\
+                    \ not one of the joins."
                   items:
                     type: "string"
+                  type: "array"
+                joins:
+                  description: "QueryJoin objects (as in query requests) specifying\
+                    \ tables to be joined into the export, whose fields fieldNames\
+                    \ may name."
+                  items:
+                    $ref: "#/components/schemas/QueryJoin"
                   type: "array"
                 limit:
                   description: "Optional maximum number of records to export"

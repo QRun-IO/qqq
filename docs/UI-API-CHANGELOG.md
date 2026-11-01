@@ -86,6 +86,8 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
   `subheader`, `icon`, `iconColor` and `statisticList` (`label`, `value`, `url`). The list name is
   `statisticList`, singular, as the server has always sent it and the web UI reads it; no payload
   changed.
+- **Documentation:** `getRecord` wraps its record as `{ record }` while `queryTable` lists bare
+  records in `records` (#1340).
 
 ### 1.8.0 (QQQ 4.1.0-RC.17) - profiles and avatars
 See [USER-PROFILE-AVATARS.md](USER-PROFILE-AVATARS.md).

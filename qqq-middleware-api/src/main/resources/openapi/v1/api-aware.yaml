@@ -4156,7 +4156,9 @@ components:
     TableGetResponseV1:
       properties:
         record:
-          description: "The record that was fetched"
+          description: "The record that was fetched.  The get response wraps it in\
+            \ this `record` property, while query responses list records unwrapped\
+            \ in `records`."
           properties:
             associatedRecords:
               additionalProperties:
@@ -4821,7 +4823,9 @@ components:
     TableQueryResponseV1:
       properties:
         records:
-          description: "List of records that satisfy the query request"
+          description: "List of records that satisfy the query request.  Each element\
+            \ is a record object itself (no wrapper), unlike the get response, which\
+            \ wraps its one record as `{ record }`."
           items:
             $ref: "#/components/schemas/OutputRecord"
           type: "array"
@@ -9903,7 +9907,10 @@ paths:
   /qqq/v1/{applicationApiPath}/{applicationApiVersion}/table/{tableName}/query:
     post:
       description: "Execute a query against a table, returning records that match\
-        \ a filter."
+        \ a filter.\n\nThe response is `{ \"records\": [ { \"tableName\", \"recordLabel\"\
+        , \"values\", \"displayValues\", ... }, ... ] }`\n(`TableQueryResponseV1`):\
+        \ each element of `records` is a record object itself.  `GET /table/{tableName}/{primaryKey}`\n\
+        returns the same record object wrapped as `{ \"record\": { ... } }`."
       operationId: "queryTable"
       parameters:
       - description: "Name of the table to query."
@@ -10651,7 +10658,12 @@ paths:
       - "Tables"
     get:
       description: "Fetch a single record from a table, identified by its primary\
-        \ key value."
+        \ key value.\n\nThe response wraps the record in an object: `{ \"record\"\
+        : { \"tableName\", \"recordLabel\", \"values\",\n\"displayValues\", ... }\
+        \ }` (`TableGetResponseV1`).  This differs from `POST /table/{tableName}/query`,\
+        \ whose\n`records` array holds the same record objects without a wrapper,\
+        \ so a client unwraps `record` here and reads\neach element of `records` there.\
+        \  A missing record is a `404`."
       operationId: "getRecord"
       parameters:
       - description: "Name of the table to get the record from."

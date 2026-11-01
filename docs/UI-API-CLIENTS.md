@@ -49,6 +49,11 @@ General rules:
   (`UNAUTHENTICATED`: sign in again or refresh the token; `PERMISSION_DENIED`; `NOT_FOUND`;
   `CONFLICT`; `RATE_LIMITED`: back off; `BAD_REQUEST`: show `fieldErrors` by field), and print
   `traceId` with any failure the user may report. Treat an unknown `code` by the HTTP status.
+- **Records: `get` wraps, `query` does not.** `GET /table/{t}/{pk}` (`getRecord`) answers
+  `{ "record": { "tableName", "recordLabel", "values", "displayValues", ... } }`, while
+  `POST /table/{t}/query` (`queryTable`) answers `{ "records": [ { "tableName", ... }, ... ] }` with each element a
+  bare record. Unwrap `record` from a get; read the elements of `records` as they are. A missing
+  record is a 404 (`NOT_FOUND`).
 - **Client channel.** Send `X-QQQ-Client: cli` (or `tui`, `ios`, ... optionally `/<detail>`, e.g.
   `cli/qqq-cli 0.1.0`) so audits and the client-channel permissions attribute your calls. A
   credential-scoped token is always attributed to `token:<id>` instead.

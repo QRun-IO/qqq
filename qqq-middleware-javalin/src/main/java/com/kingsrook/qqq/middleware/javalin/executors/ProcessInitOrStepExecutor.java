@@ -45,6 +45,7 @@ import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import com.kingsrook.qqq.middleware.javalin.QJavalinAccessLogger;
@@ -113,6 +114,11 @@ public class ProcessInitOrStepExecutor extends AbstractMiddlewareExecutor<Proces
 
          if(input.getRecordsFilter() != null)
          {
+            ////////////////////////////////////////////////////////////////////////
+            // keep the init selection in the process state, for a step that runs //
+            // on a later call (e.g., when the process starts with a form)        //
+            ////////////////////////////////////////////////////////////////////////
+            runProcessInput.addValue(RunProcessAction.INIT_RECORDS_FILTER_JSON, JsonUtils.toJson(input.getRecordsFilter()));
             runProcessInput.setCallback(new QProcessCallback()
             {
                /***************************************************************************

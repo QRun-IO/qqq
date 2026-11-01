@@ -64,6 +64,17 @@ class ProcessInitSpecV1Test extends SpecTestBase
 
 
    /***************************************************************************
+    ** the step endpoint, for processes that continue past init.
+    ***************************************************************************/
+   @Override
+   protected List<AbstractEndpointSpec<?, ?, ?>> getAdditionalSpecs()
+   {
+      return List.of(new ProcessStepSpecV1());
+   }
+
+
+
+   /***************************************************************************
     **
     ***************************************************************************/
    @Override
@@ -339,6 +350,40 @@ class ProcessInitSpecV1Test extends SpecTestBase
       assertEquals("query", isStepBack.getIn());
       assertEquals("boolean", isStepBack.getSchema().getType());
       assertThat(isStepBack.getRequired()).isNotEqualTo(Boolean.TRUE);
+   }
+
+
+
+   /*******************************************************************************
+    ** A process whose first step is a form keeps the record selection made at
+    ** init: its backend step, run on the later step call, gets those records
+    ** (#1366).
+    *******************************************************************************/
+   @Test
+   void testInitSelectionReachesStepAfterForm()
+   {
+      String processPath = getBaseUrlAndPath() + "/processes/" + TestUtils.PROCESS_NAME_GREET_PEOPLE_INTERACTIVE;
+      HttpResponse<String> initResponse = Unirest.post(processPath + "/init")
+         .cookie("sessionId", "v1-process-session")
+         .multiPartContent()
+         .field("recordsParam", "recordIds")
+         .field("recordIds", "1,2")
+         .asString();
+      assertEquals(200, initResponse.getStatus(), initResponse.getBody());
+      JSONObject initJson = JsonUtils.toJSONObject(initResponse.getBody());
+      assertEquals("setup", initJson.getString("nextStep"), initResponse.getBody());
+      String processUUID = initJson.getString("processUUID");
+
+      HttpResponse<String> stepResponse = Unirest.post(processPath + "/" + processUUID + "/step/setup")
+         .cookie("sessionId", "v1-process-session")
+         .multiPartContent()
+         .field("values", new JSONObject().put("greetingPrefix", "Hi").put("greetingSuffix", "!").toString())
+         .asString();
+      assertEquals(200, stepResponse.getStatus(), stepResponse.getBody());
+      JSONObject stepJson = JsonUtils.toJSONObject(stepResponse.getBody());
+      assertThat(stepJson.has("error")).as(stepResponse.getBody()).isFalse();
+      assertEquals("results", stepJson.getString("nextStep"), stepResponse.getBody());
+      assertEquals(2, stepJson.getJSONObject("values").getInt("noOfPeopleGreeted"));
    }
 
 }

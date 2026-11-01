@@ -280,6 +280,30 @@ class ProcessInitSpecV1Test extends SpecTestBase
 
 
    /*******************************************************************************
+    ** An application/x-www-form-urlencoded body is read like a multipart one -
+    ** its values are not silently ignored (#1336).
+    *******************************************************************************/
+   @Test
+   void testUrlEncodedFieldValues()
+   {
+      HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/processes/greet/init")
+         .field("recordsParam", "recordIds")
+         .field("recordIds", "2,3")
+         .field("values", new JSONObject()
+            .put("greetingPrefix", "Hey")
+            .put("greetingSuffix", "Jude")
+            .toString())
+         .asString();
+
+      assertEquals(200, response.getStatus(), response.getBody());
+      JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
+      assertEquals("COMPLETE", jsonObject.getString("type"), jsonObject.toString());
+      assertEquals("Hey X Jude", jsonObject.getJSONObject("values").getString("outputMessage"));
+   }
+
+
+
+   /*******************************************************************************
     ** The step operation declares the isStepBack query parameter it honors
     ** (#1347).
     *******************************************************************************/

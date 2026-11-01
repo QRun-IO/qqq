@@ -553,6 +553,10 @@ public abstract class AbstractEndpointSpec<
                      throw e;
                   }
                }
+               else if("application/x-www-form-urlencoded".equals(requestContentType))
+               {
+                  value = context.formParam(name);
+               }
                else if(ContentType.APPLICATION_JSON.getMimeType().equals(requestContentType))
                {
                   JSONObject jsonObject = getRequestBodyAsJsonObject(context);

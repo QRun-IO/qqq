@@ -135,7 +135,7 @@ public class ProcessStepSpecV1 extends AbstractEndpointSpec<ProcessInitOrStepInp
    @Override
    public RequestBody defineRequestBody()
    {
-      return new RequestBody()
+      RequestBody requestBody = new RequestBody()
          .withContent(ContentType.MULTIPART_FORM_DATA.getMimeType(), new Content()
             .withSchema(new Schema()
                .withType(Type.OBJECT)
@@ -157,6 +157,8 @@ public class ProcessStepSpecV1 extends AbstractEndpointSpec<ProcessInitOrStepInp
                .withProperty(ProcessSpecUtilsV1.TABLE_VARIANT_PARAM, ProcessSpecUtilsV1.defineTableVariantFormProperty())
             )
          );
+
+      return (ProcessSpecUtilsV1.withUrlEncodedFormContent(requestBody));
    }
 
 

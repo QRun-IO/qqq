@@ -12834,6 +12834,61 @@ paths:
                   example: "{\"type\":\"store\",\"id\":\"1\"}"
                   type: "string"
               type: "object"
+          application/x-www-form-urlencoded:
+            schema:
+              description: "The same fields as the multipart body, without file uploads."
+              properties:
+                values:
+                  description: "Process-specific field names and values."
+                  type: "object"
+                recordsParam:
+                  description: "Specifies which other query-param will contain the\
+                    \ indicator of initial records to pass in to the process."
+                  examples:
+                    recordIds:
+                      value: "recordIds"
+                    filterJSON:
+                      value: "recordIds"
+                  type: "string"
+                recordIds:
+                  description: "Comma-separated list of ids from the table this process\
+                    \ is based on, to use as input records for the process.  Needs\
+                    \ `recordsParam=recordIds` value to be given as well."
+                  examples:
+                    one id:
+                      value: "1701"
+                    multiple ids:
+                      value: "42,47"
+                  type: "string"
+                filterJSON:
+                  description: "JSON encoded QQueryFilter object, to execute against\
+                    \ the table this process is based on, to find input records for\
+                    \ the process.  Needs `recordsParam=filterJSON` value to be given\
+                    \ as well."
+                  examples:
+                    empty filter (all records):
+                      value: "{}"
+                    filter by a condition:
+                      value: "{\"criteria\":[{\"fieldName\":\"id\",\"operator\":\"\
+                        LESS_THAN\",\"values\":[10]}],\"booleanOperator\":\"AND\"}"
+                  type: "string"
+                stepTimeoutMillis:
+                  description: "Optionally change the time that the server will wait\
+                    \ for the job before letting it go asynchronous.  Default value\
+                    \ is 3000."
+                  examples:
+                    shorter timeout:
+                      value: "500"
+                    longer timeout:
+                      value: "60000"
+                  type: "integer"
+                tableVariant:
+                  description: "For processes on tables that use variant backends,\
+                    \ JSON object naming the variant to use (the same `type` and `id`\
+                    \ as in table requests).  May also be given as a query parameter."
+                  example: "{\"type\":\"store\",\"id\":\"1\"}"
+                  type: "string"
+              type: "object"
         required: false
       responses:
         200:
@@ -13030,6 +13085,30 @@ paths:
                     \ file."
                   format: "binary"
                   type: "string"
+                tableVariant:
+                  description: "For processes on tables that use variant backends,\
+                    \ JSON object naming the variant to use (the same `type` and `id`\
+                    \ as in table requests).  May also be given as a query parameter."
+                  example: "{\"type\":\"store\",\"id\":\"1\"}"
+                  type: "string"
+              type: "object"
+          application/x-www-form-urlencoded:
+            schema:
+              description: "The same fields as the multipart body, without file uploads."
+              properties:
+                values:
+                  description: "Process-specific field names and values."
+                  type: "object"
+                stepTimeoutMillis:
+                  description: "Optionally change the time that the server will wait\
+                    \ for the job before letting it go asynchronous.  Default value\
+                    \ is 3000."
+                  examples:
+                    shorter timeout:
+                      value: "500"
+                    longer timeout:
+                      value: "60000"
+                  type: "integer"
                 tableVariant:
                   description: "For processes on tables that use variant backends,\
                     \ JSON object naming the variant to use (the same `type` and `id`\

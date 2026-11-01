@@ -17,12 +17,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+// SPDX-License-Identifier: Apache-2.0
 
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
 import com.kingsrook.qqq.middleware.javalin.executors.ExecutorSessionUtils;
@@ -32,12 +34,18 @@ import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractMiddlewareVersion;
 import com.kingsrook.qqq.middleware.javalin.specs.BasicOperation;
 import com.kingsrook.qqq.middleware.javalin.specs.BasicResponse;
+import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiInProcessSessions;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.LogoutResponseV1;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.utils.TagsV1;
+import com.kingsrook.qqq.openapi.model.Content;
 import com.kingsrook.qqq.openapi.model.Example;
 import com.kingsrook.qqq.openapi.model.HttpMethod;
+import com.kingsrook.qqq.openapi.model.RequestBody;
 import com.kingsrook.qqq.openapi.model.Schema;
+import com.kingsrook.qqq.openapi.model.Type;
+import io.javalin.http.ContentType;
 import io.javalin.http.Context;
+import org.json.JSONObject;
 
 
 /*******************************************************************************
@@ -85,17 +93,20 @@ public class LogoutSpecV1 extends AbstractEndpointSpec<LogoutInput, LogoutRespon
    @Override
    public LogoutResponseV1 serveRequest(AbstractMiddlewareVersion abstractMiddlewareVersion, Context context) throws Exception
    {
-      LogoutResponseV1 result = super.serveRequest(abstractMiddlewareVersion, context);
+      context.header("Cache-Control", "no-store");
+      try
+      {
+         return (super.serveRequest(abstractMiddlewareVersion, context));
+      }
+      finally
+      {
 
-      ///////////////////////////////////////////////////////////////////////////
-      // remove the session cookies by setting them to expired.  sessionId is   //
-      // also issued (by modules that use it) on every request; a stale one    //
-      // would otherwise shadow the next sign-in's sessionUUID.                //
-      ///////////////////////////////////////////////////////////////////////////
-      context.removeCookie(QJavalinImplementation.SESSION_UUID_COOKIE_NAME);
-      context.removeCookie(QJavalinImplementation.SESSION_ID_COOKIE_NAME);
-
-      return (result);
+         ///////////////////////////////////////////////////////////////////////////
+         // Expire both cookie aliases even when local invalidation fails.        //
+         ///////////////////////////////////////////////////////////////////////////
+         context.removeCookie(QJavalinImplementation.SESSION_UUID_COOKIE_NAME);
+         context.removeCookie(QJavalinImplementation.SESSION_ID_COOKIE_NAME);
+      }
    }
 
 
@@ -118,6 +129,30 @@ public class LogoutSpecV1 extends AbstractEndpointSpec<LogoutInput, LogoutRespon
          {
             // An already invalid session can still have its cookies cleared.
          }
+      }
+      // Invalid optional input never blocks local logout and never releases a hint.
+      try
+      {
+         if(context.header("Authorization") == null && context.header(UiApiInProcessSessions.HEADER) == null
+            && context.header("x-api-key") == null && context.queryParam("code") == null && context.queryParam("state") == null
+            && context.cookie(QJavalinImplementation.SESSION_UUID_COOKIE_NAME) != null
+            && (context.cookie(QJavalinImplementation.SESSION_ID_COOKIE_NAME) == null
+               || logoutInput.getSessionUUID().equals(context.cookie(QJavalinImplementation.SESSION_ID_COOKIE_NAME))))
+         {
+            JSONObject body = context.body().isBlank() ? new JSONObject() : new JSONObject(context.body());
+            JSONObject nativeLogout = body.optJSONObject("nativeLogout");
+            if(body.keySet().equals(Set.of("nativeLogout")) && nativeLogout != null
+               && nativeLogout.keySet().equals(Set.of("postLogoutRedirectUri"))
+               && nativeLogout.opt("postLogoutRedirectUri") instanceof String callback && callback.length() <= 2048
+               && logoutInput.getSessionUUID().equals(ExecutorSessionUtils.setupSession(context, qInstance).getUuid()))
+            {
+               logoutInput.setNativePostLogoutRedirectUri(callback);
+            }
+         }
+      }
+      catch(Exception ignored)
+      {
+         // Never include raw parsing/provider exceptions or optional body data in logs.
       }
       return (logoutInput);
    }
@@ -150,6 +185,21 @@ public class LogoutSpecV1 extends AbstractEndpointSpec<LogoutInput, LogoutRespon
       return Map.of(
          LogoutResponseV1.class.getSimpleName(), new LogoutResponseV1().toSchema()
       );
+   }
+
+
+
+   /*******************************************************************************
+    ** Additive opt-in; empty legacy requests retain local-only logout.
+    *******************************************************************************/
+   @Override
+   public RequestBody defineRequestBody()
+   {
+      return (new RequestBody().withRequired(false).withContent(Map.of(ContentType.JSON, new Content().withSchema(
+         new Schema().withType(Type.OBJECT).withProperty("nativeLogout", new Schema().withType(Type.OBJECT)
+            .withDescription("Optional 1.10 native provider logout. Only the current authenticated cookie can receive sensitive logout data. Absence retains local-only behavior.")
+            .withProperty("postLogoutRedirectUri", new Schema().withType(Type.STRING)
+               .withDescription("Exact registered callback from nativeSessionLogout.postLogoutRedirectUris.")))))));
    }
 
 }

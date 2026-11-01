@@ -1,5 +1,21 @@
 # UI API changelog (`/qqq/v1`)
 
+## 1.10.0 — optional native provider logout and nonce validation
+
+Adds conditional `nativeSessionLogout` and typed authentication metadata with explicit
+`postLogoutRedirectUris`. An opt-in `POST /logout` request can return sensitive
+`nativeLogoutData` for the authenticated cookie session after local invalidation.
+Empty/legacy/TABLE logout stays local-only. Enabling this requires the private optional
+session column, encryption configuration and explicit provider post-logout registration;
+see [native provider logout](NATIVE-PROVIDER-LOGOUT.md). API 1.9 native login alone does
+not promise this capability. Provider failure never substitutes for local invalidation.
+
+Optional `nativeSessionLogin.requireNonceValidation` advertises
+`nativeSessionNonceValidation` and `nativeSessionLogin.nonceValidation: REQUIRED`.
+Native manageSession then requires the original `expectedNonce` and validates the
+direct HTTPS ID-token response and matching access-token subject before session
+creation. Existing web/TABLE and disabled-policy behavior remains unchanged.
+
 The UI/UX API is `/qqq/v1` (`qqq-middleware-javalin`, `specs/v1`). It is the only API that drives a
 UI (Next today; CLI, TUI and native iOS clients later), and it is semantically versioned
 independently of QQQ's own release version.

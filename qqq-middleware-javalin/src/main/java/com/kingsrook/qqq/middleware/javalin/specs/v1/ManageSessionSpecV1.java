@@ -17,6 +17,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+// SPDX-License-Identifier: Apache-2.0
 
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
@@ -86,9 +87,9 @@ public class ManageSessionSpecV1 extends AbstractEndpointSpec<ManageSessionInput
             After a frontend authenticates the user as per the requirements of the authentication provider specified by the
             `type` field in the `metaData/authentication` response, data from that authentication provider should be posted
             to this endpoint, to create a session within the QQQ application.
-            
+
             The response object will include a session identifier (`uuid`) to authenticate the user in subsequent API calls.
-            
+
             For the `TABLE_BASED` type, send the user's credentials in an `Authorization: Basic` header (base64 of
             `username:password`, UTF-8); the body may be empty.  The password is verified against the user table and a
             session row is stored; a `401` response means the credentials were refused.
@@ -174,7 +175,10 @@ public class ManageSessionSpecV1 extends AbstractEndpointSpec<ManageSessionInput
                   .withDescription("Optional explicit native cookie-session flow (1.9.0). Requires advertised nativeSessionLogin, code, an RFC7636 verifier and an exact configured redirectUri. Cannot be combined with accessToken, sessionUUID, uuid or Authorization. Omit for existing web sign-in and session resume."))
                .withProperty("accessToken", new Schema()
                   .withType(Type.STRING)
-                  .withDescription("An access token from a downstream authentication provider (e.g., Auth0), to use as the basis for authentication and authorization.")
+                  .withDescription("An access token from a downstream authentication provider (e.g., Auth0), to use as the basis for authentication and authorization."))
+               .withProperty("expectedNonce", new Schema()
+                  .withType(Type.STRING)
+                  .withDescription("Original URL-safe nonce retained by the native browser attempt (16..512 characters). Required for explicit native flow when nonceValidation is REQUIRED; never inferred from the returned token.")
                )
                .withProperty("code", new Schema()
                   .withType(Type.STRING)
@@ -225,6 +229,7 @@ public class ManageSessionSpecV1 extends AbstractEndpointSpec<ManageSessionInput
       validateNativeRequestBody(context);
       ManageSessionInput manageSessionInput = new ManageSessionInput();
       manageSessionInput.setAuthenticationFlow(getRequestParam(context, "authenticationFlow"));
+      manageSessionInput.setExpectedNonce(getRequestParam(context, "expectedNonce"));
       manageSessionInput.setAccessToken(getRequestParam(context, "accessToken"));
       manageSessionInput.setCode(getRequestParam(context, "code"));
       manageSessionInput.setCodeVerifier(getRequestParam(context, "codeVerifier"));
@@ -277,7 +282,7 @@ public class ManageSessionSpecV1 extends AbstractEndpointSpec<ManageSessionInput
       {
          return;
       }
-      for(String field : List.of("authenticationFlow", "code", "codeVerifier", "redirectUri"))
+      for(String field : List.of("authenticationFlow", "code", "codeVerifier", "redirectUri", "expectedNonce"))
       {
          if(body.has(field) && !(body.get(field) instanceof String))
          {

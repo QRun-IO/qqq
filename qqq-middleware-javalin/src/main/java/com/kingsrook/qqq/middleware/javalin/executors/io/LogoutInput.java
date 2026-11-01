@@ -17,6 +17,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+// SPDX-License-Identifier: Apache-2.0
 
 package com.kingsrook.qqq.middleware.javalin.executors.io;
 
@@ -27,6 +28,27 @@ package com.kingsrook.qqq.middleware.javalin.executors.io;
 public class LogoutInput extends AbstractMiddlewareInput
 {
    private String sessionUUID;
+   private String nativePostLogoutRedirectUri;
+
+
+
+   /*******************************************************************************
+    ** Only populated after HTTP cookie authentication, never from body identity.
+    *******************************************************************************/
+   public String getNativePostLogoutRedirectUri()
+   {
+      return (nativePostLogoutRedirectUri);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for the validated optional native callback.
+    *******************************************************************************/
+   public void setNativePostLogoutRedirectUri(String nativePostLogoutRedirectUri)
+   {
+      this.nativePostLogoutRedirectUri = nativePostLogoutRedirectUri;
+   }
 
 
 

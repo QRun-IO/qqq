@@ -17,6 +17,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+// SPDX-License-Identifier: Apache-2.0
 
 package com.kingsrook.qqq.middleware.javalin.executors;
 
@@ -84,9 +85,12 @@ public class VersionExecutor extends AbstractMiddlewareExecutor<VersionInput, Ve
       boolean profilesInstalled = UserProfilesMetaData.of(QContext.getQInstance()) != null;
       boolean nativeSessionLogin = QContext.getQInstance().getAuthentication() instanceof OAuth2AuthenticationMetaData oauth2
          && oauth2.getNativeSessionLogin() != null && oauth2.getNativeSessionLogin().isValid();
+      boolean nativeNonce = nativeSessionLogin && ((OAuth2AuthenticationMetaData) QContext.getQInstance().getAuthentication()).getNativeSessionLogin().getRequireNonceValidation();
       return (features.stream()
          .filter(feature -> profilesInstalled || !FEATURE_AVATARS.equals(feature))
          .filter(feature -> nativeSessionLogin || !"nativeSessionLogin".equals(feature))
+         .filter(feature -> nativeNonce || !"nativeSessionNonceValidation".equals(feature))
+         .filter(feature -> !"nativeSessionLogout".equals(feature) || com.kingsrook.qqq.backend.core.modules.authentication.implementations.NativeSessionLogoutSupport.isConfigured(QContext.getQInstance()))
          .toList());
    }
 

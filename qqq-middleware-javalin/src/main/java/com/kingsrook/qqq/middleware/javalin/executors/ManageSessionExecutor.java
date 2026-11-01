@@ -17,6 +17,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+// SPDX-License-Identifier: Apache-2.0
 
 package com.kingsrook.qqq.middleware.javalin.executors;
 
@@ -78,6 +79,11 @@ public class ManageSessionExecutor extends AbstractMiddlewareExecutor<ManageSess
       putIfPresent(authContext, "code", input.getCode());
       putIfPresent(authContext, "codeVerifier", input.getCodeVerifier());
       putIfPresent(authContext, "redirectUri", input.getRedirectUri());
+      if(input.getAuthenticationFlow() != null)
+      {
+         authContext.put(com.kingsrook.qqq.backend.core.modules.authentication.implementations.NativeSessionLogoutSupport.NATIVE_FLOW_KEY, input.getAuthenticationFlow());
+         putIfPresent(authContext, "expectedNonce", input.getExpectedNonce());
+      }
       putIfPresent(authContext, "sessionUUID", input.getSessionUUID());
       putIfPresent(authContext, "uuid", input.getSessionUUID());
 
@@ -179,6 +185,11 @@ public class ManageSessionExecutor extends AbstractMiddlewareExecutor<ManageSess
          || !oauth2.getNativeSessionLogin().getRedirectUris().contains(input.getRedirectUri()))
       {
          throw (new QBadRequestException("Native session login requires an authorization code, a valid PKCE verifier and an allowed redirect URI, without other credentials."));
+      }
+      if(oauth2.getNativeSessionLogin().getRequireNonceValidation()
+         && (input.getExpectedNonce() == null || !input.getExpectedNonce().matches("[A-Za-z0-9_-]{16,512}")))
+      {
+         throw (new QBadRequestException("Native session login requires the original URL-safe nonce."));
       }
    }
 

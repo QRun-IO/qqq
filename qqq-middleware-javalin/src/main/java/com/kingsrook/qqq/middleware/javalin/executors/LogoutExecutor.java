@@ -17,6 +17,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+// SPDX-License-Identifier: Apache-2.0
 
 package com.kingsrook.qqq.middleware.javalin.executors;
 
@@ -32,6 +33,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
+import com.kingsrook.qqq.backend.core.modules.authentication.implementations.NativeSessionLogoutData;
+import com.kingsrook.qqq.backend.core.modules.authentication.implementations.OAuth2AuthenticationModule;
 import com.kingsrook.qqq.backend.core.realtime.RealtimeBus;
 import com.kingsrook.qqq.backend.core.realtime.RealtimeMessage;
 import com.kingsrook.qqq.middleware.javalin.executors.io.LogoutInput;
@@ -55,12 +58,24 @@ public class LogoutExecutor extends AbstractMiddlewareExecutor<LogoutInput, Logo
    public void execute(LogoutInput input, LogoutOutputInterface output) throws QException
    {
       QInstance                       qInstance                       = QContext.getQInstance();
-      if(input.getSessionUUID() != null)
-      {
-         RealtimeBus.get(qInstance).publish(new RealtimeMessage()
-            .withChannel("session:" + input.getSessionUUID()).withEvent("session-ended"));
-      }
+      NativeSessionLogoutData nativeData = null;
       QAuthenticationModuleDispatcher qAuthenticationModuleDispatcher = new QAuthenticationModuleDispatcher();
+      if(input.getNativePostLogoutRedirectUri() != null)
+      {
+         try
+         {
+            QAuthenticationModuleInterface provider = qAuthenticationModuleDispatcher.getQModule(qInstance.getAuthentication());
+            if(provider instanceof OAuth2AuthenticationModule oauth2)
+            {
+               nativeData = oauth2.prepareNativeLogout(input.getSessionUUID(), input.getNativePostLogoutRedirectUri());
+            }
+         }
+         catch(Exception ignored)
+         {
+            LOG.info("Native provider logout is unavailable");
+         }
+      }
+      boolean invalidationFailed = false;
 
       /////////////////////////////////////////////////////////////////////////
       // Call logout on all registered authentication modules.               //
@@ -83,10 +98,28 @@ public class LogoutExecutor extends AbstractMiddlewareExecutor<LogoutInput, Logo
             }
             catch(Exception e)
             {
-               LOG.warn("Error calling logout on auth module", e, logPair("authName", authMetaData.getName()));
+               invalidationFailed = true;
+               LOG.warn("Error calling logout on auth module", logPair("authName", authMetaData.getName()));
             }
          }
       }
+      if(input.getSessionUUID() != null)
+      {
+         try
+         {
+            RealtimeBus.get(qInstance).publish(new RealtimeMessage()
+               .withChannel("session:" + input.getSessionUUID()).withEvent("session-ended"));
+         }
+         catch(Exception ignored)
+         {
+            LOG.warn("Could not publish session-ended notification");
+         }
+      }
+      if(invalidationFailed)
+      {
+         throw (new QException("Session invalidation failed"));
+      }
+      output.setNativeLogoutData(nativeData);
    }
 
 }

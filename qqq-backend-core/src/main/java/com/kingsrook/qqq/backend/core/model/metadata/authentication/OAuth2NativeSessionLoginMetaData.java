@@ -17,6 +17,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+// SPDX-License-Identifier: Apache-2.0
 
 package com.kingsrook.qqq.backend.core.model.metadata.authentication;
 
@@ -40,6 +41,38 @@ public class OAuth2NativeSessionLoginMetaData implements Serializable
    private String issuer;
    private String discoveryUrl;
    private List<String> redirectUris;
+   private boolean requireNonceValidation;
+
+
+
+   /*******************************************************************************
+    ** Opt in to authenticated direct-token-response nonce validation (API 1.10).
+    *******************************************************************************/
+   public boolean getRequireNonceValidation()
+   {
+      return (requireNonceValidation);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter; false preserves hosts that have not adopted the new protocol.
+    *******************************************************************************/
+   public void setRequireNonceValidation(boolean requireNonceValidation)
+   {
+      this.requireNonceValidation = requireNonceValidation;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for requireNonceValidation.
+    *******************************************************************************/
+   public OAuth2NativeSessionLoginMetaData withRequireNonceValidation(boolean requireNonceValidation)
+   {
+      this.requireNonceValidation = requireNonceValidation;
+      return (this);
+   }
 
 
 
@@ -95,7 +128,7 @@ public class OAuth2NativeSessionLoginMetaData implements Serializable
    /*******************************************************************************
     ** Permit HTTPS app links or explicit private-use scheme callbacks, never HTTP.
     *******************************************************************************/
-   private static boolean redirectUri(String value)
+   static boolean redirectUri(String value)
    {
       URI uri = safeUri(value);
       if(uri == null || uri.getRawPath() == null || uri.getRawPath().isEmpty())

@@ -21,6 +21,9 @@
 package com.kingsrook.qqq.backend.module.filesystem.local.actions;
 
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
@@ -34,9 +37,12 @@ import com.kingsrook.qqq.backend.module.filesystem.TestUtils;
 import com.kingsrook.qqq.backend.module.filesystem.base.FilesystemRecordBackendDetailFields;
 import com.kingsrook.qqq.backend.module.filesystem.base.actions.AbstractPostReadFileCustomizer;
 import com.kingsrook.qqq.backend.module.filesystem.base.actions.FilesystemTableCustomizers;
+import com.kingsrook.qqq.backend.module.filesystem.local.model.metadata.FilesystemBackendMetaData;
 import com.kingsrook.qqq.backend.module.filesystem.local.model.metadata.FilesystemTableBackendDetails;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
@@ -45,6 +51,43 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *******************************************************************************/
 public class FilesystemQueryActionTest extends FilesystemActionTest
 {
+   /*******************************************************************************
+    ** Native paths and regex metacharacters remain literal through real queries.
+    *******************************************************************************/
+   @Test
+   void testLiteralBasePath(@TempDir Path directory) throws Exception
+   {
+      QTableMetaData table = QContext.getQInstance().getTable(TestUtils.TABLE_NAME_PERSON_LOCAL_FS_JSON);
+      FilesystemBackendMetaData backend = (FilesystemBackendMetaData) QContext.getQInstance().getBackend(table.getBackendName());
+      backend.setBasePath(directory.resolve("records[1]+(v2)").toString());
+      AbstractFilesystemAction action = new AbstractFilesystemAction();
+      Path folder = Files.createDirectories(Path.of(action.getFullBasePath(table, backend)));
+      Files.writeString(folder.resolve("data.json"), "[{\"id\":17,\"firstName\":\"Portable\"}]");
+      QueryOutput output = new FilesystemQueryAction().execute(new QueryInput(table.getName()));
+      assertEquals(1, output.getRecords().size());
+      assertEquals(17, output.getRecords().get(0).getValueInteger("id"));
+      assertEquals("data.json", action.stripBackendAndTableBasePathsFromFileName(folder.resolve("data.json").toString(), backend, table));
+   }
+
+
+
+   /*******************************************************************************
+    ** Record queries enforce the same real table boundary as storage streams.
+    *******************************************************************************/
+   @Test
+   void testQueryRejectsOutsideSymlink(@TempDir Path directory) throws Exception
+   {
+      QTableMetaData table = QContext.getQInstance().getTable(TestUtils.TABLE_NAME_PERSON_LOCAL_FS_JSON);
+      FilesystemBackendMetaData backend = (FilesystemBackendMetaData) QContext.getQInstance().getBackend(table.getBackendName());
+      Path folder = Path.of(new AbstractFilesystemAction().getFullBasePath(table, backend));
+      Path outside = Files.writeString(directory.resolve("outside.json"), "[{\"id\":901,\"firstName\":\"Outside\"}]");
+      Files.createSymbolicLink(folder.resolve("escape.json"), outside);
+      assertThrows(QException.class, () -> new FilesystemQueryAction().execute(new QueryInput(table.getName())));
+      assertEquals("[{\"id\":901,\"firstName\":\"Outside\"}]", Files.readString(outside));
+   }
+
+
+
 
    /*******************************************************************************
     **

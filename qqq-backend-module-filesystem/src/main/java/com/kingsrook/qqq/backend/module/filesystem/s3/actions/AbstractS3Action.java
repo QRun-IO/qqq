@@ -27,6 +27,7 @@ import java.net.URLConnection;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
+import java.util.regex.Pattern;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -232,7 +233,7 @@ public class AbstractS3Action extends AbstractBaseFilesystemAction<S3ObjectSumma
    public String stripBackendAndTableBasePathsFromFileName(String filePath, QBackendMetaData backend, QTableMetaData table)
    {
       String tablePath    = getFullBasePath(table, backend);
-      String strippedPath = filePath.replaceFirst("^/*" + stripLeadingSlash(tablePath), "");
+      String strippedPath = filePath.replaceFirst("^/*" + Pattern.quote(stripLeadingSlash(tablePath)), "");
       return (strippedPath);
    }
 

@@ -137,6 +137,10 @@ class SFTPQueryActionTest extends BaseSFTPTest
       }
       details.setGlob("*.absent");
       Assertions.assertEquals(0, CountAction.execute(TestUtils.TABLE_NAME_SFTP_FILE, null));
+      details.setGlob("testfile-{1,3}.txt");
+      Assertions.assertEquals(2, CountAction.execute(TestUtils.TABLE_NAME_SFTP_FILE, null));
+      details.setGlob("TESTFILE-?.TXT");
+      Assertions.assertEquals(0, CountAction.execute(TestUtils.TABLE_NAME_SFTP_FILE, null));
       Assertions.assertEquals(0, sftpContainer.execInContainer("test", "-f", REMOTE_DIR + "/testfile-3.txt").getExitCode());
    }
 

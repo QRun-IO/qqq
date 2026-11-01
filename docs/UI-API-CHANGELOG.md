@@ -88,6 +88,10 @@ Fixes for issues found while building the terminal clients (`qqq-cli`).
   `PATCH /table/{tableName}/{primaryKey}` and `DELETE /table/{tableName}/{primaryKey}` accept the
   optional `tableVariant` query parameter (a JSON object with `type` and `id`, as on get) and write
   to that variant. A value that is not a JSON object answers 400.
+- **Realtime events keep empty values** (#1354, behaviour fix, no schema change): the stream
+  serialises event data omitting only nulls, so an empty list (e.g. `presence.changed`
+  `viewers: []`, or an empty `fields` on `record.*`), an empty object or an empty string is sent
+  instead of the key being dropped.
 
 ### 1.8.0 (QQQ 4.1.0-RC.17) - profiles and avatars
 See [USER-PROFILE-AVATARS.md](USER-PROFILE-AVATARS.md).

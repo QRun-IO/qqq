@@ -17,8 +17,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+// SPDX-License-Identifier: Apache-2.0
 
 package com.kingsrook.qqq.middleware.javalin.executors.io;
+
+
+import com.kingsrook.qqq.backend.core.modules.authentication.implementations.NativeSessionLogoutData;
 
 
 /*******************************************************************************
@@ -26,5 +30,10 @@ package com.kingsrook.qqq.middleware.javalin.executors.io;
  *******************************************************************************/
 public interface LogoutOutputInterface extends AbstractMiddlewareOutputInterface
 {
-
+   /*******************************************************************************
+    ** Optional sensitive output; legacy implementations need not consume it.
+    *******************************************************************************/
+   default void setNativeLogoutData(NativeSessionLogoutData data)
+   {
+   }
 }

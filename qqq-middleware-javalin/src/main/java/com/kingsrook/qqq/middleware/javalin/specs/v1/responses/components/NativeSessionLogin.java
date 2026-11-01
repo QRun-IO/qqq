@@ -17,11 +17,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+// SPDX-License-Identifier: Apache-2.0
 
 package com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components;
 
 
 import java.util.List;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonValue;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2NativeSessionLoginMetaData;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
@@ -51,6 +53,20 @@ public class NativeSessionLogin implements ToSchema
    {
       S256
    }
+
+
+
+   /*******************************************************************************
+    ** The server validates the original client nonce before creating a session.
+    *******************************************************************************/
+   public enum NonceValidation
+   {
+      REQUIRED
+   }
+
+   @JsonInclude(JsonInclude.Include.NON_NULL)
+   @OpenAPIDescription("When REQUIRED, send the original browser request nonce as expectedNonce to manageSession. Never accept a nonce from the callback.")
+   private NonceValidation nonceValidation;
 
 
 
@@ -104,7 +120,18 @@ public class NativeSessionLogin implements ToSchema
       issuer = configuration.getIssuer();
       discoveryUrl = configuration.getDiscoveryUrl();
       redirectUris = configuration.getRedirectUris();
+      nonceValidation = configuration.getRequireNonceValidation() ? NonceValidation.REQUIRED : null;
       return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for the optional strict nonce validation requirement.
+    *******************************************************************************/
+   public NonceValidation getNonceValidation()
+   {
+      return (nonceValidation);
    }
 
 

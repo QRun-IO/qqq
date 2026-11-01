@@ -17,6 +17,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+// SPDX-License-Identifier: Apache-2.0
 
 package com.kingsrook.qqq.backend.core.modules.authentication.implementations;
 
@@ -91,8 +92,9 @@ class OAuth2AuthenticationModuleIntegrationTest extends BaseTest
 
 
    /*******************************************************************************
-    ** Exercise the final expiry check after a token expires during lookup. The
-    ** clock boundary is simulated by successive expiry reads, not by sleeping.
+    ** Exercise the final expiry check after a token expires during lookup.
+    ** Simulate expiry at the final validation boundary, independently of how many
+    ** checks the authoritative lookup/refresh implementation performs.
     *******************************************************************************/
    @Test
    void expiredSessionDebugLogOmitsCredentials() throws Exception
@@ -105,7 +107,13 @@ class OAuth2AuthenticationModuleIntegrationTest extends BaseTest
       Instant past = Instant.now().minusSeconds(60);
       QSession session = new QSession();
       session.setUuid(uuid);
-      when(decoded.getExpiresAtAsInstant()).thenReturn(future, future, future, past);
+      when(decoded.getExpiresAtAsInstant()).thenAnswer(invocation ->
+      {
+         boolean insideLookup = StackWalker.getInstance().walk(frames -> frames.anyMatch(frame ->
+            frame.getClassName().equals(OAuth2AuthenticationModule.class.getName())
+               && frame.getMethodName().equals("doGetAccessTokenFromSessionUUID")));
+         return (insideLookup ? future : past);
+      });
       try(OAuthLogCapture capture = new OAuthLogCapture(); MockedStatic<JWT> jwt = mockStatic(JWT.class))
       {
          jwt.when(() -> JWT.decode(token)).thenReturn(decoded);
@@ -661,6 +669,9 @@ class OAuth2AuthenticationModuleIntegrationTest extends BaseTest
     *******************************************************************************/
    public static class TestOAuth2Customizer implements QAuthenticationModuleCustomizerInterface
    {
+      /*******************************************************************************
+       ** Record an observable permission key when the first customization boundary runs.
+       *******************************************************************************/
       @Override
       public void customizeSession(QInstance qInstance, QSession qSession, Map<String, Object> context)
       {
@@ -672,6 +683,9 @@ class OAuth2AuthenticationModuleIntegrationTest extends BaseTest
 
 
 
+      /*******************************************************************************
+       ** Distinguish final customization from the earlier hook with a separate security key.
+       *******************************************************************************/
       @Override
       public void finalCustomizeSession(QInstance qInstance, QSession qSession)
       {

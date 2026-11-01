@@ -309,6 +309,10 @@ purge, qbit-cluster, object-storage internals, sql-workbench auditor,
 db-performance sampling, backups health. Each gets an allow-list entry with a
 one-line reason; new uses fail the ArchUnit rule.
 
+`NativeSessionLogoutSupport` is authentication plumbing: it retains and reads
+encrypted native provider logout context only on the authenticated user's private
+session row. Its named allow-list entry does not authorize business-table access.
+
 ## 7. Configuration and kof22 rollout
 
 - Authentik (cluster-gitops blueprint, `!Env` secrets): group

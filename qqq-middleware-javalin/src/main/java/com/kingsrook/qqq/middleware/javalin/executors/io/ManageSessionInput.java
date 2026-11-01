@@ -17,6 +17,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+// SPDX-License-Identifier: Apache-2.0
 
 package com.kingsrook.qqq.middleware.javalin.executors.io;
 
@@ -33,6 +34,27 @@ public class ManageSessionInput extends AbstractMiddlewareInput
    private String sessionUUID;
    private String basicAuthString;
    private String authenticationFlow;
+   private String expectedNonce;
+
+
+
+   /*******************************************************************************
+    ** Original nonce from the client's retained native browser attempt.
+    *******************************************************************************/
+   public String getExpectedNonce()
+   {
+      return (expectedNonce);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for expectedNonce; never include it in logging or session output.
+    *******************************************************************************/
+   public void setExpectedNonce(String expectedNonce)
+   {
+      this.expectedNonce = expectedNonce;
+   }
 
 
 

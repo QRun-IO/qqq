@@ -17,6 +17,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+// SPDX-License-Identifier: Apache-2.0
 
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
@@ -138,7 +139,7 @@ class NativeSessionLoginSpecV1Test extends SpecTestBase
    void configuredPublicDescriptorAndFeature()
    {
       JSONObject version = new JSONObject(Unirest.get(getBaseUrlAndPath() + "/version").asString().getBody());
-      assertEquals("1.9.0", version.getString("apiVersion"));
+      assertEquals("1.10.0", version.getString("apiVersion"));
       assertTrue(version.getJSONArray("features").toList().contains("nativeSessionLogin"));
       String body = Unirest.get(getBaseUrlAndPath() + "/metaData/authentication").asString().getBody();
       JSONObject values = new JSONObject(body).getJSONObject("values");
@@ -159,6 +160,31 @@ class NativeSessionLoginSpecV1Test extends SpecTestBase
       assertEquals(List.of("S256"), new NativeSessionLogin().toSchema().getProperties().get("codeChallengeMethod").getEnumValues());
       assertEquals(List.of("login"), new NativeSessionLogin().toSchema().getProperties().get("prompt").getEnumValues());
       assertEquals(0, EXCHANGES.get());
+   }
+
+
+
+   /*******************************************************************************
+    ** Strict policy is explicit in discovery and checked before provider exchange.
+    *******************************************************************************/
+   @Test
+   void noncePolicyIsConditionalAndValidatedOverHttp()
+   {
+      JSONObject initial = new JSONObject(Unirest.get(getBaseUrlAndPath() + "/version").asString().getBody());
+      assertFalse(initial.getJSONArray("features").toList().contains("nativeSessionNonceValidation"));
+      ((OAuth2AuthenticationMetaData) serverQInstance.getAuthentication()).getNativeSessionLogin().setRequireNonceValidation(true);
+      JSONObject version = new JSONObject(Unirest.get(getBaseUrlAndPath() + "/version").asString().getBody());
+      assertTrue(version.getJSONArray("features").toList().contains("nativeSessionNonceValidation"));
+      JSONObject metadata = new JSONObject(Unirest.get(getBaseUrlAndPath() + "/metaData/authentication").asString().getBody());
+      assertEquals("REQUIRED", metadata.getJSONObject("values").getJSONObject("nativeSessionLogin").getString("nonceValidation"));
+      assertRejected(nativeRequest());
+      for(Object nonce : List.of("short", "a".repeat(513), "spaces are not URLsafe", 42, JSONObject.NULL))
+      {
+         assertRejected(nativeRequest().put("expectedNonce", nonce));
+      }
+      assertEquals(200, post(nativeRequest().put("expectedNonce", "original_client_nonce_123456")).getStatus());
+      assertEquals("original_client_nonce_123456", lastContext.get("expectedNonce"));
+      assertEquals(1, EXCHANGES.get());
    }
 
 

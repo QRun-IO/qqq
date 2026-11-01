@@ -17,6 +17,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+// SPDX-License-Identifier: Apache-2.0
 
 package com.kingsrook.qqq.backend.core.model.metadata.authentication;
 
@@ -77,6 +78,7 @@ public class OAuth2AuthenticationMetaData extends QAuthenticationMetaData
    private String clientId;
    private String scopes;
    private OAuth2NativeSessionLoginMetaData nativeSessionLogin;
+   private OAuth2NativeSessionLogoutMetaData nativeSessionLogout;
 
    private String userSessionTableName;
    private String redirectStateTableName;
@@ -163,6 +165,7 @@ public class OAuth2AuthenticationMetaData extends QAuthenticationMetaData
       qInstanceValidator.assertCondition(StringUtils.hasContent(clientSecret), prefix + "clientSecret must be set");
       qInstanceValidator.assertCondition(StringUtils.hasContent(scopes), prefix + "scopes must be set");
       qInstanceValidator.assertCondition(nativeSessionLogin == null || nativeSessionLogin.isValid(), prefix + "nativeSessionLogin requires explicit HTTPS issuer/discoveryUrl and exact HTTPS or private-use callback URIs");
+      qInstanceValidator.assertCondition(nativeSessionLogout == null || (nativeSessionLogout.isValid() && nativeSessionLogin != null && nativeSessionLogin.isValid()), prefix + "nativeSessionLogout requires valid native login policy and exact post-logout callback URIs");
 
       if(qInstanceValidator.assertCondition(StringUtils.hasContent(userSessionTableName), prefix + "userSessionTableName must be set"))
       {
@@ -927,7 +930,38 @@ public class OAuth2AuthenticationMetaData extends QAuthenticationMetaData
 
 
    /*******************************************************************************
-    ** Getter for the optional native cookie-session login policy.
+    ** Getter for the optional native provider logout policy.
+    *******************************************************************************/
+   public OAuth2NativeSessionLogoutMetaData getNativeSessionLogout()
+   {
+      return (nativeSessionLogout);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for optional native provider logout.
+    *******************************************************************************/
+   public void setNativeSessionLogout(OAuth2NativeSessionLogoutMetaData nativeSessionLogout)
+   {
+      this.nativeSessionLogout = nativeSessionLogout;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for optional native provider logout.
+    *******************************************************************************/
+   public OAuth2AuthenticationMetaData withNativeSessionLogout(OAuth2NativeSessionLogoutMetaData nativeSessionLogout)
+   {
+      this.nativeSessionLogout = nativeSessionLogout;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for nativeSessionLogin.
     *******************************************************************************/
    public OAuth2NativeSessionLoginMetaData getNativeSessionLogin()
    {

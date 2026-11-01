@@ -58,6 +58,7 @@ class SystemSessionAllowListArchitectureTest
       Map.entry("com.kingsrook.qqq.backend.core.model.metadata.QInstance", "metadata overlays"),
       Map.entry("com.kingsrook.qqq.backend.core.model.metadata.help.bundles.HelpBundles", "help bundle sync"),
       Map.entry("com.kingsrook.qqq.backend.core.modules.authentication.implementations.Auth0AuthenticationModule", "authentication internals (session/token tables)"),
+      Map.entry("com.kingsrook.qqq.backend.core.modules.authentication.implementations.NativeSessionLogoutSupport", "authentication internals (private encrypted native logout context on session rows)"),
       Map.entry("com.kingsrook.qqq.backend.core.modules.authentication.implementations.OAuth2AuthenticationModule", "authentication internals (session/token tables, logout)"),
       Map.entry("com.kingsrook.qqq.backend.core.state.TableStateProvider", "framework state rows"));
 

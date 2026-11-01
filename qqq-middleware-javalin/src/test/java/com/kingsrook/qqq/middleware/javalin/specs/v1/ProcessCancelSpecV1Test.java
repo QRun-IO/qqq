@@ -24,6 +24,7 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1;
 import java.util.List;
 import java.util.UUID;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
+import com.kingsrook.qqq.middleware.javalin.TestUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
 import com.kingsrook.qqq.middleware.javalin.specs.SpecTestBase;
 import kong.unirest.HttpResponse;
@@ -58,7 +59,7 @@ class ProcessCancelSpecV1Test extends SpecTestBase
    @Override
    protected List<AbstractEndpointSpec<?, ?, ?>> getAdditionalSpecs()
    {
-      return List.of(new ProcessInitSpecV1());
+      return List.of(new ProcessInitSpecV1(), new ProcessStepSpecV1());
    }
 
 
@@ -164,6 +165,44 @@ class ProcessCancelSpecV1Test extends SpecTestBase
 
       assertEquals(400, response.getStatus(), response.getBody());
       assertEquals("processUUID", JsonUtils.toJSONObject(response.getBody()).getJSONArray("fieldErrors").getJSONObject(0).getString("field"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Cancelling is terminal: a cancelled run refuses further steps with a 400,
+    ** even when the process has no cancel step; cancelling again is a no-op
+    ** (#1346).
+    *******************************************************************************/
+   @Test
+   void testCancelledProcessRefusesSteps()
+   {
+      String processPath = getBaseUrlAndPath() + "/processes/" + TestUtils.PROCESS_NAME_SLEEP_INTERACTIVE;
+      HttpResponse<String> initResponse = Unirest.post(processPath + "/init")
+         .cookie("sessionId", "v1-process-session")
+         .multiPartContent()
+         .field("values", new JSONObject().put(TestUtils.SleeperStep.FIELD_SLEEP_MILLIS, 1).toString())
+         .asString();
+      assertEquals(200, initResponse.getStatus(), initResponse.getBody());
+      String processUUID = JsonUtils.toJSONObject(initResponse.getBody()).getString("processUUID");
+
+      HttpResponse<String> cancelResponse = Unirest.post(processPath + "/" + processUUID + "/cancel")
+         .cookie("sessionId", "v1-process-session")
+         .asString();
+      assertEquals(200, cancelResponse.getStatus(), cancelResponse.getBody());
+
+      HttpResponse<String> stepResponse = Unirest.post(processPath + "/" + processUUID + "/step/" + TestUtils.SCREEN_0)
+         .cookie("sessionId", "v1-process-session")
+         .multiPartContent()
+         .field("values", "{}")
+         .asString();
+      assertEquals(400, stepResponse.getStatus(), stepResponse.getBody());
+      assertThat(JsonUtils.toJSONObject(stepResponse.getBody()).getString("error")).contains("process was cancelled");
+
+      HttpResponse<String> cancelAgainResponse = Unirest.post(processPath + "/" + processUUID + "/cancel")
+         .cookie("sessionId", "v1-process-session")
+         .asString();
+      assertEquals(200, cancelAgainResponse.getStatus(), cancelAgainResponse.getBody());
    }
 
 }

@@ -54,6 +54,7 @@ public class ProcessState implements Serializable
    private String                    nextStepName = null;
    private String                    backStepName = null;
    private boolean                   isStepBack   = false;
+   private boolean                   isCancelled  = false;
 
    private ProcessMetaDataAdjustment processMetaDataAdjustment = null;
 
@@ -252,6 +253,38 @@ public class ProcessState implements Serializable
       this.isStepBack = isStepBack;
       return (this);
    }
+
+
+
+   /*******************************************************************************
+    ** Getter for isCancelled: a cancelled run is over, and takes no more steps.
+    *******************************************************************************/
+   public boolean getIsCancelled()
+   {
+      return (this.isCancelled);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for isCancelled
+    *******************************************************************************/
+   public void setIsCancelled(boolean isCancelled)
+   {
+      this.isCancelled = isCancelled;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for isCancelled
+    *******************************************************************************/
+   public ProcessState withIsCancelled(boolean isCancelled)
+   {
+      this.isCancelled = isCancelled;
+      return (this);
+   }
+
 
 
    /*******************************************************************************

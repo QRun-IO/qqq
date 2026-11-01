@@ -658,6 +658,10 @@ public class RunProcessAction
       {
          ProcessStateAccess.requireAccess(optionalProcessState.get().getStateAccess(), process.getName(), runProcessInput.getProcessUUID());
       }
+      if(optionalProcessState.isPresent() && optionalProcessState.get().getIsCancelled())
+      {
+         throw (new QBadRequestException("This process was cancelled, so it cannot run any more steps."));
+      }
       if(optionalProcessState.isEmpty())
       {
          if(runProcessInput.getStartAfterStep() == null)
@@ -972,7 +976,7 @@ public class RunProcessAction
     ** Store the process state from a function result to the state provider
     **
     *******************************************************************************/
-   private void storeState(UUIDAndTypeStateKey stateKey, ProcessState processState)
+   protected void storeState(UUIDAndTypeStateKey stateKey, ProcessState processState)
    {
       getStateProvider().put(stateKey, processState);
    }

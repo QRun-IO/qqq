@@ -86,6 +86,16 @@ public class CancelProcessAction extends RunProcessAction
       }
 
       RunProcessOutput runProcessOutput = new RunProcessOutput();
+      if(processState.get().getIsCancelled())
+      {
+         //////////////////////////////////////////////////////////
+         // already cancelled - cancelling again is a no-op      //
+         // (the cancel step ran the first time)                 //
+         //////////////////////////////////////////////////////////
+         runProcessOutput.setProcessState(processState.get());
+         return (runProcessOutput);
+      }
+
       try
       {
          if(process.getCancelStep() != null)
@@ -111,9 +121,13 @@ public class CancelProcessAction extends RunProcessAction
       }
       finally
       {
-         //////////////////////////////////////////////////////
-         // always put the final state in the process result //
-         //////////////////////////////////////////////////////
+         //////////////////////////////////////////////////////////////////////
+         // cancelling is terminal: mark the state, so the run refuses any   //
+         // further steps (even if the cancel step failed); and always put   //
+         // the final state in the process result                            //
+         //////////////////////////////////////////////////////////////////////
+         processState.get().setIsCancelled(true);
+         storeState(stateKey, processState.get());
          runProcessOutput.setProcessState(processState.get());
       }
 

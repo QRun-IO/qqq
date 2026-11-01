@@ -27,6 +27,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import com.kingsrook.qqq.backend.core.actions.async.AsyncJobManager;
@@ -37,9 +38,11 @@ import com.kingsrook.qqq.backend.core.actions.processes.QProcessCallback;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
+import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.actions.processes.ProcessState;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
@@ -92,6 +95,16 @@ public class ProcessInitOrStepExecutor extends AbstractMiddlewareExecutor<Proces
       {
          LOG.info(startAfterStep == null ? "Initiating process [" + processName + "] [" + processUUID + "]"
             : "Resuming process [" + processName + "] [" + processUUID + "] after step [" + startAfterStep + "]");
+      }
+
+      //////////////////////////////////////////////////////////////////////////
+      // a cancelled run takes no more steps: answer that as a bad request,   //
+      // rather than as a step error (which the catch below would make a 200) //
+      //////////////////////////////////////////////////////////////////////////
+      if(startAfterStep != null || startAtStep != null)
+      {
+         ExecutorSessionUtils.setTableVariantInSession(input.getTableVariant());
+         assertNotCancelled(processName, processUUID);
       }
 
       try
@@ -214,6 +227,31 @@ public class ProcessInitOrStepExecutor extends AbstractMiddlewareExecutor<Proces
       else
       {
          QJavalinAccessLogger.logEndSuccess();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Refuse a step for a run that was cancelled.  A malformed or unknown UUID,
+    ** or a state this caller may not use, is left to the normal step handling.
+    *******************************************************************************/
+   private static void assertNotCancelled(String processName, String processUUID) throws QException
+   {
+      Optional<ProcessState> state;
+      try
+      {
+         UUID.fromString(Objects.requireNonNullElse(processUUID, ""));
+         state = RunProcessAction.getStateForUser(processUUID, processName);
+      }
+      catch(IllegalArgumentException | QException e)
+      {
+         return;
+      }
+
+      if(state.isPresent() && state.get().getIsCancelled())
+      {
+         throw (new QBadRequestException("This process was cancelled, so it cannot run any more steps."));
       }
    }
 

@@ -71,7 +71,7 @@ selections, go in the JSON body; query parameters are also accepted.
 | type | Meaning | Web | CLI | TUI | iOS |
 |---|---|---|---|---|---|
 | statistics | one headline number (`count`), with an optional comparison (`percentageAmount`, `increaseIsGood`) | stat tile | `label: count (Â±x%)` | boxed number | stat cell |
-| multiStatistics | several statistics groups | tiles row | one line per stat | grid of boxes | grouped cells |
+| multiStatistics | `statisticsGroupData[]`: groups (`header`, `subheader`, `icon`, `iconColor`), each with its stats in `statisticList[]` (`label`, `value`, `url`; the name is singular) | tiles row | one line per stat | grid of boxes | grouped cells |
 | table, multiTable | columns plus rows; a column of type `hidden` is not shown | data table | aligned text table, or CSV with `--csv` | scrollable table | list with detail rows |
 | chart, barChart, horizontalBarChart, stackedBarChart, lineChart, smallLineChart, pieChart | `chartData.labels` plus `chartData.datasets[]` (label and data) | chart | table of labels Ã— datasets | sparkline or bar chart in characters | Swift Charts |
 | html | `html` content | rendered HTML | text (tags stripped) | text | attributed string |

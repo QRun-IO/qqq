@@ -120,7 +120,7 @@ public final class ContingentPlaceMetaData
          new QFieldMetaData("countryId", QFieldType.INTEGER).withLabel("Country").withPossibleValueSourceName("country"),
          new QFieldMetaData("stateId", QFieldType.INTEGER).withLabel("State / province").withPossibleValueSourceName("countryState")
             .withPossibleValueSourceFilter(new QQueryFilter(new QFilterCriteria("countryId", QCriteriaOperator.EQUALS, "${input.countryId}"))),
-         new QFieldMetaData("cityId", QFieldType.INTEGER).withLabel("City").withPossibleValueSourceName("stateCity")
+         new QFieldMetaData("cityId", QFieldType.INTEGER).withLabel("City").withPossibleValueSourceName("stateCity").withIsRequired(true)
             .withPossibleValueSourceFilter(new QQueryFilter(new QFilterCriteria("stateId", QCriteriaOperator.EQUALS, "${input.stateId}")))));
    }
 

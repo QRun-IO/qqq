@@ -53,6 +53,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QStepMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
+import com.kingsrook.qqq.backend.core.utils.StringUtils;
 
 
 /*******************************************************************************
@@ -165,7 +166,8 @@ public class RunBackendStepAction
             // but if any required fields ARE missing, then that's an error. //
             ///////////////////////////////////////////////////////////////////
             LOG.info("Missing value for required fields: " + requiredFieldsMissing.stream().map(QFieldMetaData::getName).collect(Collectors.joining(", ")));
-            throw (new QUserFacingException("Missing values for one or more fields",
+            String fieldLabels = requiredFieldsMissing.stream().map(f -> StringUtils.hasContent(f.getLabel()) ? f.getLabel() : f.getName()).collect(Collectors.joining(", "));
+            throw (new QUserFacingException("Missing values for required fields: " + fieldLabels + ".",
                new QException("Function is missing values for fields, but no callback was present to request fields from a user")));
          }
 

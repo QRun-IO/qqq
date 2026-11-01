@@ -25,11 +25,13 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import com.kingsrook.qqq.backend.core.actions.processes.RunBackendStepAction;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.values.ContingentPossibleValueHelper;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
@@ -37,6 +39,7 @@ import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QFrontendStepMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.processes.implementations.mock.MockBackendStep;
@@ -192,5 +195,25 @@ public class SampleMetaDataProviderTest
       RunBackendStepOutput output = new RunBackendStepOutput();
       new ContingentPlaceMetaData.EchoCityStep().run(input, output);
       Assertions.assertEquals("Toronto", output.getValue("chosenCityName"));
+   }
+
+
+
+   /*******************************************************************************
+    ** The pick process's city is a required input:  running its backend step
+    ** without one is a user-facing error naming the field, and the pick form marks
+    ** the field required (#1348).
+    *******************************************************************************/
+   @Test
+   void contingentPlacePickRequiresCity()
+   {
+      RunBackendStepInput input = new RunBackendStepInput();
+      input.setProcessName("placeAddressPick");
+      input.setStepName("echoCity");
+      QUserFacingException exception = assertThrows(QUserFacingException.class, () -> new RunBackendStepAction().execute(input));
+      assertTrue(exception.getMessage().contains("City"), exception.getMessage());
+
+      QFrontendStepMetaData pickPlace = QContext.getQInstance().getProcess("placeAddressPick").getFrontendStep("pickPlace");
+      assertTrue(pickPlace.getFormFields().stream().anyMatch(field -> "cityId".equals(field.getName()) && field.getIsRequired()));
    }
 }

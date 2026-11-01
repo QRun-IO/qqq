@@ -31,6 +31,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.function.Function;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -251,7 +252,7 @@ public class ProcessSpecUtilsV1
       errorResponse.setError("Illegal Argument Exception: NaN");
       errorResponse.setUserFacingError("The process could not be completed due to invalid input.");
 
-      Function<ProcessInitOrStepOrStatusResponseV1, Example> responseToExample = response -> new Example().withValue(convertResponseToJSONObject(response).toMap());
+      Function<ProcessInitOrStepOrStatusResponseV1, Example> responseToExample = response -> new Example().withValue(sortMapsByKey(convertResponseToJSONObject(response).toMap()));
 
       return MapBuilder.of(() -> new LinkedHashMap<String, Example>())
          .with("COMPLETE", responseToExample.apply(completeResponse))
@@ -260,6 +261,40 @@ public class ProcessSpecUtilsV1
          .with("RUNNING", responseToExample.apply(runningResponse))
          .with("ERROR", responseToExample.apply(errorResponse))
          .build();
+   }
+
+
+
+   /***************************************************************************
+    ** Copy a JSONObject.toMap() result with every nested map sorted by key.
+    ** JSONObject keeps its members in a HashMap, so the key order of an example
+    ** built from it depends on hashing and insertion order, which can differ
+    ** with what ran earlier in the JVM; sorting keeps the generated OpenAPI
+    ** document stable.
+    ***************************************************************************/
+   static Object sortMapsByKey(Object value)
+   {
+      if(value instanceof Map<?, ?> map)
+      {
+         TreeMap<String, Object> sorted = new TreeMap<>();
+         for(Map.Entry<?, ?> entry : map.entrySet())
+         {
+            sorted.put(String.valueOf(entry.getKey()), sortMapsByKey(entry.getValue()));
+         }
+         return (sorted);
+      }
+
+      if(value instanceof List<?> list)
+      {
+         List<Object> sortedList = new ArrayList<>();
+         for(Object element : list)
+         {
+            sortedList.add(sortMapsByKey(element));
+         }
+         return (sortedList);
+      }
+
+      return (value);
    }
 
 

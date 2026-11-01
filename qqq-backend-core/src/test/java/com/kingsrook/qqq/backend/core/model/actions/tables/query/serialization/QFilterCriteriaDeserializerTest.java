@@ -25,12 +25,15 @@ import java.io.IOException;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import com.kingsrook.qqq.backend.core.BaseTest;
+import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.CriteriaOption;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.expressions.AbstractFilterExpression;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.expressions.Now;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.expressions.NowWithOffset;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.expressions.ThisOrLastPeriod;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.functions.FieldFunction;
+import com.kingsrook.qqq.backend.core.utils.ExceptionUtils;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import org.junit.jupiter.api.Test;
 import static com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator.BETWEEN;
@@ -41,6 +44,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 /*******************************************************************************
@@ -173,6 +177,33 @@ class QFilterCriteriaDeserializerTest extends BaseTest
          {"fieldName": "id", "operator": "EQUALS", "values": [1]}
          """, QFilterCriteria.class);
       assertNull(criteria.getFieldFunction());
+   }
+
+
+
+   /*******************************************************************************
+    ** Options are read as CriteriaOption names, and round-trip; an unknown name
+    ** is a bad request (#1358).
+    *******************************************************************************/
+   @Test
+   void testDeserializeOptions() throws IOException
+   {
+      QFilterCriteria criteria = JsonUtils.toObject("""
+         {"fieldName": "lastName", "operator": "CONTAINS", "values": ["kelk"], "options": ["CASE_INSENSITIVE"]}
+         """, QFilterCriteria.class);
+      assertTrue(criteria.hasOption(CriteriaOption.CASE_INSENSITIVE));
+
+      QFilterCriteria roundTripped = JsonUtils.toObject(JsonUtils.toJson(criteria), QFilterCriteria.class);
+      assertTrue(roundTripped.hasOption(CriteriaOption.CASE_INSENSITIVE));
+
+      assertNull(JsonUtils.toObject("""
+         {"fieldName": "id", "operator": "EQUALS", "values": [1], "options": []}
+         """, QFilterCriteria.class).getOptions());
+
+      assertThatThrownBy(() -> JsonUtils.toObject("""
+         {"fieldName": "id", "operator": "EQUALS", "values": [1], "options": ["SHOUTY"]}
+         """, QFilterCriteria.class))
+         .satisfies(e -> assertNotNull(ExceptionUtils.findClassInRootChain(e, QBadRequestException.class)));
    }
 
 }

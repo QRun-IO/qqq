@@ -1211,6 +1211,14 @@ components:
           - "TRUE"
           - "FALSE"
           type: "string"
+        options:
+          description: "Options for how the criteria is applied, e.g. CASE_INSENSITIVE\
+            \ (string operators match regardless of case).  Since 1.9.0."
+          items:
+            enum:
+            - "CASE_INSENSITIVE"
+            type: "string"
+          type: "array"
         values:
           description: "Values to apply via the operator to the field"
           items:

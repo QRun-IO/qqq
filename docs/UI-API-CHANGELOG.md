@@ -116,6 +116,10 @@ Fixes for issues found while building the terminal clients (`qqq-cli`).
   table declares search fields. Deployments that have them see no change.
 - **Null process values** (#1356, behaviour fix): a JSON `null` in a process init or step `values`
   is a cleared value (was a 500 "Non-serializable value in param map").
+- **Criteria `options`** (#1358): `FilterCriteria` declares `options`, an array of option names
+  (today `CASE_INSENSITIVE`, which makes string operators such as `CONTAINS` match regardless of
+  case on any backend), and the server reads it (before, it was silently dropped). An unknown name
+  answers 400 with an `options` field error.
 - **Realtime events keep empty values** (#1354, behaviour fix, no schema change): the stream
   serialises event data omitting only nulls, so an empty list (e.g. `presence.changed`
   `viewers: []`, or an empty `fields` on `record.*`), an empty object or an empty string is sent

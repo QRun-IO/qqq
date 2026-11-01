@@ -86,6 +86,23 @@ class RecordFieldDownloadSpecV1Test extends SpecTestBase
 
 
    /*******************************************************************************
+    ** A BLOB field with no adornments (a null list) is served, not a 500 (#1349).
+    *******************************************************************************/
+   @Test
+   void testDownloadBlobFieldWithNullAdornments()
+   {
+      serverQInstance.getTable("person").getField("photo").setAdornments(null);
+
+      HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/table/person/1/photo/darin-photo.png")
+         .asString();
+
+      assertEquals(200, response.getStatus());
+      assertThat(response.getBody()).isNotEmpty();
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    @Test

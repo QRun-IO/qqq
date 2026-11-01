@@ -116,7 +116,7 @@ class TableWriteVariantSpecV1Test extends SpecTestBase
          .body(JsonUtils.toJson(Map.of("name", "Venus")))
          .asString();
       assertEquals(200, insert.getStatus(), insert.getBody());
-      Integer id = JsonUtils.toJSONObject(insert.getBody()).getJSONObject("record").getJSONObject("values").getInt("id");
+      int id = JsonUtils.toJSONObject(insert.getBody()).getJSONObject("record").getJSONObject("values").getInt("id");
       assertEquals(List.of("Venus"), namesInVariant(2));
       assertEquals(List.of(), namesInVariant(1));
 

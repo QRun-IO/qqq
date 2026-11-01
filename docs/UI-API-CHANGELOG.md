@@ -110,6 +110,10 @@ Fixes for issues found while building the terminal clients (`qqq-cli`).
   `application/x-www-form-urlencoded` body (the multipart fields without file uploads), and read
   it; before, a url-encoded `values` was silently ignored. The in-process invoker
   (`UiApiInvoker`) now sends plain form fields for these operations url-encoded.
+- **`GET /version` features reflect what is installed** (#1337, #1343, behaviour fix):
+  `durableJobs` is listed only when the durable jobs tables are installed (the `/jobs` routes are
+  bound only then), and `recordSearch` only when a record search provider is configured or some
+  table declares search fields. Deployments that have them see no change.
 - **Realtime events keep empty values** (#1354, behaviour fix, no schema change): the stream
   serialises event data omitting only nulls, so an empty list (e.g. `presence.changed`
   `viewers: []`, or an empty `fields` on `record.*`), an empty object or an empty string is sent

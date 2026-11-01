@@ -226,6 +226,47 @@ class ProcessStatusSpecV1Test extends SpecTestBase
 
 
    /*******************************************************************************
+    ** A session sent as a bearer token (rather than a cookie) can continue an
+    ** asynchronous step and poll its job - the same as a cookie session (#1335).
+    *******************************************************************************/
+   @Test
+   void testBearerSessionContinuesAsyncStep() throws InterruptedException
+   {
+      Unirest.config().getDefaultHeaders().remove("Cookie");
+      String bearer = "Bearer " + UUID.randomUUID();
+
+      String processBasePath = getBaseUrlAndPath() + "/processes/" + TestUtils.PROCESS_NAME_SLEEP_INTERACTIVE;
+      HttpResponse<String> response = Unirest.post(processBasePath + "/init")
+         .header("Authorization", bearer)
+         .multiPartContent()
+         .field("values", new JSONObject()
+            .put(TestUtils.SleeperStep.FIELD_SLEEP_MILLIS, MORE_THAN_TIMEOUT)
+            .toString())
+         .asString();
+
+      JSONObject jsonObject  = assertProcessStepCompleteResponse(response);
+      String     processUUID = jsonObject.getString("processUUID");
+      String     nextStep    = jsonObject.getString("nextStep");
+
+      response = Unirest.post(processBasePath + "/" + processUUID + "/step/" + nextStep)
+         .header("Authorization", bearer)
+         .multiPartContent()
+         .field("stepTimeoutMillis", String.valueOf(TIMEOUT))
+         .asString();
+      String jobUUID = assertProcessStepWentAsyncResponse(response).getString("jobUUID");
+
+      Thread.sleep(MORE_THAN_TIMEOUT);
+
+      response = Unirest.get(processBasePath + "/" + processUUID + "/status/" + jobUUID)
+         .header("Authorization", bearer)
+         .asString();
+      jsonObject = assertProcessStepCompleteResponse(response);
+      assertTrue(jsonObject.getJSONObject("values").has("didSleep"), "There should be a value from the backend step");
+   }
+
+
+
+   /*******************************************************************************
     ** test init'ing a process that goes async and then throws
     **
     *******************************************************************************/

@@ -34,6 +34,7 @@ import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.ExamplePersonalizer;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.model.actions.reporting.ExportInput;
@@ -272,6 +273,26 @@ class ExportActionTest extends BaseTest
       {
          new ExportAction().execute(exportInput);
       });
+   }
+
+
+
+   /*******************************************************************************
+    ** Unknown field names are a bad request, naming each in fieldErrors (#1345).
+    *******************************************************************************/
+   @Test
+   void testBadFieldNamesAreBadRequestWithFieldErrors()
+   {
+      ExportInput exportInput = new ExportInput();
+      exportInput.setTableName("person");
+      exportInput.setFieldNames(List.of("id", "Foo", "Bar"));
+      exportInput.setReportDestination(new ReportDestination().withReportFormat(ReportFormat.CSV).withReportOutputStream(new ByteArrayOutputStream()));
+
+      QBadRequestException exception = assertThrows(QBadRequestException.class, () -> new ExportAction().preExecute(exportInput));
+      assertEquals(2, exception.getFieldErrors().size());
+      assertEquals("fieldNames", exception.getFieldErrors().get(0).field());
+      assertThat(exception.getFieldErrors().get(0).message()).contains("Foo");
+      assertThat(exception.getFieldErrors().get(1).message()).contains("Bar");
    }
 
 

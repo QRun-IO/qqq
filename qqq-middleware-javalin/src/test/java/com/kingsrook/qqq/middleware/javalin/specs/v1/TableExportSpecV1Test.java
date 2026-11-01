@@ -32,6 +32,7 @@ import com.kingsrook.qqq.middleware.javalin.specs.SpecTestBase;
 import io.javalin.http.ContentType;
 import kong.unirest.HttpResponse;
 import kong.unirest.Unirest;
+import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -126,17 +127,40 @@ class TableExportSpecV1Test extends SpecTestBase
 
 
    /*******************************************************************************
-    **
+    ** An unsupported format is a bad request naming the format field (#1345).
     *******************************************************************************/
    @Test
    void testExportInvalidFormat()
    {
       HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/table/person/export")
          .contentType(ContentType.APPLICATION_JSON.getMimeType())
-         .body(JsonUtils.toJson(Map.of("format", "invalidFormat")))
+         .body(JsonUtils.toJson(Map.of("format", "pdf")))
          .asString();
 
-      assertThat(response.getStatus()).isIn(400, 500);
+      assertEquals(400, response.getStatus(), response.getBody());
+      JSONObject body = new JSONObject(response.getBody());
+      assertEquals("BAD_REQUEST", body.getString("code"));
+      assertThat(body.getString("message")).contains("Unsupported report format: pdf.");
+      assertEquals("format", body.getJSONArray("fieldErrors").getJSONObject(0).getString("field"));
+   }
+
+
+
+   /*******************************************************************************
+    ** An unknown field name is a bad request naming the fieldNames field (#1345).
+    *******************************************************************************/
+   @Test
+   void testExportUnknownFieldName()
+   {
+      HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/table/person/export")
+         .contentType(ContentType.APPLICATION_JSON.getMimeType())
+         .body(JsonUtils.toJson(Map.of("format", "csv", "fieldNames", List.of("id", "bogus"))))
+         .asString();
+
+      assertEquals(400, response.getStatus(), response.getBody());
+      JSONObject fieldError = new JSONObject(response.getBody()).getJSONArray("fieldErrors").getJSONObject(0);
+      assertEquals("fieldNames", fieldError.getString("field"));
+      assertThat(fieldError.getString("message")).contains("bogus");
    }
 
 

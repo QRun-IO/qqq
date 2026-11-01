@@ -21,6 +21,7 @@
 package com.kingsrook.qqq.middleware.javalin;
 
 
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -220,10 +221,12 @@ public class QJavalinUtils
             statusCode = Objects.requireNonNullElse(statusCode, HttpStatus.Code.TOO_MANY_REQUESTS); // 429
             respondWithError(context, statusCode, userFacingException.getMessage());
          }
-         else if(userFacingException instanceof QBadRequestException)
+         else if(userFacingException instanceof QBadRequestException badRequestException)
          {
             statusCode = Objects.requireNonNullElse(statusCode, HttpStatus.Code.BAD_REQUEST); // 400
-            respondWithError(context, statusCode, userFacingException.getMessage());
+            respondWithError(context, statusCode, userFacingException.getMessage(), badRequestException.getFieldErrors().stream()
+               .map(fieldError -> new BasicErrorResponseV1.FieldErrorV1(fieldError.field(), fieldError.message(), null))
+               .toList());
          }
          else
          {
@@ -261,10 +264,22 @@ public class QJavalinUtils
     *******************************************************************************/
    public static void respondWithError(Context context, HttpStatus.Code statusCode, String errorMessage)
    {
+      respondWithError(context, statusCode, errorMessage, null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Respond with the error body, naming the request fields that were bad (when
+    ** known - empty or null for none).
+    *******************************************************************************/
+   public static void respondWithError(Context context, HttpStatus.Code statusCode, String errorMessage, List<BasicErrorResponseV1.FieldErrorV1> fieldErrors)
+   {
       context.status(statusCode.getCode());
       context.result(JsonUtils.toJson(new BasicErrorResponseV1()
          .withError(errorMessage)
          .withCode(BasicErrorResponseV1.codeForStatus(statusCode.getCode()))
+         .withFieldErrors(fieldErrors)
          .withTraceId(getTraceId(context))
          .toMap()));
    }

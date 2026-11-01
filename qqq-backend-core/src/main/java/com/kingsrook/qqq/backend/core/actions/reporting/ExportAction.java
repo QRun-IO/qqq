@@ -41,6 +41,7 @@ import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
+import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QReportingException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
@@ -178,7 +179,10 @@ public class ExportAction
                errorParts.add("Fields names " + StringUtils.joinWithCommasAndAnd(notQueryableFieldNames) + " are not queryable on the " + table.getLabel() + " table.");
             }
 
-            throw new QUserFacingException(String.join(" ", errorParts));
+            QBadRequestException badRequestException = new QBadRequestException(String.join(" ", errorParts));
+            notFoundFieldNames.forEach(fieldName -> badRequestException.withFieldError("fieldNames", "Field name " + fieldName + " was not found on the " + table.getLabel() + " table."));
+            notQueryableFieldNames.forEach(fieldName -> badRequestException.withFieldError("fieldNames", "Field name " + fieldName + " is not queryable on the " + table.getLabel() + " table."));
+            throw (badRequestException);
          }
       }
 

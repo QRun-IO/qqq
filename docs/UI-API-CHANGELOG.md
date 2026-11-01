@@ -88,6 +88,10 @@ Fixes for issues found while building the terminal clients (`qqq-cli`).
   `PATCH /table/{tableName}/{primaryKey}` and `DELETE /table/{tableName}/{primaryKey}` accept the
   optional `tableVariant` query parameter (a JSON object with `type` and `id`, as on get) and write
   to that variant. A value that is not a JSON object answers 400.
+- **Export request errors are 400** (#1345, behaviour fix, no schema change): `POST
+  /table/{tableName}/export` answers 400 `BAD_REQUEST` (was 500) for an unsupported or missing
+  `format` and for an unknown or unqueryable name in `fieldNames`, with `fieldErrors` naming
+  `format` or `fieldNames`. `fieldErrors` is now filled for any bad request that names its fields.
 - **Realtime events keep empty values** (#1354, behaviour fix, no schema change): the stream
   serialises event data omitting only nulls, so an empty list (e.g. `presence.changed`
   `viewers: []`, or an empty `fields` on `record.*`), an empty object or an empty string is sent

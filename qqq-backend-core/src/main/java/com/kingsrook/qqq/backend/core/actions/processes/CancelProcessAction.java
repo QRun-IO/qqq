@@ -66,7 +66,18 @@ public class CancelProcessAction extends RunProcessAction
          throw (new QBadRequestException("Cannot cancel process - processUUID was not given."));
       }
 
-      UUIDAndTypeStateKey    stateKey     = new UUIDAndTypeStateKey(UUID.fromString(runProcessInput.getProcessUUID()), StateType.PROCESS_STATUS);
+      UUID processUUID;
+      try
+      {
+         processUUID = UUID.fromString(runProcessInput.getProcessUUID());
+      }
+      catch(IllegalArgumentException e)
+      {
+         throw (new QBadRequestException("Cannot cancel process - processUUID [" + runProcessInput.getProcessUUID() + "] is not a valid UUID.")
+            .withFieldError("processUUID", "Not a valid UUID."));
+      }
+
+      UUIDAndTypeStateKey    stateKey     = new UUIDAndTypeStateKey(processUUID, StateType.PROCESS_STATUS);
       Optional<ProcessState> processState = runProcessInput.getInputSource() == QInputSource.USER
          ? getStateForUser(runProcessInput.getProcessUUID(), runProcessInput.getProcessName()) : getState(runProcessInput.getProcessUUID());
       if(processState.isEmpty())

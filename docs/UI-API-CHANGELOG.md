@@ -100,6 +100,10 @@ Fixes for issues found while building the terminal clients (`qqq-cli`).
 - **Possible-value ids are checked** (#1338, behaviour fix, no schema change): an `ids` entry
   that is not a number, for a table source whose id field is numeric, answers 400 with an `ids`
   field error (was a 500 from the failed query on RDBMS backends).
+- **Malformed process UUID on cancel is 400** (#1346, behaviour fix): `POST
+  /processes/{processName}/{processUUID}/cancel` answers 400 with a `processUUID` field error (was
+  500) when the UUID is malformed. A cancelled run still keeps its state and can be stepped; making
+  cancel terminal is deferred (see `SampleProcessCancellationContractTest`).
 - **Realtime events keep empty values** (#1354, behaviour fix, no schema change): the stream
   serialises event data omitting only nulls, so an empty list (e.g. `presence.changed`
   `viewers: []`, or an empty `fields` on `record.*`), an empty object or an empty string is sent

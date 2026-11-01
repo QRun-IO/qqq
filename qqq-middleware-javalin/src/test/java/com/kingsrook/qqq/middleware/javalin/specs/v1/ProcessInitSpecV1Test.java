@@ -304,6 +304,29 @@ class ProcessInitSpecV1Test extends SpecTestBase
 
 
    /*******************************************************************************
+    ** A JSON null in values is a cleared value, not a 500 (#1356).
+    *******************************************************************************/
+   @Test
+   void testNullFieldValue()
+   {
+      HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/processes/greet/init")
+         .multiPartContent()
+         .field("recordsParam", "recordIds")
+         .field("recordIds", "2,3")
+         .field("values", new JSONObject()
+            .put("greetingPrefix", JSONObject.NULL)
+            .put("greetingSuffix", "Jude")
+            .toString())
+         .asString();
+
+      assertEquals(200, response.getStatus(), response.getBody());
+      JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
+      assertEquals("COMPLETE", jsonObject.getString("type"), jsonObject.toString());
+   }
+
+
+
+   /*******************************************************************************
     ** The step operation declares the isStepBack query parameter it honors
     ** (#1347).
     *******************************************************************************/

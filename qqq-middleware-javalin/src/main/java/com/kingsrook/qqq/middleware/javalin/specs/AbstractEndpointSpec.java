@@ -596,7 +596,15 @@ public abstract class AbstractEndpointSpec<
       for(String key : jsonObject.keySet())
       {
          Object value = jsonObject.get(key);
-         if(value instanceof Serializable s)
+         if(JSONObject.NULL.equals(value))
+         {
+            /////////////////////////////////////////////////////////
+            // a JSON null is a cleared value (e.g. a field a user //
+            // emptied on a process screen), not an error          //
+            /////////////////////////////////////////////////////////
+            map.put(key, null);
+         }
+         else if(value instanceof Serializable s)
          {
             map.put(key, s);
          }

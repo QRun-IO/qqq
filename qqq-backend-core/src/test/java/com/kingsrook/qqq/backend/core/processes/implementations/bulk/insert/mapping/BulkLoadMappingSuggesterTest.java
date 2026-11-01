@@ -35,6 +35,7 @@ import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 /*******************************************************************************
@@ -80,6 +81,35 @@ class BulkLoadMappingSuggesterTest extends BaseTest
       assertEquals(1, getFieldByName(bulkLoadProfile, "shipToName").getColumnIndex());
       assertEquals(2, getFieldByName(bulkLoadProfile, "orderLine.sku").getColumnIndex());
       assertEquals(3, getFieldByName(bulkLoadProfile, "orderLine.quantity").getColumnIndex());
+   }
+
+
+
+   /*******************************************************************************
+    ** A column a main-table field reads is not also suggested for a child field
+    ** with the same label (order and orderLine both have a Timestamp), so a file
+    ** with only main-table columns stays FLAT (#1357).
+    *******************************************************************************/
+   @Test
+   void testChildFieldDoesNotReuseMainTableColumn() throws QException
+   {
+      BulkLoadTableStructure tableStructure = BulkLoadTableStructureBuilder.buildTableStructure(TestUtils.TABLE_NAME_ORDER);
+      List<String>           headerRow      = List.of("Order No", "Timestamp");
+
+      BulkLoadProfile bulkLoadProfile = new BulkLoadMappingSuggester().suggestBulkLoadMappingProfile(tableStructure, headerRow, false);
+      assertEquals("v1", bulkLoadProfile.getVersion());
+      assertEquals("FLAT", bulkLoadProfile.getLayout());
+      assertEquals(1, getFieldByName(bulkLoadProfile, "timestamp").getColumnIndex());
+      assertTrue(bulkLoadProfile.getFieldList().stream().noneMatch(field -> field.getFieldName().startsWith("orderLine.")), bulkLoadProfile.getFieldList().toString());
+
+      /////////////////////////////////////////////////////////////////
+      // a child column of its own still makes the suggestion TALL, //
+      // without the child taking the shared column                 //
+      /////////////////////////////////////////////////////////////////
+      bulkLoadProfile = new BulkLoadMappingSuggester().suggestBulkLoadMappingProfile(tableStructure, List.of("Order No", "Timestamp", "SKU"), false);
+      assertEquals("TALL", bulkLoadProfile.getLayout());
+      assertEquals(2, getFieldByName(bulkLoadProfile, "orderLine.sku").getColumnIndex());
+      assertTrue(bulkLoadProfile.getFieldList().stream().noneMatch(field -> field.getFieldName().equals("orderLine.timestamp")));
    }
 
 

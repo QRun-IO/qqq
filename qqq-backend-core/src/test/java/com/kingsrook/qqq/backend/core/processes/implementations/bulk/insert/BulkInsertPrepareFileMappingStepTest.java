@@ -110,6 +110,7 @@ class BulkInsertPrepareFileMappingStepTest extends BaseTest
 
       BulkLoadProfile                bulkLoadProfile = (BulkLoadProfile) runBackendStepOutput.getValue("suggestedBulkLoadProfile");
       Optional<BulkLoadProfileField> homeStateId     = bulkLoadProfile.getFieldList().stream().filter(f -> f.getFieldName().equals("homeStateId")).findFirst();
+      assertEquals("v1", bulkLoadProfile.getVersion());
       assertThat(homeStateId).isPresent();
       assertEquals("1", homeStateId.get().getDefaultValue());
    }

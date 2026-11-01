@@ -325,8 +325,8 @@ public class SearchPossibleValueSourceAction
 
    /*******************************************************************************
     ** OR a criteria per search field into the filter: strings by the given
-    ** operator (case-insensitively for a picker's CONTAINS, as record search
-    ** does - PostgreSQL's LIKE is case-sensitive), dates/date-times by
+    ** operator, ignoring case (as record search does - PostgreSQL's and H2's
+    ** LIKE are case-sensitive; QRun-IO/qqq#1339), dates/date-times by
     ** equality, other types as integers.
     *******************************************************************************/
    private void addSearchCriteria(QQueryFilter queryFilter, QTableMetaData table, List<String> searchFields, String searchTerm, QCriteriaOperator stringOperator)
@@ -342,12 +342,7 @@ public class SearchPossibleValueSourceAction
             QFieldMetaData field = table.getField(valueField);
             if(field.getType().equals(QFieldType.STRING))
             {
-               QFilterCriteria criteria = new QFilterCriteria(valueField, stringOperator, List.of(searchTerm));
-               if(QCriteriaOperator.CONTAINS.equals(stringOperator))
-               {
-                  criteria.withOption(CriteriaOption.CASE_INSENSITIVE);
-               }
-               queryFilter.addCriteria(criteria);
+               queryFilter.addCriteria(new QFilterCriteria(valueField, stringOperator, List.of(searchTerm)).withOption(CriteriaOption.CASE_INSENSITIVE));
             }
             else if(field.getType().equals(QFieldType.DATE))
             {

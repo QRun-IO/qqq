@@ -165,7 +165,9 @@ Hints describe meaning, never markup:
   (TEXT/HTML/MARKDOWN) and `content`.
 - **Possible values and the record picker.** A field with a possible value source shows a picker.
   The `picker` hints say how to present it as a list or a media grid, and which subtitle and
-  thumbnail fields to use. Search with `POST /table/{t}/possibleValues/{field}`.
+  thumbnail fields to use. Search with `POST /table/{t}/possibleValues/{field}`: `searchTerm`
+  matches the start of a label (table sources: of a search field), ignoring case; ids, dates and
+  numbers match exactly. A picker request (`picker`) matches anywhere in the text instead.
 - **App home.** Apps list `widgets` (the home dashboard) and `sections` (groups of tables, processes
   and reports). Render the widgets first, then the sections.
 - **Table capabilities.** `clientCapabilities` on table metadata says what to offer beyond CRUD, for

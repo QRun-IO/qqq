@@ -90,6 +90,11 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
   `POST /manageSession` with `Authorization: Basic`, a client may send the session uuid as
   `Authorization: Bearer {uuid}` (before, only the `sessionUUID`/`sessionId` cookies were read).
   The `manageSession` description and `UI-API-CLIENTS.md` section 7 give the recipe.
+- **Possible-value search ignores case for table sources** (#1339, behaviour fix): `searchTerm`
+  matched a table source's search fields by prefix with the backend's own case rule, so on H2 and
+  PostgreSQL `can` did not find `Canada`. Table sources now match by prefix ignoring case, as enum
+  and default custom sources already did. Matching stays by prefix (picker requests match
+  anywhere), and the operations' `searchTerm` description now states the rule.
 - **Documentation:** `getRecord` wraps its record as `{ record }` while `queryTable` lists bare
   records in `records` (#1340).
 

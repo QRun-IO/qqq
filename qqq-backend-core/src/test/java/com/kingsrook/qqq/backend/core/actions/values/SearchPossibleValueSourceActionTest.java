@@ -109,6 +109,28 @@ class SearchPossibleValueSourceActionTest extends BaseTest
 
 
    /*******************************************************************************
+    ** A search term matches the start of a label, ignoring case - for table
+    ** sources too, whatever the backend's LIKE does (QRun-IO/qqq#1339) - and
+    ** not the middle of one.
+    *******************************************************************************/
+   @Test
+   void testSearchPvsAction_caseInsensitivePrefix() throws QException
+   {
+      for(String searchTerm : List.of("tri", "TRIANGLE", "tRiAn"))
+      {
+         SearchPossibleValueSourceOutput tableOutput = getSearchPossibleValueSourceOutput(searchTerm, TestUtils.POSSIBLE_VALUE_SOURCE_SHAPE);
+         assertEquals(1, tableOutput.getResults().size(), searchTerm);
+         assertThat(tableOutput.getResults()).anyMatch(pv -> pv.getLabel().equals("Triangle"));
+      }
+      assertEquals(0, getSearchPossibleValueSourceOutput("riangle", TestUtils.POSSIBLE_VALUE_SOURCE_SHAPE).getResults().size());
+
+      assertEquals(1, getSearchPossibleValueSourceOutput("m", TestUtils.POSSIBLE_VALUE_SOURCE_STATE).getResults().size());
+      assertEquals(0, getSearchPossibleValueSourceOutput("o", TestUtils.POSSIBLE_VALUE_SOURCE_STATE).getResults().size());
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    @Test

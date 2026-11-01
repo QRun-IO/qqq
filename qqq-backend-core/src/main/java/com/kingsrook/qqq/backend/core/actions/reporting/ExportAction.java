@@ -197,7 +197,7 @@ public class ExportAction
          JoinsContext joinsContext;
          try
          {
-            joinsContext = new JoinsContext(QContext.getQInstance(), exportInput.getTableName(), queryJoins, null);
+            joinsContext = new JoinsContext(QContext.getQInstance(), exportInput.getTableName(), queryJoins, new QQueryFilter());
          }
          catch(QException e)
          {

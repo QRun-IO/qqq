@@ -109,7 +109,7 @@ Fixes for issues found while building the terminal clients (`qqq-cli`).
 - **Url-encoded process bodies** (#1336): `initProcess` and `stepProcess` also declare an
   `application/x-www-form-urlencoded` body (the multipart fields without file uploads), and read
   it; before, a url-encoded `values` was silently ignored. The in-process invoker
-  (`UiApiInvoker`) now sends plain form fields for these operations url-encoded.
+  (`UiApiInvoker`) still sends form fields to them as multipart.
 - **`GET /version` features reflect what is installed** (#1337, #1343, behaviour fix):
   `durableJobs` is listed only when the durable jobs tables are installed (the `/jobs` routes are
   bound only then), and `recordSearch` only when a record search provider is configured or some

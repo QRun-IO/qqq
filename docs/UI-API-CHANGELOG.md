@@ -80,9 +80,9 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 
 ## Versions
 
-### 1.9.0 (next release) - terminal client findings
+### 1.9.0 (next QQQ 4.1 release) - terminal client findings and native-client contract fixes
 
-Fixes for issues found while building the terminal clients (`qqq-cli`).
+Fixes for issues found while building the terminal clients (`qqq-cli`) and native clients.
 
 - **`tableVariant` on insert, update and delete** (#1351): `POST /table/{tableName}`,
   `PATCH /table/{tableName}/{primaryKey}` and `DELETE /table/{tableName}/{primaryKey}` accept the
@@ -124,6 +124,21 @@ Fixes for issues found while building the terminal clients (`qqq-cli`).
   serialises event data omitting only nulls, so an empty list (e.g. `presence.changed`
   `viewers: []`, or an empty `fields` on `record.*`), an empty object or an empty string is sent
   instead of the key being dropped.
+- **`WidgetDataMultiStatistics.statisticsGroupData`** is typed (#1353): each group has `header`,
+  `subheader`, `icon`, `iconColor` and `statisticList` (`label`, `value`, `url`). The list name is
+  `statisticList`, singular, as the server has always sent it and the web UI reads it; no payload
+  changed.
+- **`TABLE_BASED` native sign-in** (#1342, behaviour fix, no schema change): after
+  `POST /manageSession` with `Authorization: Basic`, a client may send the session uuid as
+  `Authorization: Bearer {uuid}` (before, only the `sessionUUID`/`sessionId` cookies were read).
+  The `manageSession` description and `UI-API-CLIENTS.md` section 7 give the recipe.
+- **Possible-value search ignores case for table sources** (#1339, behaviour fix): `searchTerm`
+  matched a table source's search fields by prefix with the backend's own case rule, so on H2 and
+  PostgreSQL `can` did not find `Canada`. Table sources now match by prefix ignoring case, as enum
+  and default custom sources already did. Matching stays by prefix (picker requests match
+  anywhere), and the operations' `searchTerm` description now states the rule.
+- **Documentation:** `getRecord` wraps its record as `{ record }` while `queryTable` lists bare
+  records in `records` (#1340).
 
 ### 1.8.0 (QQQ 4.1.0-RC.17) - profiles and avatars
 See [USER-PROFILE-AVATARS.md](USER-PROFILE-AVATARS.md).

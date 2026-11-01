@@ -4164,7 +4164,9 @@ components:
     TableGetResponseV1:
       properties:
         record:
-          description: "The record that was fetched"
+          description: "The record that was fetched.  The get response wraps it in\
+            \ this `record` property, while query responses list records unwrapped\
+            \ in `records`."
           properties:
             associatedRecords:
               additionalProperties:
@@ -4829,7 +4831,9 @@ components:
     TableQueryResponseV1:
       properties:
         records:
-          description: "List of records that satisfy the query request"
+          description: "List of records that satisfy the query request.  Each element\
+            \ is a record object itself (no wrapper), unlike the get response, which\
+            \ wraps its one record as `{ record }`."
           items:
             $ref: "#/components/schemas/OutputRecord"
           type: "array"
@@ -7302,6 +7306,47 @@ components:
           description: "Title of the widget (overrides the metadata label when present)."
           type: "string"
         statisticsGroupData:
+          description: "Groups of statistics, each with a header and its own `statisticList`."
+          items:
+            properties:
+              header:
+                description: "Heading of the group."
+                nullable: true
+                type: "string"
+              icon:
+                description: "Material icon name for the group."
+                nullable: true
+                type: "string"
+              iconColor:
+                description: "Color of the group's icon."
+                nullable: true
+                type: "string"
+              statisticList:
+                description: "The statistics of the group. Note the singular name:\
+                  \ `statisticList` (not `statisticsList`)."
+                items:
+                  properties:
+                    label:
+                      description: "Label of the statistic."
+                      nullable: true
+                      type: "string"
+                    url:
+                      description: "Link to open for the statistic (e.g., a filtered\
+                        \ query)."
+                      nullable: true
+                      type: "string"
+                    value:
+                      description: "Value of the statistic."
+                      nullable: true
+                      type: "integer"
+                  type: "object"
+                nullable: true
+                type: "array"
+              subheader:
+                description: "Secondary heading of the group."
+                nullable: true
+                type: "string"
+            type: "object"
           type: "array"
         sublabel:
           description: "Secondary title."
@@ -8749,18 +8794,24 @@ paths:
         \ object will include a session identifier (`uuid`) to authenticate the user\
         \ in subsequent API calls.\n\nFor the `TABLE_BASED` type, send the user's\
         \ credentials in an `Authorization: Basic` header (base64 of\n`username:password`,\
-        \ UTF-8); the body may be empty.  The password is verified against the user\
-        \ table and a\nsession row is stored; a `401` response means the credentials\
-        \ were refused.\n\nTo resume the session the browser already holds (for example\
-        \ after a page reload), post an empty object:\na request with no credentials\
-        \ and no `sessionUUID` resumes the session named by the `sessionUUID` cookie,\n\
+        \ UTF-8); the body may be empty (it has no username or password properties).\
+        \  The\npassword is verified against the user table and a session row is stored;\
+        \ a `401` response means the\ncredentials were refused.  This works for native\
+        \ (CLI, TUI, mobile) clients as well as browsers: take the\nsession's `uuid`\
+        \ from the response (or, when the server sets `HttpOnly` session cookies and\
+        \ so omits it, from\nthe `sessionUUID` cookie in `Set-Cookie`), then send\
+        \ it on later calls as `Authorization: Bearer {uuid}`\n(or as the `sessionUUID`\
+        \ cookie).  Do not send the Basic header on every call: each one signs in\
+        \ again.\n\nTo resume the session the browser already holds (for example after\
+        \ a page reload), post an empty object:\na request with no credentials and\
+        \ no `sessionUUID` resumes the session named by the `sessionUUID` cookie,\n\
         which may be `HttpOnly`.  That response carries the session's `values` but\
         \ not its `uuid`; a `401`\nresponse means there is no valid session to resume."
       operationId: "manageSession"
       parameters:
       - description: "For `TABLE_BASED` authentication: `Basic ` followed by the base64\
-          \ encoding of `username:password` (UTF-8).\nNot used by other authentication\
-          \ types."
+          \ encoding of `username:password` (UTF-8),\nto sign in.  Not used by other\
+          \ authentication types."
         example: "Basic dXNlcm5hbWU6cGFzc3dvcmQ="
         in: "header"
         name: "Authorization"
@@ -9870,7 +9921,10 @@ paths:
   /qqq/v1/table/{tableName}/query:
     post:
       description: "Execute a query against a table, returning records that match\
-        \ a filter."
+        \ a filter.\n\nThe response is `{ \"records\": [ { \"tableName\", \"recordLabel\"\
+        , \"values\", \"displayValues\", ... }, ... ] }`\n(`TableQueryResponseV1`):\
+        \ each element of `records` is a record object itself.  `GET /table/{tableName}/{primaryKey}`\n\
+        returns the same record object wrapped as `{ \"record\": { ... } }`."
       operationId: "queryTable"
       parameters:
       - description: "Name of the table to query."
@@ -10626,7 +10680,12 @@ paths:
       - "Tables"
     get:
       description: "Fetch a single record from a table, identified by its primary\
-        \ key value."
+        \ key value.\n\nThe response wraps the record in an object: `{ \"record\"\
+        : { \"tableName\", \"recordLabel\", \"values\",\n\"displayValues\", ... }\
+        \ }` (`TableGetResponseV1`).  This differs from `POST /table/{tableName}/query`,\
+        \ whose\n`records` array holds the same record objects without a wrapper,\
+        \ so a client unwraps `record` here and reads\neach element of `records` there.\
+        \  A missing record is a `404`."
       operationId: "getRecord"
       parameters:
       - description: "Name of the table to get the record from."
@@ -12202,7 +12261,13 @@ paths:
             schema:
               properties:
                 searchTerm:
-                  description: "Text to search for within possible value labels"
+                  description: "Text to search for. Matching ignores case and is by\
+                    \ prefix: an enum or custom source matches labels that start with\
+                    \ it (or an id equal to it); a table source matches records whose\
+                    \ search fields (strings) start with it, or whose date, date-time\
+                    \ or integer search fields equal it. A picker request (`picker`)\
+                    \ matches anywhere instead (contains). A custom source's own code\
+                    \ may match differently."
                   type: "string"
                 ids:
                   description: "List of specific ids to look up"
@@ -12342,7 +12407,13 @@ paths:
             schema:
               properties:
                 searchTerm:
-                  description: "Text to search for within possible value labels"
+                  description: "Text to search for. Matching ignores case and is by\
+                    \ prefix: an enum or custom source matches labels that start with\
+                    \ it (or an id equal to it); a table source matches records whose\
+                    \ search fields (strings) start with it, or whose date, date-time\
+                    \ or integer search fields equal it. A picker request (`picker`)\
+                    \ matches anywhere instead (contains). A custom source's own code\
+                    \ may match differently."
                   type: "string"
                 ids:
                   description: "List of specific ids to look up"
@@ -12476,7 +12547,13 @@ paths:
             schema:
               properties:
                 searchTerm:
-                  description: "Text to search for within possible value labels"
+                  description: "Text to search for. Matching ignores case and is by\
+                    \ prefix: an enum or custom source matches labels that start with\
+                    \ it (or an id equal to it); a table source matches records whose\
+                    \ search fields (strings) start with it, or whose date, date-time\
+                    \ or integer search fields equal it. A picker request (`picker`)\
+                    \ matches anywhere instead (contains). A custom source's own code\
+                    \ may match differently."
                   type: "string"
                 ids:
                   description: "List of specific ids to look up"
@@ -12925,8 +13002,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          type: "STRING"
                           isHeavy: false
+                          type: "STRING"
                           validation:
                             required: true
                           isHidden: false
@@ -12939,8 +13016,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          type: "STRING"
                           isHeavy: false
+                          type: "STRING"
                           isHidden: false
                       - components:
                         - type: "PROCESS_SUMMARY_RESULTS"
@@ -13152,8 +13229,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          type: "STRING"
                           isHeavy: false
+                          type: "STRING"
                           validation:
                             required: true
                           isHidden: false
@@ -13166,8 +13243,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          type: "STRING"
                           isHeavy: false
+                          type: "STRING"
                           isHidden: false
                       - components:
                         - type: "PROCESS_SUMMARY_RESULTS"
@@ -13311,8 +13388,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          type: "STRING"
                           isHeavy: false
+                          type: "STRING"
                           validation:
                             required: true
                           isHidden: false
@@ -13325,8 +13402,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          type: "STRING"
                           isHeavy: false
+                          type: "STRING"
                           isHidden: false
                       - components:
                         - type: "PROCESS_SUMMARY_RESULTS"

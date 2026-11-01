@@ -165,6 +165,65 @@ CREATE TABLE field_lab
 );
 
 
+-- Adornment Lab client fixture (QRun-IO/qqq#1350): every adornment, composite-key tags, and a locker of secrets the mock user may not read
+DROP TABLE IF EXISTS adornment_lab_tag;
+DROP TABLE IF EXISTS adornment_lab_secret;
+DROP TABLE IF EXISTS adornment_lab_locker;
+DROP TABLE IF EXISTS adornment_lab;
+CREATE TABLE adornment_lab
+(
+   id INTEGER AUTO_INCREMENT PRIMARY KEY,
+   name VARCHAR(80) NOT NULL,
+   lab_key VARCHAR(40) NOT NULL UNIQUE,
+   status_chip VARCHAR(40),
+   secret_token VARCHAR(255),
+   rendered_html TEXT,
+   script_code TEXT,
+   error_message VARCHAR(255),
+   attachment BLOB,
+   attachment_file_name VARCHAR(255),
+   image_url VARCHAR(500),
+   upload_value BLOB,
+   widget_value VARCHAR(255),
+   tooltip_value VARCHAR(255),
+   size_value VARCHAR(255),
+   carrier_id INTEGER,
+   hidden_value VARCHAR(255),
+   internal_note VARCHAR(255)
+);
+CREATE TABLE adornment_lab_tag
+(
+   id INTEGER AUTO_INCREMENT PRIMARY KEY,
+   adornment_lab_id INTEGER NOT NULL,
+   lab_key VARCHAR(40) NOT NULL,
+   tag VARCHAR(80) NOT NULL
+);
+CREATE TABLE adornment_lab_locker
+(
+   id INTEGER AUTO_INCREMENT PRIMARY KEY,
+   name VARCHAR(80) NOT NULL
+);
+CREATE TABLE adornment_lab_secret
+(
+   id INTEGER AUTO_INCREMENT PRIMARY KEY,
+   adornment_lab_locker_id INTEGER NOT NULL,
+   secret VARCHAR(255)
+);
+INSERT INTO adornment_lab (name, lab_key, status_chip, secret_token, rendered_html, script_code, error_message, attachment, attachment_file_name, image_url, widget_value, tooltip_value, size_value, carrier_id, hidden_value, internal_note) VALUES ('Adornment Alpha', 'ALPHA', 'ACTIVE', 'alpha-secret-token', '<p>Rendered <b>HTML</b> for <a href="https://example.invalid/alpha">Alpha</a></p>', 'function greet(name)
+{
+   return "Hello, " + name
+}', NULL, X'48656C6C6F2C20416C706861', 'alpha.txt', '/samples-logo.png', 'alpha widget value', 'Alpha tooltip value', 'A large value for Alpha', 1, 'alpha hidden value', 'alpha internal note');
+INSERT INTO adornment_lab (name, lab_key, status_chip, secret_token, rendered_html, script_code, error_message, attachment, attachment_file_name, image_url, widget_value, tooltip_value, size_value, carrier_id, hidden_value, internal_note) VALUES ('Adornment Beta', 'BETA', 'PENDING', 'beta-secret-token', '<ul><li>one</li><li>two</li></ul>', 'SELECT name FROM adornment_lab WHERE id = 2', 'Beta failed validation', X'42657461', 'beta.txt', '/kr-icon.png', 'beta widget value', 'Beta tooltip value', 'A large value for Beta', 2, 'beta hidden value', 'beta internal note');
+INSERT INTO adornment_lab (name, lab_key, status_chip, secret_token, error_message, carrier_id) VALUES ('Adornment Gamma', 'GAMMA', 'FAILED', 'gamma-secret-token', 'Gamma could not be processed', 3);
+INSERT INTO adornment_lab_tag (adornment_lab_id, lab_key, tag) VALUES (1, 'ALPHA', 'first');
+INSERT INTO adornment_lab_tag (adornment_lab_id, lab_key, tag) VALUES (1, 'ALPHA', 'featured');
+INSERT INTO adornment_lab_tag (adornment_lab_id, lab_key, tag) VALUES (2, 'BETA', 'second');
+INSERT INTO adornment_lab_tag (adornment_lab_id, lab_key, tag) VALUES (2, 'ALPHA', 'mismatched key: not a Beta tag');
+INSERT INTO adornment_lab_locker (name) VALUES ('Readable Locker');
+INSERT INTO adornment_lab_secret (adornment_lab_locker_id, secret) VALUES (1, 'first denied child secret');
+INSERT INTO adornment_lab_secret (adornment_lab_locker_id, secret) VALUES (1, 'second denied child secret');
+
+
 -- Related-record picker sample (docs/RELATED-RECORD-PICKER.md): customers, SKUs, tags, sales orders
 DROP TABLE IF EXISTS sales_order_tag;
 DROP TABLE IF EXISTS sales_order_line;

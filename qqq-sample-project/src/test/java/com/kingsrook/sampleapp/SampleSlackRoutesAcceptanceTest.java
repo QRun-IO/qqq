@@ -42,6 +42,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import com.kingsrook.qqq.backend.core.context.CapturedContext;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
@@ -269,7 +270,11 @@ class SampleSlackRoutesAcceptanceTest
       String text = message(metadata);
       assertTrue(text.contains("*Tables*"));
       assertTrue(text.contains("*Processes*"));
-      assertTrue(text.contains("Clone People [clonePeople]"));
+      ////////////////////////////////////////////////////////////////////////
+      // Slack lists the first ten processes by name, so which ones appear  //
+      // depends on the tables (each brings its bulk processes)             //
+      ////////////////////////////////////////////////////////////////////////
+      assertTrue(Pattern.compile("\\[[\\w.]+\\]\n").matcher(text.substring(text.indexOf("*Processes*"))).find(), text);
       assertTrue(message(post(form("process greetInteractive"), sessionId)).contains("Invalid command was entered"));
    }
 

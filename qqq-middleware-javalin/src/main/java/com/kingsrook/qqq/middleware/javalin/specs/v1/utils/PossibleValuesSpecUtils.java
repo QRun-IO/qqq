@@ -54,7 +54,7 @@ public class PossibleValuesSpecUtils
       Map<String, Schema> properties = new LinkedHashMap<>();
 
       properties.put("searchTerm", new Schema()
-         .withDescription("Text to search for within possible value labels")
+         .withDescription("Text to search for. Matching ignores case and is by prefix: an enum or custom source matches labels that start with it (or an id equal to it); a table source matches records whose search fields (strings) start with it, or whose date, date-time or integer search fields equal it. A picker request (`picker`) matches anywhere instead (contains). A custom source's own code may match differently.")
          .withType(Type.STRING));
 
       properties.put("ids", new Schema()

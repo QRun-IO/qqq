@@ -297,7 +297,7 @@ class TableCountSpecV1Test extends SpecTestBase
          // try to query by create date - should fail //
          ///////////////////////////////////////////////
          HttpResponse<String> response = request.get();
-         assertEquals(500, response.getStatus()); // might be better as 400...
+         assertEquals(400, response.getStatus());
          JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
          assertEquals("Query Filter contained 1 unrecognized field name: createDate", jsonObject.getString("error"));
       }

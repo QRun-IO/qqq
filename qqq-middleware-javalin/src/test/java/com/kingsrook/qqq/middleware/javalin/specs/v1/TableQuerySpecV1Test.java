@@ -30,6 +30,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
@@ -345,7 +346,7 @@ class TableQuerySpecV1Test extends SpecTestBase
             .contentType(ContentType.APPLICATION_JSON.getMimeType())
             .body(JsonUtils.toJson(Map.of("filter", new QQueryFilter(new QFilterCriteria("createDate", QCriteriaOperator.IS_NOT_BLANK)))))
             .asString();
-         assertEquals(500, response.getStatus()); // might be better as 400...
+         assertEquals(400, response.getStatus());
          JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
          assertEquals("Query Filter contained 1 unrecognized field name: createDate", jsonObject.getString("error"));
       }
@@ -353,6 +354,24 @@ class TableQuerySpecV1Test extends SpecTestBase
       {
          TestUtils.TablePersonalizer.unregister(serverQInstance);
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Sorting by a field the table does not have is a 400, not a 500 (#1363).
+    *******************************************************************************/
+   @Test
+   void testOrderByUnknownFieldIsBadRequest()
+   {
+      HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/table/person/query")
+         .contentType(ContentType.APPLICATION_JSON.getMimeType())
+         .body(JsonUtils.toJson(Map.of("filter", new QQueryFilter().withOrderBy(new QFilterOrderBy("nosuchfield")))))
+         .asString();
+      assertEquals(400, response.getStatus(), response.getBody());
+      JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
+      assertEquals("Query Filter contained 1 unrecognized field name: nosuchfield", jsonObject.getString("error"));
+      assertEquals("BAD_REQUEST", jsonObject.getString("code"));
    }
 
 }

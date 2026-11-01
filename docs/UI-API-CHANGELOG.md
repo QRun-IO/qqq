@@ -86,6 +86,10 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
   `subheader`, `icon`, `iconColor` and `statisticList` (`label`, `value`, `url`). The list name is
   `statisticList`, singular, as the server has always sent it and the web UI reads it; no payload
   changed.
+- **`TABLE_BASED` native sign-in** (#1342, behaviour fix, no schema change): after
+  `POST /manageSession` with `Authorization: Basic`, a client may send the session uuid as
+  `Authorization: Bearer {uuid}` (before, only the `sessionUUID`/`sessionId` cookies were read).
+  The `manageSession` description and `UI-API-CLIENTS.md` section 7 give the recipe.
 - **Documentation:** `getRecord` wraps its record as `{ record }` while `queryTable` lists bare
   records in `records` (#1340).
 

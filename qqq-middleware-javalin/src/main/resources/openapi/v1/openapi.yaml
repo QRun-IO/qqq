@@ -8786,18 +8786,24 @@ paths:
         \ object will include a session identifier (`uuid`) to authenticate the user\
         \ in subsequent API calls.\n\nFor the `TABLE_BASED` type, send the user's\
         \ credentials in an `Authorization: Basic` header (base64 of\n`username:password`,\
-        \ UTF-8); the body may be empty.  The password is verified against the user\
-        \ table and a\nsession row is stored; a `401` response means the credentials\
-        \ were refused.\n\nTo resume the session the browser already holds (for example\
-        \ after a page reload), post an empty object:\na request with no credentials\
-        \ and no `sessionUUID` resumes the session named by the `sessionUUID` cookie,\n\
+        \ UTF-8); the body may be empty (it has no username or password properties).\
+        \  The\npassword is verified against the user table and a session row is stored;\
+        \ a `401` response means the\ncredentials were refused.  This works for native\
+        \ (CLI, TUI, mobile) clients as well as browsers: take the\nsession's `uuid`\
+        \ from the response (or, when the server sets `HttpOnly` session cookies and\
+        \ so omits it, from\nthe `sessionUUID` cookie in `Set-Cookie`), then send\
+        \ it on later calls as `Authorization: Bearer {uuid}`\n(or as the `sessionUUID`\
+        \ cookie).  Do not send the Basic header on every call: each one signs in\
+        \ again.\n\nTo resume the session the browser already holds (for example after\
+        \ a page reload), post an empty object:\na request with no credentials and\
+        \ no `sessionUUID` resumes the session named by the `sessionUUID` cookie,\n\
         which may be `HttpOnly`.  That response carries the session's `values` but\
         \ not its `uuid`; a `401`\nresponse means there is no valid session to resume."
       operationId: "manageSession"
       parameters:
       - description: "For `TABLE_BASED` authentication: `Basic ` followed by the base64\
-          \ encoding of `username:password` (UTF-8).\nNot used by other authentication\
-          \ types."
+          \ encoding of `username:password` (UTF-8),\nto sign in.  Not used by other\
+          \ authentication types."
         example: "Basic dXNlcm5hbWU6cGFzc3dvcmQ="
         in: "header"
         name: "Authorization"

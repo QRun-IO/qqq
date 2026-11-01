@@ -30,7 +30,8 @@ Related docs: `UI-API-EXTENSIONS.md` covers the extension point and in-process i
    1.0.0 surface. Use `features` and `extensions` to decide which areas to show.
 2. `GET /metaData/authentication` returns the provider type. Web clients sign in with it, then call
    `POST /manageSession`; the session is the `sessionUUID` cookie. CLI, TUI and native clients sign
-   in as in section 7 and send `Authorization: Bearer <token>` on every call.
+   in as in section 7 (OAuth2, or `TABLE_BASED` username and password) and send
+   `Authorization: Bearer <token>` on every call.
 3. `GET /metaData` returns the apps, tables, processes, reports and widgets the user may use. Build
    the navigation from apps (`children`, `sections`) only. Never hard-code table or process names.
 4. Use the table, process, widget and report operations as the user moves around.
@@ -248,6 +249,23 @@ shortly before `exp`, refresh at the provider: `POST {token_endpoint}` with
 - *Session UUID:* a native app that used `POST /manageSession` (auth code + PKCE with the app's own
   client) may send `Authorization: Bearer {sessionUUID}` instead of the cookie; the server keeps
   that session's tokens refreshed.
+
+**`TABLE_BASED` (username and password).** When `GET /metaData/authentication` says
+`type: TABLE_BASED`, the app checks passwords against its own user table; there is no OAuth2
+provider, and the same recipe serves browsers and native clients:
+1. Ask for the username and password, and `POST /manageSession` with
+   `Authorization: Basic base64(username:password)` (UTF-8) and the body `{}`. The body has no
+   username or password properties; the credentials only travel in that header. `401` means they
+   were refused; after repeated failures the username is locked out for a while (the message says
+   so).
+2. Keep the session's `uuid` from the response. A server that sets `HttpOnly` session cookies
+   leaves `uuid` out of the body; read it from the `sessionUUID` cookie in the `Set-Cookie` header
+   instead.
+3. Send `Authorization: Bearer {uuid}` on every later call (sending the `sessionUUID` cookie works
+   too). Never resend the Basic header per call: each one is a new sign-in, with a new session row.
+4. `POST /logout` with the same bearer ends the session; a `401` on any call means the session
+   ended or expired, so sign in again. Store the uuid like a token (keychain or a 0600 file), and
+   never store the password.
 
 ## 8. Several servers (replicas)
 

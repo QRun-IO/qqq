@@ -30,6 +30,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -266,6 +267,37 @@ public class SearchPossibleValueSourceAction
 
 
    /*******************************************************************************
+    ** For a table source whose id field is numeric, convert the requested ids to
+    ** that type - an id that is not a number is a bad request (rather than a
+    ** failed query).  Ids for other id types are passed through unchanged.
+    *******************************************************************************/
+   private static List<Serializable> convertIdsToNumericIdFieldType(QTableMetaData table, String idFieldName, List<Serializable> idList) throws QBadRequestException
+   {
+      QFieldMetaData idField = table.getFields() == null ? null : table.getFields().get(idFieldName);
+      if(idField == null || idField.getType() == null || !idField.getType().isNumeric())
+      {
+         return (idList);
+      }
+
+      List<Serializable> rs = new ArrayList<>();
+      for(Serializable id : idList)
+      {
+         try
+         {
+            rs.add(ValueUtils.getValueAsFieldType(idField.getType(), id));
+         }
+         catch(Exception e)
+         {
+            String message = "Id [" + id + "] is not a valid " + idField.getType().name().toLowerCase(Locale.ROOT) + " id for " + table.getLabel() + ".";
+            throw (new QBadRequestException(message).withFieldError("ids", message));
+         }
+      }
+      return (rs);
+   }
+
+
+
+   /*******************************************************************************
     ** The input list of ids might come through as a type that isn't the same as
     ** the type of the ids in the enum (e.g., strings from a frontend, integers
     ** in an enum).  So, this method type-converts them.
@@ -426,7 +458,7 @@ public class SearchPossibleValueSourceAction
 
       if(input.getIdList() != null)
       {
-         queryFilter.addCriteria(new QFilterCriteria(idField, QCriteriaOperator.IN, input.getIdList()));
+         queryFilter.addCriteria(new QFilterCriteria(idField, QCriteriaOperator.IN, convertIdsToNumericIdFieldType(table, idField, input.getIdList())));
       }
       else if(StringUtils.hasContent(input.getSearchTerm()))
       {
@@ -588,7 +620,7 @@ public class SearchPossibleValueSourceAction
 
       if(input.getIdList() != null)
       {
-         queryFilter.addCriteria(new QFilterCriteria(table.getPrimaryKeyField(), QCriteriaOperator.IN, input.getIdList()));
+         queryFilter.addCriteria(new QFilterCriteria(table.getPrimaryKeyField(), QCriteriaOperator.IN, convertIdsToNumericIdFieldType(table, table.getPrimaryKeyField(), input.getIdList())));
       }
       else if(input.getLabelList() != null)
       {

@@ -28,6 +28,7 @@ import java.util.List;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.values.SearchPossibleValueSourceInput;
@@ -44,6 +45,7 @@ import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 
 /*******************************************************************************
@@ -199,6 +201,20 @@ class SearchPossibleValueSourceActionTest extends BaseTest
       SearchPossibleValueSourceOutput output = getSearchPossibleValueSourceOutputById("2", TestUtils.POSSIBLE_VALUE_SOURCE_SHAPE);
       assertEquals(1, output.getResults().size());
       assertThat(output.getResults()).anyMatch(pv -> pv.getId().equals(2) && pv.getLabel().equals("Square"));
+   }
+
+
+
+   /*******************************************************************************
+    ** An id that cannot be a table source's (integer) id is a bad request naming
+    ** the ids, not a failed query (#1338).
+    *******************************************************************************/
+   @Test
+   void testSearchPvsAction_tableByUnparseableId()
+   {
+      QBadRequestException exception = assertThrows(QBadRequestException.class, () -> getSearchPossibleValueSourceOutputById("Narnia", TestUtils.POSSIBLE_VALUE_SOURCE_SHAPE));
+      assertThat(exception.getMessage()).contains("Narnia");
+      assertEquals("ids", exception.getFieldErrors().get(0).field());
    }
 
 

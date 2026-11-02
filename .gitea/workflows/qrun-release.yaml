@@ -1,0 +1,12 @@
+# Identical in every QRun Maven application: do not edit. It only delegates to the protected qrun-release-v1 channel.
+name: qrun-release
+on:
+  push:
+    branches: [main, develop, 'release/**', 'hotfix/**']
+permissions:
+  contents: read
+jobs:
+  release:
+    uses: self:KofTwentyTwo/platform-ci/.gitea/workflows/java-maven.yaml@qrun-release-v1
+    with:
+      runner: linux-small

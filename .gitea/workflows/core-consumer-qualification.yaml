@@ -1,0 +1,15 @@
+name: Core consumer networking qualification
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  core:
+    uses: self:KofTwentyTwo/platform-ci/.gitea/workflows/core-consumer-qualification.yaml@1e65586612f6bd7b4dcc7ab5339fd215c48e90d5
+    with:
+      runner: linux-small
+      docker-runner: container-build
+      java-version: '21'
+      browsers: true
+      core-mode: snapshot

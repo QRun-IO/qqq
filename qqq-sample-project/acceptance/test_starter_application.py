@@ -148,6 +148,15 @@ class DisposableCopyTest(unittest.TestCase):
             command = source_install_command(["mvn", "-B", "-nsu"], "qqq-bom,qqq-backend-core", version)
             self.assertIn("-Drevision=0.0.0-sample-acceptance", command)
             self.assertLess(command.index("-Drevision=0.0.0-sample-acceptance"), command.index("install"))
+            # Skipped tests must not hit jacoco:check on a stale partial target/jacoco.exec.
+            self.assertIn("-Djacoco.skip=true", command)
+            self.assertIn("-DskipTests", command)
+            self.assertEqual(["-pl", "qqq-bom,qqq-backend-core", "-am", "install"], command[-4:])
+            # The skip is scoped to the source install only: not the base (shared by test/package runs).
+            with patch("run_starter_application.shutil.which", return_value="/usr/bin/mvn"):
+                self.assertNotIn("-Djacoco.skip=true", maven_base(Path(root) / "m2", True, None))
+            runner = (Path(__file__).parent / "run_starter_application.py").read_text(encoding="utf-8")
+            self.assertEqual(1, runner.count("-Djacoco.skip=true"))
             with self.assertRaisesRegex(AssertionError, "invalid QQQ candidate version"):
                 resolve_candidate_version(Path(root), "$(bad)")
             with patch("run_starter_application.shutil.which", return_value=r"C:\tools\maven\bin\mvn.cmd") as which:

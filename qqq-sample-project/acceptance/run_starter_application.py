@@ -73,8 +73,10 @@ def resolve_candidate_version(source, override):
 
 
 def source_install_command(base, modules, version):
+    # Source-artifact install is not a test gate: skipped tests leave no (or stale partial) jacoco.exec,
+    # so the coverage check must be skipped here too, and only here.
     return base + [f"-Drevision={version}", "-DskipTests", "-Dspotbugs.skip=true", "-Dpmd.skip=true",
-                   "-pl", modules, "-am", "install"]
+                   "-Djacoco.skip=true", "-pl", modules, "-am", "install"]
 
 
 def maven_base(repo, online, settings):

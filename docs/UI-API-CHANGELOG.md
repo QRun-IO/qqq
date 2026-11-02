@@ -16,6 +16,12 @@ Native manageSession then requires the original `expectedNonce` and validates th
 direct HTTPS ID-token response and matching access-token subject before session
 creation. Existing web/TABLE and disabled-policy behavior remains unchanged.
 
+Bug fix: when a backend step throws, the run keeps its original process ownership and step
+list, so its owner can still resubmit the step or cancel it; another session stays denied.
+The failure response is unchanged, and the failed step's partial values, records, one-time
+secrets and audits are still discarded. This is not a rollback: values and records stored
+before the failed step are not preserved either. No API or version change.
+
 The UI/UX API is `/qqq/v1` (`qqq-middleware-javalin`, `specs/v1`). It is the only API that drives a
 UI (Next today; CLI, TUI and native iOS clients later), and it is semantically versioned
 independently of QQQ's own release version.

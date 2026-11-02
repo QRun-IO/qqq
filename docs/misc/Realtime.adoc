@@ -153,3 +153,22 @@ Omitting the version preserves the existing unconditional update behavior.
 This is a core preflight check, not a backend atomic compare-and-swap: another
 writer can race between the read and write. Applications requiring serialization
 must additionally use their backend's transaction/locking guarantees.
+
+
+== Scoped event audiences and readiness
+
+`RealtimeBus.getIfStarted(instance)` observes an existing bus without constructing
+one or opening transport connections. Health checks can report an unstarted bus;
+application lifecycle code remains responsible for starting and closing it.
+
+A producer can attach `RealtimeMessage.withAudience(...)` to an event and register
+an event-specific `RealtimeAudienceProvider` through
+`RealtimeMetaData.withAudienceProvider(event, code)`. The provider runs with each
+recipient's current QContext for live delivery and replay. Scoped events without a
+provider, registered events without an audience, and provider errors fail closed.
+Normal channel permissions still apply. Unregistered unscoped events retain their
+existing behavior. Distributed transports must preserve the audience. Audience
+metadata stays server-side and is not included in the SSE data body.
+
+Deploy audience-aware hubs before enabling scoped producers, or isolate their
+transport topics from older hubs that do not enforce audience authorization.

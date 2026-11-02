@@ -1020,6 +1020,11 @@ public class QInstanceValidator
                      assertNoException(() -> table.getField(table.getPrimaryKeyField()), "Primary key for table " + tableName + " is not a recognized field on this table.");
                   }
                }
+
+               //////////////////////////////////////////////////////
+               // let the backend validate its own per-table needs //
+               //////////////////////////////////////////////////////
+               backendForTable.performTableValidation(qInstance, table, this);
             }
          }
       }

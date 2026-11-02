@@ -17,6 +17,7 @@ import tempfile
 import time
 import uuid
 import xml.etree.ElementTree as ET
+from xml.sax.saxutils import escape
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
@@ -135,18 +136,21 @@ def expect_server_error(method, path):
         raise AssertionError(f"{path} unexpectedly succeeded")
 
 
-def run_live_mysql(base, starter, workdir, version):
-    require_free_port(3306)
+def run_live_mysql(base, starter, workdir, version, mysql_host="127.0.0.1",
+                   mysql_bind_address="127.0.0.1"):
+    # A remote daemon owns its published database port; only probe local ports.
+    if mysql_host == "127.0.0.1":
+        require_free_port(3306)
     require_free_port(8000)
     name = "qqq-acceptance-" + uuid.uuid4().hex[:12]
     container_started = False
     server = None
     environment = os.environ.copy()
-    environment.update(RDBMS_VENDOR="mysql", RDBMS_HOSTNAME="127.0.0.1", RDBMS_PORT="3306",
+    environment.update(RDBMS_VENDOR="mysql", RDBMS_HOSTNAME=mysql_host, RDBMS_PORT="3306",
                        RDBMS_DATABASE_NAME="qqq_starter_test", RDBMS_USERNAME="test", RDBMS_PASSWORD="test")
     try:
         run(["docker", "run", "-d", "--rm", "--name", name,
-             "-p", "127.0.0.1:3306:3306", "-e", "MYSQL_ROOT_PASSWORD=disposable-root",
+             "-p", f"{mysql_bind_address}:3306:3306", "-e", "MYSQL_ROOT_PASSWORD=disposable-root",
              "-e", "MYSQL_DATABASE=qqq_starter_test", "-e", "MYSQL_USER=test",
              "-e", "MYSQL_PASSWORD=test", "mysql:8.4"], workdir)
         container_started = True
@@ -243,10 +247,14 @@ def stage_template(source, destination):
     return new_root
 
 
-def stage_starter(source, destination):
+def stage_starter(source, destination, mysql_host="127.0.0.1"):
     copy_tracked_source(source, destination)
     pom = destination / "pom.xml"
     content = pom.read_text()
+    # Surefire supplies its own environment, independent of the packaged app.
+    host_marker = "<RDBMS_HOSTNAME>127.0.0.1</RDBMS_HOSTNAME>"
+    require(content.count(host_marker) == 1, "expected one starter test MySQL host")
+    content = content.replace(host_marker, f"<RDBMS_HOSTNAME>{escape(mysql_host)}</RDBMS_HOSTNAME>")
     marker = "   <dependencies>\n      <!-- qqq modules deps -->"
     require(content.count(marker) == 1, marker)
     dependency = """      <dependency>
@@ -289,6 +297,10 @@ def main():
     parser.add_argument("--maven-settings", type=Path)
     parser.add_argument("--live-mysql", action="store_true",
                         help="run disposable MySQL HTTP, permission, and failure probes")
+    parser.add_argument("--mysql-host", default="127.0.0.1",
+                        help="database address reachable from the acceptance process")
+    parser.add_argument("--mysql-bind-address", default="127.0.0.1",
+                        help="address on the Docker host where MySQL port 3306 is published")
     args = parser.parse_args()
     if args.junit_dir:
         require(args.live_mysql, "--junit-dir requires --live-mysql")
@@ -351,13 +363,13 @@ def execute(args, workdir):
     template = workdir / "orderdesk-app"
     starter = workdir / "starter"
     generated = stage_template(args.template_source, template)
-    stage_starter(args.starter_source, starter)
+    stage_starter(args.starter_source, starter, mysql_host=args.mysql_host)
     require(len(list(generated.rglob("*.java"))) == 8, "generated QBit source count changed")
     run(base + [f"-Dqqq.version={version}", "clean", "install"], template)
     run(base + [f"-Dqqq.versions.bom={version}",
                 "-Dtest=StarterApplicationAcceptanceTest,StarterAppTest", "test"], starter)
     missing_dependency = workdir / "starter-without-qbit-dependency"
-    stage_starter(args.starter_source, missing_dependency)
+    stage_starter(args.starter_source, missing_dependency, mysql_host=args.mysql_host)
     pom = missing_dependency / "pom.xml"
     content = pom.read_text()
     dependency = """      <dependency>
@@ -376,7 +388,8 @@ def execute(args, workdir):
     print(f"PASS: generated 8 Java sources; built {QBIT_COORDINATES}; integrated starter tests passed")
     print("PASS: removing host QBit dependency fails compilation")
     if args.live_mysql:
-        run_live_mysql(base, starter, workdir, version)
+        run_live_mysql(base, starter, workdir, version, mysql_host=args.mysql_host,
+                       mysql_bind_address=args.mysql_bind_address)
     if args.workdir:
         print(f"fixture retained: {workdir}")
     else:

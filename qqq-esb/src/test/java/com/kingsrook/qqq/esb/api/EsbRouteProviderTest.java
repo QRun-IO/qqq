@@ -109,6 +109,9 @@ class EsbRouteProviderTest extends EsbApiTestBase
       JSONObject destinationCounters = orderEvents.getJSONObject("counters");
       assertEquals(1, destinationCounters.getInt("published"));
       assertEquals(1, destinationCounters.getInt("publishFailures"));
+      assertEquals(1, destinationCounters.getInt("consumed"), "a topic's counters include its triggers' consumption (#1365)");
+      assertEquals(1, destinationCounters.getInt("succeeded"));
+      assertEquals(40, destinationCounters.getInt("avgMs"));
       assertEquals("An ESB operation failed.", destinationCounters.getString("lastError"));
       assertThat(Instant.parse(destinationCounters.getString("lastActivity"))).isNotNull();
 

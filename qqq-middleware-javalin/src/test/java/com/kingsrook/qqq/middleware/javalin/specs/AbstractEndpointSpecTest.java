@@ -31,6 +31,7 @@ import com.kingsrook.qqq.middleware.javalin.specs.v1.utils.TagsV1;
 import com.kingsrook.qqq.openapi.model.Method;
 import io.javalin.http.Context;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
 import org.eclipse.jetty.http.BadMessageException;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -39,6 +40,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 
@@ -53,15 +56,22 @@ class AbstractEndpointSpecTest
    @Test
    void testMultipartParserBadRequestUsesExistingBoundaryException()
    {
-      Context context = mock(Context.class);
-      when(context.contentType()).thenReturn("multipart/form-data; boundary=owned");
-      RuntimeException failure = new RuntimeException(new ServletException(new BadMessageException(400, "bad multipart")));
-      when(context.formParam("values")).thenThrow(failure);
-      AbstractEndpointSpec<?, ?, ?> spec = new ProcessInitSpecV1();
-      QRuntimeException exception = assertThrows(QRuntimeException.class, () -> spec.getRequestParam(context, "values"));
-      QBadRequestException badRequest = ExceptionUtils.findClassInRootChain(exception, QBadRequestException.class);
-      assertNotNull(badRequest);
-      assertSame(failure, badRequest.getCause());
+      for(String protocol : List.of("HTTP/1.1", "HTTP/2"))
+      {
+         Context context = mock(Context.class);
+         HttpServletRequest request = mock(HttpServletRequest.class);
+         when(context.req()).thenReturn(request);
+         when(request.getProtocol()).thenReturn(protocol);
+         when(context.contentType()).thenReturn("multipart/form-data; boundary=owned");
+         RuntimeException failure = new RuntimeException(new ServletException(new BadMessageException(400, "bad multipart")));
+         when(context.formParam("values")).thenThrow(failure);
+         AbstractEndpointSpec<?, ?, ?> spec = new ProcessInitSpecV1();
+         QRuntimeException exception = assertThrows(QRuntimeException.class, () -> spec.getRequestParam(context, "values"));
+         QBadRequestException badRequest = ExceptionUtils.findClassInRootChain(exception, QBadRequestException.class);
+         assertNotNull(badRequest);
+         assertSame(failure, badRequest.getCause());
+         verify(context, times("HTTP/1.1".equals(protocol) ? 1 : 0)).header("Connection", "close");
+      }
    }
 
 

@@ -66,11 +66,17 @@ public class MockAuthenticationModule implements QAuthenticationModuleInterface
       }
 
       ////////////////////////////////////////////////////////////////////////////////
-      // resume the session the caller names - by the sessionId cookie, or by the   //
+      // resume the session the caller names - by the sessionId cookie, by the      //
       // sessionUUID cookie (which manageSession sets, and which the in-process UI  //
-      // API invoker forwards) - so a session keeps its uuid and user across calls. //
+      // API invoker forwards), or by a bearer access token (the same uuid sent as  //
+      // Authorization: Bearer) - so a session keeps its uuid and user across       //
+      // calls, and process state owned by the session can be resumed by it.       //
       ////////////////////////////////////////////////////////////////////////////////
       String sessionUuid = StringUtils.hasContent(context.get("sessionId")) ? context.get("sessionId") : context.get("sessionUUID");
+      if(!StringUtils.hasContent(sessionUuid))
+      {
+         sessionUuid = context.get("accessToken");
+      }
 
       QUser qUser = new QUser();
       long  userNumber = StringUtils.hasContent(sessionUuid) ? Math.floorMod(sessionUuid.hashCode(), USER_ID_MODULO) : (System.currentTimeMillis() % USER_ID_MODULO);

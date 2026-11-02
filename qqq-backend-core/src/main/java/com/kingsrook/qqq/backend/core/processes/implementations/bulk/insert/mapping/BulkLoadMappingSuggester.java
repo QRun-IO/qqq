@@ -24,10 +24,12 @@ package com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.map
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.model.BulkLoadProfile;
@@ -47,6 +49,12 @@ public class BulkLoadMappingSuggester
    private Map<String, Integer> massagedHeadersWithNumbersToIndexMap;
 
    private String layout = "FLAT";
+
+   /////////////////////////////////////////////////////////////////////////
+   // columns already mapped to a main-table field: a child (association) //
+   // field is not also suggested for one of them                         //
+   /////////////////////////////////////////////////////////////////////////
+   private Set<Integer> mainTableColumnIndexes = new HashSet<>();
 
 
 
@@ -126,6 +134,7 @@ public class BulkLoadMappingSuggester
                }
             }
 
+            matchingIndexes.removeAll(mainTableColumnIndexes);
             if(CollectionUtils.nullSafeHasContents(matchingIndexes))
             {
                ///////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -180,6 +189,15 @@ public class BulkLoadMappingSuggester
                index = massagedHeadersWithoutNumbersToIndexMap.get(fieldIdentity);
             }
 
+            ///////////////////////////////////////////////////////////////////
+            // a child field may not take a column a main field already reads //
+            // (e.g. person "Birth Date" vs pet "Birth Date")                 //
+            ///////////////////////////////////////////////////////////////////
+            if(index != null && StringUtils.hasContent(tableStructure.getAssociationPath()) && mainTableColumnIndexes.contains(index))
+            {
+               index = null;
+            }
+
             if(index != null)
             {
                break;
@@ -193,6 +211,11 @@ public class BulkLoadMappingSuggester
                .withHeaderName(headerRow.get(index))
                .withColumnIndex(index)
             );
+
+            if(!StringUtils.hasContent(tableStructure.getAssociationPath()))
+            {
+               mainTableColumnIndexes.add(index);
+            }
 
             if(tableStructure.getIsMany() && layout.equals("FLAT"))
             {

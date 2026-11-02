@@ -138,4 +138,26 @@ class MockAuthenticationModuleTest extends BaseTest
 
       assertNotEquals("abc-123", module.createSession(qInstance, Map.of()).getUuid());
    }
+
+
+
+   /*******************************************************************************
+    ** A session uuid sent as a bearer access token resumes the same session (and
+    ** user) as the cookie does, so process state owned by the session can be
+    ** resumed on a later request (e.g. an asynchronous step polled by its job).
+    *******************************************************************************/
+   @Test
+   void testCreateSession_resumesByBearerAccessToken() throws Exception
+   {
+      QInstance                qInstance = QContext.getQInstance();
+      MockAuthenticationModule module    = new MockAuthenticationModule();
+
+      QSession byCookie = module.createSession(qInstance, Map.of("sessionUUID", "bearer-123"));
+      QSession byBearer = module.createSession(qInstance, Map.of("accessToken", "bearer-123"));
+      QSession again    = module.createSession(qInstance, Map.of("accessToken", "bearer-123"));
+      assertEquals("bearer-123", byBearer.getUuid());
+      assertEquals(byCookie.getIdReference(), byBearer.getIdReference());
+      assertEquals(byBearer.getIdReference(), again.getIdReference());
+      assertEquals(byCookie.getUser().getIdReference(), byBearer.getUser().getIdReference());
+   }
 }

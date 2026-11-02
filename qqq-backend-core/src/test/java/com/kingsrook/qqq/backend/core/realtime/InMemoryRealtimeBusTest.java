@@ -35,6 +35,28 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class InMemoryRealtimeBusTest
 {
    /*******************************************************************************
+    ** Readiness inspection never creates a bus and follows its instance lifecycle.
+    *******************************************************************************/
+   @Test
+   void readinessDoesNotStartBus()
+   {
+      var instance = com.kingsrook.qqq.backend.core.utils.TestUtils.defineInstance();
+      assertTrue(RealtimeBus.getIfStarted(instance).isEmpty());
+      try
+      {
+         var bus = RealtimeBus.get(instance);
+         assertEquals(bus, RealtimeBus.getIfStarted(instance).orElseThrow());
+      }
+      finally
+      {
+         RealtimeBus.close(instance);
+      }
+      assertTrue(RealtimeBus.getIfStarted(instance).isEmpty());
+   }
+
+
+
+   /*******************************************************************************
     ** A bad listener does not stop the next one; closing removes a subscription.
     *******************************************************************************/
    @Test

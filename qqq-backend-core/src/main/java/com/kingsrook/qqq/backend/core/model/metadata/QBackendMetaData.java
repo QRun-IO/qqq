@@ -27,6 +27,7 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.model.metadata.serialization.QBackendMetaDataDeserializer;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.variants.BackendVariantsConfig;
 import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleInterface;
 
@@ -72,6 +73,19 @@ public class QBackendMetaData implements TopLevelMetaDataInterface
    public boolean requiresPrimaryKeyOnTables()
    {
       return (true);
+   }
+
+
+
+   /*******************************************************************************
+    ** Let the backend validate a table that uses it (for example, settings the
+    ** backend's actions require on every table).  Noop in the base class.
+    *******************************************************************************/
+   public void performTableValidation(QInstance qInstance, QTableMetaData table, QInstanceValidator qInstanceValidator)
+   {
+      ////////////////////////
+      // noop in base class //
+      ////////////////////////
    }
 
 

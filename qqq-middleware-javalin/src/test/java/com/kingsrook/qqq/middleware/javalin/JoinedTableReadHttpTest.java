@@ -99,7 +99,7 @@ class JoinedTableReadHttpTest extends QJavalinTestBase
 
       HttpResponse<String> filteredCount = Unirest.get(BASE_URL + "/data/person/count")
          .queryString("filter", "{\"criteria\":[{\"fieldName\":\"birthDate\",\"operator\":\"IS_NOT_BLANK\"}]}").asString();
-      assertEquals(500, filteredCount.getStatus(), filteredCount.getBody());
+      assertEquals(400, filteredCount.getStatus(), filteredCount.getBody());
       assertFalse(JsonUtils.toJSONObject(filteredCount.getBody()).has("count"));
       assertEquals(6, JsonUtils.toJSONObject(Unirest.get(BASE_URL + "/data/person/count").asString().getBody()).getInt("count"));
    }

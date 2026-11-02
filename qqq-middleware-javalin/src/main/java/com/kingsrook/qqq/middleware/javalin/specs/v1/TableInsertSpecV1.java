@@ -37,6 +37,7 @@ import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
 import com.kingsrook.qqq.middleware.javalin.specs.BasicOperation;
 import com.kingsrook.qqq.middleware.javalin.specs.BasicResponse;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.TableInsertResponseV1;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.utils.QuerySpecUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.utils.TagsV1;
 import com.kingsrook.qqq.openapi.model.Content;
 import com.kingsrook.qqq.openapi.model.Example;
@@ -86,7 +87,8 @@ public class TableInsertSpecV1 extends AbstractEndpointSpec<TableInsertInput, Ta
             .withRequired(true)
             .withSchema(new Schema().withType(Type.STRING))
             .withExample("person")
-            .withIn(In.PATH)
+            .withIn(In.PATH),
+         QuerySpecUtils.defineTableVariantQueryParameter("write to")
       );
    }
 
@@ -146,6 +148,7 @@ public class TableInsertSpecV1 extends AbstractEndpointSpec<TableInsertInput, Ta
       TableInsertInput input = new TableInsertInput();
       String           tableName = getRequestParam(context, "tableName");
       input.setTableName(tableName);
+      input.setTableVariant(QuerySpecUtils.parseTableVariantParam(getRequestParam(context, "tableVariant")));
 
       InsertInput insertInput = new InsertInput(tableName).withInputSource(QInputSource.USER);
       PermissionsHelper.checkTablePermissionThrowing(insertInput, TablePermissionSubType.INSERT);

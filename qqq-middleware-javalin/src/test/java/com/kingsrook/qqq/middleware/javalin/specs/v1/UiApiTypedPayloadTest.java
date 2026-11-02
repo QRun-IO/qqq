@@ -26,6 +26,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import com.kingsrook.qqq.backend.core.model.dashboard.widgets.MultiStatisticsData;
 import com.kingsrook.qqq.backend.core.model.dashboard.widgets.RawHTML;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
@@ -153,6 +154,28 @@ class UiApiTypedPayloadTest
          .getProperties().get("records").getItems().getRef());
       assertEquals("number", schemas.get("WidgetDataChart").getProperties().get("chartData").getProperties().get("datasets")
          .getItems().getProperties().get("data").getItems().getType());
+   }
+
+
+
+   /*******************************************************************************
+    ** multiStatistics groups are typed with the name the server sends,
+    ** `statisticList` (QRun-IO/qqq#1353), and match the serialized data.
+    *******************************************************************************/
+   @Test
+   void multiStatisticsGroups()
+   {
+      var groups = WidgetDataSchemas.componentSchemas().get("WidgetDataMultiStatistics").getProperties().get("statisticsGroupData");
+      assertEquals("array", groups.getType());
+      var groupProperties = groups.getItems().getProperties();
+      assertEquals(Set.of("header", "subheader", "icon", "iconColor", "statisticList"), groupProperties.keySet());
+      assertEquals(Set.of("label", "value", "url"), groupProperties.get("statisticList").getItems().getProperties().keySet());
+
+      JSONObject json = new JSONObject(JsonUtils.toJson(new MultiStatisticsData("t", List.of(new MultiStatisticsData.StatisticsGroupData("icon", "blue", "Header", "Sub",
+         List.of(new MultiStatisticsData.StatisticsGroupData.Statistic("Red", 15, "/red")))))));
+      JSONObject group = json.getJSONArray("statisticsGroupData").getJSONObject(0);
+      assertEquals(groupProperties.keySet(), group.keySet());
+      assertEquals(Set.of("label", "value", "url"), group.getJSONArray("statisticList").getJSONObject(0).keySet());
    }
 
 

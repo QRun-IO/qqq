@@ -116,128 +116,144 @@ public class AsyncRecordPipeLoop
       });
       LOG.debug("Started supplier job [" + jobUUID + "] for record pipe.");
 
-      AsyncJobState  jobState       = AsyncJobState.RUNNING;
-      AsyncJobStatus asyncJobStatus = null;
-
-      int     recordCount           = 0;
-      int     nextSleepMillis       = INIT_SLEEP_MS;
-      long    lastReceivedRecordsAt = System.currentTimeMillis();
-      long    jobStartTime          = System.currentTimeMillis();
-      boolean everCalledConsumer    = false;
-
-      ////////////////////////////////////////////////////////////////////////////
-      // in case the pipe capacity has been made very small (useful in tests!), //
-      // then make the minRecordsToConsume match it.                            //
-      ////////////////////////////////////////////////////////////////////////////
-      if(recordPipe.getCapacity() < minRecordsToConsume)
+      try
       {
-         minRecordsToConsume = recordPipe.getCapacity();
-      }
+         AsyncJobState  jobState       = AsyncJobState.RUNNING;
+         AsyncJobStatus asyncJobStatus = null;
 
-      while(jobState.equals(AsyncJobState.RUNNING))
-      {
-         if(recordPipe.countAvailableRecords() < minRecordsToConsume)
+         int     recordCount           = 0;
+         int     nextSleepMillis       = INIT_SLEEP_MS;
+         long    lastReceivedRecordsAt = System.currentTimeMillis();
+         long    jobStartTime          = System.currentTimeMillis();
+         boolean everCalledConsumer    = false;
+
+         ////////////////////////////////////////////////////////////////////////////
+         // in case the pipe capacity has been made very small (useful in tests!), //
+         // then make the minRecordsToConsume match it.                            //
+         ////////////////////////////////////////////////////////////////////////////
+         if(recordPipe.getCapacity() < minRecordsToConsume)
          {
-            ///////////////////////////////////////////////////////////////
-            // if the pipe is too empty, sleep to let the producer work. //
-            // todo - smarter sleep?  like get notified vs. sleep?       //
-            ///////////////////////////////////////////////////////////////
-            LOG.trace("Too few records are available in the pipe. Sleeping [" + nextSleepMillis + "] ms to give producer a chance to work");
-            SleepUtils.sleep(nextSleepMillis, TimeUnit.MILLISECONDS);
-            nextSleepMillis = Math.min(nextSleepMillis * 2, MAX_SLEEP_MS);
+            minRecordsToConsume = recordPipe.getCapacity();
+         }
 
-            long timeSinceLastReceivedRecord = System.currentTimeMillis() - lastReceivedRecordsAt;
-            if(timeSinceLastReceivedRecord > TIMEOUT_AFTER_NO_RECORDS_MS)
+         while(jobState.equals(AsyncJobState.RUNNING))
+         {
+            if(recordPipe.countAvailableRecords() < minRecordsToConsume)
             {
-               throw (new QException("Job appears to have stopped producing records (last record received " + timeSinceLastReceivedRecord + " ms ago)."));
+               ///////////////////////////////////////////////////////////////
+               // if the pipe is too empty, sleep to let the producer work. //
+               // todo - smarter sleep?  like get notified vs. sleep?       //
+               ///////////////////////////////////////////////////////////////
+               LOG.trace("Too few records are available in the pipe. Sleeping [" + nextSleepMillis + "] ms to give producer a chance to work");
+               SleepUtils.sleep(nextSleepMillis, TimeUnit.MILLISECONDS);
+               nextSleepMillis = Math.min(nextSleepMillis * 2, MAX_SLEEP_MS);
+
+               long timeSinceLastReceivedRecord = System.currentTimeMillis() - lastReceivedRecordsAt;
+               if(timeSinceLastReceivedRecord > TIMEOUT_AFTER_NO_RECORDS_MS)
+               {
+                  throw (new QException("Job appears to have stopped producing records (last record received " + timeSinceLastReceivedRecord + " ms ago)."));
+               }
+            }
+            else
+            {
+               ////////////////////////////////////////////////////////////////////////////////////////////////////////
+               // if the pipe has records, consume them.  reset the sleep timer so if we sleep again it'll be short. //
+               ////////////////////////////////////////////////////////////////////////////////////////////////////////
+               lastReceivedRecordsAt = System.currentTimeMillis();
+               nextSleepMillis = INIT_SLEEP_MS;
+
+               everCalledConsumer = true;
+               recordCount += consumer.get();
+               LOG.debug(String.format("Processed %,d records so far", recordCount));
+
+               if(recordLimit != null && recordCount >= recordLimit)
+               {
+                  asyncJobManager.cancelJob(jobUUID);
+
+                  ////////////////////////////////////////////////////////////////////////////////////////////////////
+                  // in case the extract function doesn't recognize the cancellation request,                       //
+                  // tell the pipe to "terminate" - meaning - flush its queue and just noop when given new records. //
+                  // this should prevent anyone writing to such a pipe from potentially filling & blocking.         //
+                  ////////////////////////////////////////////////////////////////////////////////////////////////////
+                  recordPipe.terminate();
+
+                  break;
+               }
+            }
+
+            //////////////////////////////
+            // refresh the job's status //
+            //////////////////////////////
+            Optional<AsyncJobStatus> optionalAsyncJobStatus = asyncJobManager.getJobStatus(jobUUID);
+            if(optionalAsyncJobStatus.isEmpty())
+            {
+               /////////////////////////////////////////////////
+               // todo - ... maybe some version of try-again? //
+               /////////////////////////////////////////////////
+               throw (new QException("Could not get status of job [" + jobUUID + "]"));
+            }
+            asyncJobStatus = optionalAsyncJobStatus.get();
+            jobState = asyncJobStatus.getState();
+         }
+
+         /////////////////////////////////////////////////////////////////////////////////
+         // in case it turns out that it isn't right to move this flush to the supplier //
+         // thread, if this feature flag is not set to true, then do this flush here.   //
+         /////////////////////////////////////////////////////////////////////////////////
+         if(!doFinalFlushInSupplierThread)
+         {
+            if(recordPipe instanceof BufferedRecordPipe bufferedRecordPipe)
+            {
+               bufferedRecordPipe.finalFlush();
             }
          }
-         else
-         {
-            ////////////////////////////////////////////////////////////////////////////////////////////////////////
-            // if the pipe has records, consume them.  reset the sleep timer so if we sleep again it'll be short. //
-            ////////////////////////////////////////////////////////////////////////////////////////////////////////
-            lastReceivedRecordsAt = System.currentTimeMillis();
-            nextSleepMillis = INIT_SLEEP_MS;
 
-            everCalledConsumer = true;
+         LOG.debug("Job [" + jobUUID + "][" + jobName + "] completed with status: " + asyncJobStatus);
+
+         ///////////////////////////////////
+         // propagate errors from the job //
+         ///////////////////////////////////
+         if(asyncJobStatus != null && asyncJobStatus.getState().equals(AsyncJobState.ERROR))
+         {
+            throw (new QException("Job failed with an error", asyncJobStatus.getCaughtException()));
+         }
+
+         ///////////////////////////////////////////////////////////////////////////////////////////
+         // send the final records to the consumer                                                //
+         // note - we'll only make this "final" call to the consumer if:                          //
+         // - there are currently records in the pipe                                             //
+         // - OR we never called the consumer (e.g., there were 0 rows produced by the supplier   //
+         // This prevents cases where a consumer may get pages of records in the loop, but then   //
+         // be called here post-loop w/ 0 records, and may interpret it as a sign that no records //
+         // were ever supplied.                                                                   //
+         ///////////////////////////////////////////////////////////////////////////////////////////
+         if(recordPipe.countAvailableRecords() > 0 || !everCalledConsumer)
+         {
             recordCount += consumer.get();
-            LOG.debug(String.format("Processed %,d records so far", recordCount));
-
-            if(recordLimit != null && recordCount >= recordLimit)
-            {
-               asyncJobManager.cancelJob(jobUUID);
-
-               ////////////////////////////////////////////////////////////////////////////////////////////////////
-               // in case the extract function doesn't recognize the cancellation request,                       //
-               // tell the pipe to "terminate" - meaning - flush its queue and just noop when given new records. //
-               // this should prevent anyone writing to such a pipe from potentially filling & blocking.         //
-               ////////////////////////////////////////////////////////////////////////////////////////////////////
-               recordPipe.terminate();
-
-               break;
-            }
          }
 
-         //////////////////////////////
-         // refresh the job's status //
-         //////////////////////////////
-         Optional<AsyncJobStatus> optionalAsyncJobStatus = asyncJobManager.getJobStatus(jobUUID);
-         if(optionalAsyncJobStatus.isEmpty())
+         long endTime = System.currentTimeMillis();
+
+         if(recordCount > 0)
          {
-            /////////////////////////////////////////////////
-            // todo - ... maybe some version of try-again? //
-            /////////////////////////////////////////////////
-            throw (new QException("Could not get status of job [" + jobUUID + "]"));
+            LOG.debug("End of job summary", logPair("recordCount", recordCount), logPair("jobName", jobName), logPair("millis", endTime - jobStartTime), logPair("recordsPerSecond", 1000d * (recordCount / (.001d + (endTime - jobStartTime)))));
          }
-         asyncJobStatus = optionalAsyncJobStatus.get();
-         jobState = asyncJobStatus.getState();
-      }
 
-      /////////////////////////////////////////////////////////////////////////////////
-      // in case it turns out that it isn't right to move this flush to the supplier //
-      // thread, if this feature flag is not set to true, then do this flush here.   //
-      /////////////////////////////////////////////////////////////////////////////////
-      if(!doFinalFlushInSupplierThread)
+         return (recordCount);
+      }
+      catch(QException | RuntimeException | Error e)
       {
-         if(recordPipe instanceof BufferedRecordPipe bufferedRecordPipe)
+         recordPipe.terminate();
+         try
          {
-            bufferedRecordPipe.finalFlush();
+            asyncJobManager.cancelJob(jobUUID);
          }
+         catch(RuntimeException cancellationFailure)
+         {
+            e.addSuppressed(cancellationFailure);
+         }
+         throw e;
       }
-
-      LOG.debug("Job [" + jobUUID + "][" + jobName + "] completed with status: " + asyncJobStatus);
-
-      ///////////////////////////////////
-      // propagate errors from the job //
-      ///////////////////////////////////
-      if(asyncJobStatus != null && asyncJobStatus.getState().equals(AsyncJobState.ERROR))
-      {
-         throw (new QException("Job failed with an error", asyncJobStatus.getCaughtException()));
-      }
-
-      ///////////////////////////////////////////////////////////////////////////////////////////
-      // send the final records to the consumer                                                //
-      // note - we'll only make this "final" call to the consumer if:                          //
-      // - there are currently records in the pipe                                             //
-      // - OR we never called the consumer (e.g., there were 0 rows produced by the supplier   //
-      // This prevents cases where a consumer may get pages of records in the loop, but then   //
-      // be called here post-loop w/ 0 records, and may interpret it as a sign that no records //
-      // were ever supplied.                                                                   //
-      ///////////////////////////////////////////////////////////////////////////////////////////
-      if(recordPipe.countAvailableRecords() > 0 || !everCalledConsumer)
-      {
-         recordCount += consumer.get();
-      }
-
-      long endTime = System.currentTimeMillis();
-
-      if(recordCount > 0)
-      {
-         LOG.debug("End of job summary", logPair("recordCount", recordCount), logPair("jobName", jobName), logPair("millis", endTime - jobStartTime), logPair("recordsPerSecond", 1000d * (recordCount / (.001d + (endTime - jobStartTime)))));
-      }
-
-      return (recordCount);
    }
 
 

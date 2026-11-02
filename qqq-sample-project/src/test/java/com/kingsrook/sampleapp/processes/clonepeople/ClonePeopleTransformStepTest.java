@@ -22,9 +22,11 @@ package com.kingsrook.sampleapp.processes.clonepeople;
 
 
 import java.util.ArrayList;
+import com.kingsrook.qqq.backend.core.actions.metadata.ProcessMetaDataAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.actions.metadata.ProcessMetaDataInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.ProcessSummaryLine;
 import com.kingsrook.qqq.backend.core.model.actions.processes.ProcessSummaryLineInterface;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
@@ -39,6 +41,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 
 /*******************************************************************************
@@ -94,6 +97,25 @@ class ClonePeopleTransformStepTest
          .usingRecursiveFieldByFieldElementComparatorOnFields("status", "count")
          .contains(new ProcessSummaryLine(Status.OK, 4, null))
          .contains(new ProcessSummaryLine(Status.ERROR, 1, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** The extract step refuses a run without records, so the process metadata a
+    ** client reads must say at least one record is needed (QRun-IO/qqq#1341).
+    *******************************************************************************/
+   @Test
+   void testMetaDataDeclaresMinInputRecords() throws QException
+   {
+      QInstance qInstance = SampleMetaDataProvider.defineTestInstance();
+      QContext.init(qInstance, new QSession());
+
+      assertEquals(1, qInstance.getProcess(SampleMetaDataProvider.PROCESS_NAME_CLONE_PEOPLE).getMinInputRecords());
+
+      ProcessMetaDataInput input = new ProcessMetaDataInput();
+      input.setProcessName(SampleMetaDataProvider.PROCESS_NAME_CLONE_PEOPLE);
+      assertEquals(1, new ProcessMetaDataAction().execute(input).getProcess().getMinInputRecords());
    }
 
 }

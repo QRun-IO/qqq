@@ -30,7 +30,9 @@ import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType
 import com.kingsrook.qqq.backend.core.actions.reporting.ExportAction;
 import com.kingsrook.qqq.backend.core.context.CapturedContext;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.reporting.ExportInput;
 import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportDestination;
@@ -65,7 +67,16 @@ public class TableExportExecutor extends AbstractMiddlewareExecutor<TableExportI
          ////////////////////////////////////////
          // resolve the report format to use   //
          ////////////////////////////////////////
-         ReportFormat reportFormat = ReportFormat.fromString(input.getFormat());
+         ReportFormat reportFormat;
+         try
+         {
+            reportFormat = ReportFormat.fromString(input.getFormat());
+         }
+         catch(QUserFacingException e)
+         {
+            throw (new QBadRequestException(e.getMessage() + " Supported formats are csv, xlsx, json and tsv.")
+               .withFieldError("format", e.getMessage()));
+         }
 
          ////////////////////////////////////////////////////////////////////
          // generate filename if not provided: tableName + "." + extension //
@@ -89,6 +100,7 @@ public class TableExportExecutor extends AbstractMiddlewareExecutor<TableExportI
 
          exportInput.setQueryFilter(input.getFilter());
          exportInput.setFieldNames(input.getFieldNames());
+         exportInput.setQueryJoins(input.getJoins());
          exportInput.setLimit(input.getLimit());
 
          if(input.getIncludeHeaderRow() != null)

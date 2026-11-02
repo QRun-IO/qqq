@@ -253,6 +253,10 @@ public class WidgetDataSchemas
                "urls", stringList("Links per data point."),
                "datasets", new Schema().withType(Type.ARRAY).withItems(new Schema().withType(Type.OBJECT).withProperties(dataset)))));
          }
+         else if(name.equals("statisticsGroupData"))
+         {
+            property = statisticsGroupDataSchema();
+         }
          else if(name.equals("values"))
          {
             property = new Schema().withType(Type.OBJECT).withDescription("Composite BaseValues has no predefined members.");
@@ -279,6 +283,34 @@ public class WidgetDataSchemas
          }
       }
       return (rs);
+   }
+
+
+
+   /*******************************************************************************
+    ** The groups of a multiStatistics widget (MultiStatisticsData.StatisticsGroupData,
+    ** QRun-IO/qqq#1353). Each group's list is named `statisticList` (singular):
+    ** the only name the server has ever sent, and the one the web UI reads.
+    *******************************************************************************/
+   private static Schema statisticsGroupDataSchema()
+   {
+      Map<String, Schema> statistic = new TreeMap<>();
+      statistic.put("label", new Schema().withType(Type.STRING).withNullable(true).withDescription("Label of the statistic."));
+      statistic.put("value", new Schema().withType(Type.INTEGER).withNullable(true).withDescription("Value of the statistic."));
+      statistic.put("url", new Schema().withType(Type.STRING).withNullable(true).withDescription("Link to open for the statistic (e.g., a filtered query)."));
+
+      Map<String, Schema> group = new TreeMap<>();
+      group.put("header", new Schema().withType(Type.STRING).withNullable(true).withDescription("Heading of the group."));
+      group.put("subheader", new Schema().withType(Type.STRING).withNullable(true).withDescription("Secondary heading of the group."));
+      group.put("icon", new Schema().withType(Type.STRING).withNullable(true).withDescription("Material icon name for the group."));
+      group.put("iconColor", new Schema().withType(Type.STRING).withNullable(true).withDescription("Color of the group's icon."));
+      group.put("statisticList", new Schema().withType(Type.ARRAY).withNullable(true)
+         .withDescription("The statistics of the group. Note the singular name: `statisticList` (not `statisticsList`).")
+         .withItems(new Schema().withType(Type.OBJECT).withProperties(statistic)));
+
+      return (new Schema().withType(Type.ARRAY)
+         .withDescription("Groups of statistics, each with a header and its own `statisticList`.")
+         .withItems(new Schema().withType(Type.OBJECT).withProperties(group)));
    }
 
 

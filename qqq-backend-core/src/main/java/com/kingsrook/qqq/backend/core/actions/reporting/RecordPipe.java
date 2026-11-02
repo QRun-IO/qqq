@@ -49,7 +49,7 @@ public class RecordPipe
    private int capacity = DEFAULT_CAPACITY;
    private ArrayBlockingQueue<QRecord> queue = new ArrayBlockingQueue<>(capacity);
 
-   private boolean isTerminated = false;
+   private volatile boolean isTerminated = false;
 
    private UnsafeConsumer<List<QRecord>, QException> postRecordActions = null;
 

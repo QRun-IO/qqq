@@ -65,6 +65,122 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *******************************************************************************/
 class RealtimeHubTest
 {
+   /***************************************************************************
+    ** A transport gap repairs every stream without forwarding supplied payloads.
+    ***************************************************************************/
+   @Test
+   void transportResyncReachesUnsubscribedConnections() throws Exception
+   {
+      var stream = hub.connect(session, null);
+      stream.poll(100);
+      RealtimeBus.get(instance).publish(new RealtimeMessage().withChannel("instance").withEvent("resync")
+         .withData(Map.of("ignored", "transport payload")));
+      var frame = stream.poll(100);
+      assertEquals("resync", frame.event());
+      assertTrue(frame.data().isEmpty());
+   }
+
+   /***************************************************************************
+    ** Colliding table channels never bypass scoped audience checks, including replay.
+    ***************************************************************************/
+   @Test
+   void scopedAudienceLiveReplayAndFailure() throws Exception
+   {
+      RealtimeMetaData.of(instance).withAudienceProvider("presence.invalidated",
+         new com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference(TenantAudience.class));
+      session.withSecurityKeyValue("tenant", "a");
+      var first = hub.connect(session, null);
+      var hello = first.poll(100);
+      hub.subscriptions(session, first.getConnectionId(), List.of("table:rt"), List.of());
+      var otherSession = new QSession().withUser(new QUser().withIdReference("bob")).withSecurityKeyValue("tenant", "b");
+      var other = hub.connect(otherSession, null);
+      other.poll(100);
+      hub.subscriptions(otherSession, other.getConnectionId(), List.of("table:rt"), List.of());
+      var message = new RealtimeMessage().withChannel("table:rt").withEvent("presence.invalidated")
+         .withAudience("a").withData(Map.of("table", "rt"));
+      RealtimeBus.get(instance).publish(message);
+      assertEquals("presence.invalidated", first.poll(100).event());
+      assertNull(other.poll(20));
+      assertEquals(session, QContext.getQSession());
+      // A registered event cannot bypass the policy by omitting its audience.
+      RealtimeBus.get(instance).publish(message.withAudience(null));
+      assertNull(first.poll(20));
+      assertNull(other.poll(20));
+      // Unknown scoped event types fail closed.
+      RealtimeBus.get(instance).publish(message.withAudience("a").withEvent("unregistered"));
+      assertNull(first.poll(20));
+      hub.disconnect(first);
+      session.clearSecurityKeyValues();
+      session.withSecurityKeyValue("tenant", "b");
+      var resumed = hub.connect(session, hello.id());
+      assertEquals("hello", resumed.poll(100).event());
+      assertNull(resumed.poll(20));
+      // A throwing provider must not enqueue anything or change caller context.
+      session.clearSecurityKeyValues();
+      session.withSecurityKeyValue("tenant", "fail");
+      RealtimeBus.get(instance).publish(message.withEvent("presence.invalidated").withAudience("a"));
+      assertNull(resumed.poll(20));
+      assertEquals(session, QContext.getQSession());
+   }
+
+   /***************************************************************************
+    ** Example host audience policy with an explicit authenticated tenant.
+    ***************************************************************************/
+   public static class TenantAudience implements com.kingsrook.qqq.backend.core.realtime.RealtimeAudienceProvider
+   {
+      /************************************************************************
+       ** Require one tenant and exercise provider failure without leaking details.
+       ************************************************************************/
+      @Override
+      public boolean allows(String audience)
+      {
+         var tenants = QContext.getQSession().getSecurityKeyValues("tenant");
+         if(tenants.contains("fail"))
+         {
+            throw (new IllegalStateException("Provider unavailable"));
+         }
+         return (tenants.size() == 1 && audience.equals(tenants.getFirst()));
+      }
+   }
+
+   /*******************************************************************************
+    ** Presence is filtered on live delivery and replay without changing shared data.
+    *******************************************************************************/
+   @Test
+   void presenceFieldPrivacyAndReplay() throws Exception
+   {
+      var connection = hub.connect(session, null);
+      var hello = connection.poll(100);
+      hub.subscriptions(session, connection.getConnectionId(), List.of("record:rt:1"), List.of());
+      for(String name : List.of("name", "hidden", "locked"))
+      {
+         var viewer = new java.util.LinkedHashMap<String, java.io.Serializable>();
+         viewer.put("userId", "bob");
+         viewer.put("displayName", "Bob");
+         viewer.put("mode", "EDITING");
+         viewer.put("fieldName", name);
+         var data = new java.util.LinkedHashMap<String, java.io.Serializable>();
+         data.put("table", "rt");
+         data.put("pk", "1");
+         data.put("viewers", new ArrayList<>(List.of(viewer)));
+         RealtimeBus.get(instance).publish(new RealtimeMessage().withChannel("record:rt:1").withEvent("presence.changed").withData(data));
+         var frame = connection.poll(100);
+         var delivered = (Map<?, ?>) ((List<?>) frame.data().get("viewers")).getFirst();
+         assertEquals("name".equals(name) ? name : null, delivered.get("fieldName"));
+         assertEquals("bob", delivered.get("userId"));
+         assertEquals(name, viewer.get("fieldName"));
+      }
+      hub.disconnect(connection);
+      instance.getTable("rt").getField("name").setIsHidden(true);
+      var resumed = hub.connect(session, hello.id());
+      resumed.poll(100);
+      for(int i = 0; i < 3; i++)
+      {
+         var frame = resumed.poll(100);
+         assertNull(((Map<?, ?>) ((List<?>) frame.data().get("viewers")).getFirst()).get("fieldName"));
+      }
+   }
+
    private QInstance instance;
    private QSession session;
    private RealtimeHub hub;

@@ -36,7 +36,6 @@ public class BaseSFTPTest extends BaseTest
    public static final int    PORT      = 22;
    public static final String USERNAME  = "testuser";
    public static final String PASSWORD  = "testpass";
-   public static final String HOST_NAME = "localhost";
 
    public static final String BACKEND_FOLDER = "upload";
    public static final String TABLE_FOLDER   = "files";
@@ -44,6 +43,7 @@ public class BaseSFTPTest extends BaseTest
 
    protected static GenericContainer<?> sftpContainer;
    private static   Integer             currentPort;
+   private static   String              currentHost = "localhost";
 
 
 
@@ -78,6 +78,7 @@ public class BaseSFTPTest extends BaseTest
       sftpContainer.execInContainer("chown", USERNAME, sshDir + "/authorized_keys");
 
       currentPort = sftpContainer.getMappedPort(22);
+      currentHost = sftpContainer.getHost();
    }
 
 
@@ -123,6 +124,17 @@ public class BaseSFTPTest extends BaseTest
    public static Integer getCurrentPort()
    {
       return currentPort;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for the host where the container's mapped port is reachable.
+    **
+    *******************************************************************************/
+   public static String getCurrentHost()
+   {
+      return currentHost;
    }
 
 

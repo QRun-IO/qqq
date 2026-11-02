@@ -91,8 +91,12 @@ public class ManageSessionSpecV1 extends AbstractEndpointSpec<ManageSessionInput
             The response object will include a session identifier (`uuid`) to authenticate the user in subsequent API calls.
 
             For the `TABLE_BASED` type, send the user's credentials in an `Authorization: Basic` header (base64 of
-            `username:password`, UTF-8); the body may be empty.  The password is verified against the user table and a
-            session row is stored; a `401` response means the credentials were refused.
+            `username:password`, UTF-8); the body may be empty (it has no username or password properties).  The
+            password is verified against the user table and a session row is stored; a `401` response means the
+            credentials were refused.  This works for native (CLI, TUI, mobile) clients as well as browsers: take the
+            session's `uuid` from the response (or, when the server sets `HttpOnly` session cookies and so omits it, from
+            the `sessionUUID` cookie in `Set-Cookie`), then send it on later calls as `Authorization: Bearer {uuid}`
+            (or as the `sessionUUID` cookie).  Do not send the Basic header on every call: each one signs in again.
 
             To resume the session the browser already holds (for example after a page reload), post an empty object:
             a request with no credentials and no `sessionUUID` resumes the session named by the `sessionUUID` cookie,
@@ -211,8 +215,8 @@ public class ManageSessionSpecV1 extends AbstractEndpointSpec<ManageSessionInput
       return List.of(new Parameter()
          .withName("Authorization")
          .withDescription("""
-            For `TABLE_BASED` authentication: `Basic ` followed by the base64 encoding of `username:password` (UTF-8).
-            Not used by other authentication types.""")
+            For `TABLE_BASED` authentication: `Basic ` followed by the base64 encoding of `username:password` (UTF-8),
+            to sign in.  Not used by other authentication types.""")
          .withIn(In.HEADER)
          .withSchema(new Schema().withType(Type.STRING))
          .withExample("Basic dXNlcm5hbWU6cGFzc3dvcmQ="));

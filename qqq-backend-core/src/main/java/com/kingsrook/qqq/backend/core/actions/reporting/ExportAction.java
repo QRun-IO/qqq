@@ -27,7 +27,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
 import com.kingsrook.qqq.backend.core.actions.async.AsyncJobManager;
@@ -41,6 +40,8 @@ import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
+import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QReportingException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
@@ -52,6 +53,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QueryHint;
 import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountOutput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.JoinsContext;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
@@ -123,7 +125,7 @@ public class ExportAction
       ///////////////////////////////////
       if(CollectionUtils.nullSafeHasContents(exportInput.getFieldNames()))
       {
-         Map<String, QTableMetaData> joinTableMap = getJoinTableMap(exportInput, table);
+         Map<String, QTableMetaData> joinTableMap = getJoinTableMap(exportInput, table, getQueryJoins(exportInput));
 
          List<String> notFoundFieldNames     = new ArrayList<>();
          List<String> notQueryableFieldNames = new ArrayList<>();
@@ -178,7 +180,38 @@ public class ExportAction
                errorParts.add("Fields names " + StringUtils.joinWithCommasAndAnd(notQueryableFieldNames) + " are not queryable on the " + table.getLabel() + " table.");
             }
 
-            throw new QUserFacingException(String.join(" ", errorParts));
+            QBadRequestException badRequestException = new QBadRequestException(String.join(" ", errorParts));
+            notFoundFieldNames.forEach(fieldName -> badRequestException.withFieldError("fieldNames", "Field name " + fieldName + " was not found on the " + table.getLabel() + " table."));
+            notQueryableFieldNames.forEach(fieldName -> badRequestException.withFieldError("fieldNames", "Field name " + fieldName + " is not queryable on the " + table.getLabel() + " table."));
+            throw (badRequestException);
+         }
+      }
+
+      /////////////////////////////////////////////////////////////////////
+      // the joins must be resolvable from the table, before the export  //
+      // (which streams in another thread) starts                        //
+      /////////////////////////////////////////////////////////////////////
+      List<QueryJoin> queryJoins = getQueryJoins(exportInput);
+      if(!queryJoins.isEmpty())
+      {
+         JoinsContext joinsContext;
+         try
+         {
+            joinsContext = new JoinsContext(QContext.getQInstance(), exportInput.getTableName(), queryJoins, new QQueryFilter());
+         }
+         catch(QException e)
+         {
+            throw (new QBadRequestException("Unable to join the requested tables to the " + table.getLabel() + " table: " + e.getMessage(), e)
+               .withFieldError("joins", e.getMessage()));
+         }
+
+         for(QueryJoin queryJoin : joinsContext.getQueryJoins())
+         {
+            if(queryJoin.getJoinMetaData() == null)
+            {
+               String message = "No join was found from the " + table.getLabel() + " table to " + queryJoin.getJoinTableOrItsAlias() + ".";
+               throw (new QBadRequestException(message).withFieldError("joins", message));
+            }
          }
       }
 
@@ -201,13 +234,30 @@ public class ExportAction
    /*******************************************************************************
     **
     *******************************************************************************/
-   private static Map<String, QTableMetaData> getJoinTableMap(ExportInput exportInput, QTableMetaData table) throws QException
+   private static Map<String, QTableMetaData> getJoinTableMap(ExportInput exportInput, QTableMetaData table, List<QueryJoin> queryJoins) throws QException
    {
       Map<String, QTableMetaData> joinTableMap = new HashMap<>();
       for(ExposedJoin exposedJoin : CollectionUtils.nonNullList(table.getExposedJoins()))
       {
          QTableMetaData joinTable = TableMetaDataPersonalizerAction.execute(new ExportInput().withTableName(exposedJoin.getJoinTable()).withInputSource(exportInput.getInputSource()));
          joinTableMap.put(exposedJoin.getJoinTable(), joinTable);
+      }
+
+      ////////////////////////////////////////////////////////////////////////
+      // and the tables of the query's joins, by their alias or table name //
+      // (whether the joins can be made is checked separately)              //
+      ////////////////////////////////////////////////////////////////////////
+      for(QueryJoin queryJoin : CollectionUtils.nonNullList(queryJoins))
+      {
+         String name = queryJoin.getJoinTableOrItsAlias();
+         if(name != null && !joinTableMap.containsKey(name) && QContext.getQInstance().getTable(queryJoin.getJoinTable()) != null)
+         {
+            QTableMetaData joinTable = TableMetaDataPersonalizerAction.execute(new ExportInput().withTableName(queryJoin.getJoinTable()).withInputSource(exportInput.getInputSource()));
+            if(joinTable != null)
+            {
+               joinTableMap.put(name, joinTable);
+            }
+         }
       }
       return joinTableMap;
    }
@@ -442,7 +492,7 @@ public class ExportAction
    private List<QFieldMetaData> getFields(ExportInput exportInput) throws QException
    {
       QTableMetaData              table        = exportInput.getTable();
-      Map<String, QTableMetaData> joinTableMap = getJoinTableMap(exportInput, table);
+      Map<String, QTableMetaData> joinTableMap = getJoinTableMap(exportInput, table, getQueryJoins(exportInput));
 
       List<QFieldMetaData> fieldList;
       if(exportInput.getFieldNames() != null)
@@ -548,12 +598,23 @@ public class ExportAction
     *******************************************************************************/
    private List<QueryJoin> getQueryJoins(ExportInput exportInput)
    {
-      List<QueryJoin> queryJoins     = new ArrayList<>();
-      Set<String>     addedJoinNames = new HashSet<>();
+      List<QueryJoin>        queryJoins     = new ArrayList<>();
+      Map<String, QueryJoin> addedJoinNames = new HashMap<>();
+
+      ///////////////////////////////////////////////////////////
+      // start with the joins the caller gave (as in a query) //
+      ///////////////////////////////////////////////////////////
+      for(QueryJoin queryJoin : CollectionUtils.nonNullList(exportInput.getQueryJoins()))
+      {
+         queryJoins.add(queryJoin);
+         addedJoinNames.put(queryJoin.getJoinTableOrItsAlias(), queryJoin);
+      }
+
       if(CollectionUtils.nullSafeHasContents(exportInput.getFieldNames()))
       {
          /////////////////////////////////////////////////////////////////////////////////////////////
          // make sure that any tables being selected from are included as (LEFT) joins in the query //
+         // (and that a given join whose fields are exported is selected)                           //
          /////////////////////////////////////////////////////////////////////////////////////////////
          for(String fieldName : exportInput.getFieldNames())
          {
@@ -561,10 +622,15 @@ public class ExportAction
             {
                String[] parts         = fieldName.split("\\.", 2);
                String   joinTableName = parts[0];
-               if(!addedJoinNames.contains(joinTableName))
+               if(addedJoinNames.containsKey(joinTableName))
                {
-                  queryJoins.add(new QueryJoin(joinTableName).withType(QueryJoin.Type.LEFT).withSelect(true));
-                  addedJoinNames.add(joinTableName);
+                  addedJoinNames.get(joinTableName).setSelect(true);
+               }
+               else
+               {
+                  QueryJoin queryJoin = new QueryJoin(joinTableName).withType(QueryJoin.Type.LEFT).withSelect(true);
+                  queryJoins.add(queryJoin);
+                  addedJoinNames.put(joinTableName, queryJoin);
                }
             }
          }

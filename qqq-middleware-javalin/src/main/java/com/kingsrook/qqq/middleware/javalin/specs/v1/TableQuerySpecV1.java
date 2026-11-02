@@ -64,7 +64,11 @@ public class TableQuerySpecV1 extends AbstractEndpointSpec<TableQueryInput, Tabl
          .withTag(TagsV1.TABLES)
          .withShortSummary("Query for records from a table")
          .withLongDescription("""
-            Execute a query against a table, returning records that match a filter."""
+            Execute a query against a table, returning records that match a filter.
+
+            The response is `{ "records": [ { "tableName", "recordLabel", "values", "displayValues", ... }, ... ] }`
+            (`TableQueryResponseV1`): each element of `records` is a record object itself.  `GET /table/{tableName}/{primaryKey}`
+            returns the same record object wrapped as `{ "record": { ... } }`."""
          );
    }
 

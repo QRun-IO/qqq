@@ -39,6 +39,14 @@ public final class RealtimeBus
 {
    private static final Map<QInstance, RealtimeBusInterface> BUSES = new WeakHashMap<>();
 
+   /***************************************************************************
+    ** Observe readiness without starting threads or opening transport connections.
+    ***************************************************************************/
+   public static synchronized java.util.Optional<RealtimeBusInterface> getIfStarted(QInstance instance)
+   {
+      return (java.util.Optional.ofNullable(BUSES.get(instance)));
+   }
+
 
 
    /*******************************************************************************

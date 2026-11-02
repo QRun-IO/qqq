@@ -229,6 +229,26 @@ class TablePossibleValuesSpecV1Test extends SpecTestBase
 
 
    /*******************************************************************************
+    ** An id that cannot be the source's (integer) id is a 400 naming ids, not a
+    ** 500 from the failed query (#1338).
+    *******************************************************************************/
+   @Test
+   void testSearchByUnparseableIds()
+   {
+      HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/table/person/possibleValues/partnerPersonId")
+         .contentType(ContentType.APPLICATION_JSON.getMimeType())
+         .body(JsonUtils.toJson(Map.of("ids", List.of("Narnia"))))
+         .asString();
+
+      assertEquals(400, response.getStatus(), response.getBody());
+      JSONObject body = JsonUtils.toJSONObject(response.getBody());
+      assertEquals("BAD_REQUEST", body.getString("code"));
+      assertEquals("ids", body.getJSONArray("fieldErrors").getJSONObject(0).getString("field"));
+   }
+
+
+
+   /*******************************************************************************
     ** A record picker request (the body's "picker" object) on a source that
     ** declares a picker: keyset pages by id, hasMore instead of a count, each
     ** option with only the picker's display values, and undeclared filter

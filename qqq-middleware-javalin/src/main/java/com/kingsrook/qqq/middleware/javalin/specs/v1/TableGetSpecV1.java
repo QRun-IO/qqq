@@ -65,7 +65,12 @@ public class TableGetSpecV1 extends AbstractEndpointSpec<TableGetInput, TableGet
          .withTag(TagsV1.TABLES)
          .withShortSummary("Get a record from a table by primary key")
          .withLongDescription("""
-            Fetch a single record from a table, identified by its primary key value."""
+            Fetch a single record from a table, identified by its primary key value.
+
+            The response wraps the record in an object: `{ "record": { "tableName", "recordLabel", "values",
+            "displayValues", ... } }` (`TableGetResponseV1`).  This differs from `POST /table/{tableName}/query`, whose
+            `records` array holds the same record objects without a wrapper, so a client unwraps `record` here and reads
+            each element of `records` there.  A missing record is a `404`."""
          );
    }
 

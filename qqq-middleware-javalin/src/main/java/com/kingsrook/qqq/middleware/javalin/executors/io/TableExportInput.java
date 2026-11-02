@@ -23,6 +23,7 @@ package com.kingsrook.qqq.middleware.javalin.executors.io;
 
 import java.util.List;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.TableVariant;
 
 
@@ -36,6 +37,7 @@ public class TableExportInput extends AbstractMiddlewareInput
    private String       filename;
    private QQueryFilter filter;
    private List<String> fieldNames;
+   private List<QueryJoin> joins;
    private Integer      limit;
    private Boolean      includeHeaderRow;
    private TableVariant tableVariant;
@@ -285,6 +287,37 @@ public class TableExportInput extends AbstractMiddlewareInput
    public TableExportInput withTableVariant(TableVariant tableVariant)
    {
       this.tableVariant = tableVariant;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for joins
+    *******************************************************************************/
+   public List<QueryJoin> getJoins()
+   {
+      return (joins);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for joins
+    *******************************************************************************/
+   public void setJoins(List<QueryJoin> joins)
+   {
+      this.joins = joins;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for joins
+    *******************************************************************************/
+   public TableExportInput withJoins(List<QueryJoin> joins)
+   {
+      this.joins = joins;
       return (this);
    }
 

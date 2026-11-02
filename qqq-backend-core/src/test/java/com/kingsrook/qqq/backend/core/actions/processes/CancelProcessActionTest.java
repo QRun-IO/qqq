@@ -24,6 +24,7 @@ package com.kingsrook.qqq.backend.core.actions.processes;
 import java.util.UUID;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QCollectingLogger;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -64,6 +65,11 @@ public class CancelProcessActionTest extends BaseTest
       assertThatThrownBy(() -> new CancelProcessAction().execute(input))
          .hasMessageContaining("processUUID was not given");
 
+      input.setProcessUUID("not-a-uuid");
+      assertThatThrownBy(() -> new CancelProcessAction().execute(input))
+         .isInstanceOf(QBadRequestException.class)
+         .hasMessageContaining("is not a valid UUID");
+
       input.setProcessUUID(UUID.randomUUID().toString());
       assertThatThrownBy(() -> new CancelProcessAction().execute(input))
          .hasMessageContaining("State for process UUID")
@@ -99,13 +105,25 @@ public class CancelProcessActionTest extends BaseTest
             .anyMatch(m -> m.getMessage().contains("does not have a custom cancel step"));
          collectingLogger.clear();
 
-         ///////////////////////////////////////
-         // add a cancel step to this process //
-         ///////////////////////////////////////
+         ///////////////////////////////////////////////////////////////////
+         // cancelling is terminal: the cancelled run refuses more steps //
+         ///////////////////////////////////////////////////////////////////
+         input.setStartAfterStep("setup");
+         assertThatThrownBy(() -> new RunProcessAction().execute(input))
+            .isInstanceOf(QBadRequestException.class)
+            .hasMessageContaining("process was cancelled");
+
+         ////////////////////////////////////////////////////////////////
+         // add a cancel step to this process, and cancel a fresh run //
+         ////////////////////////////////////////////////////////////////
          QContext.getQInstance().getProcess(TestUtils.PROCESS_NAME_GREET_PEOPLE_INTERACTIVE)
             .setCancelStep(new QBackendStepMetaData().withCode(new QCodeReference(CancelStep.class)));
 
-         new CancelProcessAction().execute(input);
+         RunProcessInput freshInput = new RunProcessInput();
+         freshInput.setProcessName(TestUtils.PROCESS_NAME_GREET_PEOPLE_INTERACTIVE);
+         freshInput.setFrontendStepBehavior(RunProcessInput.FrontendStepBehavior.BREAK);
+         freshInput.setProcessUUID(new RunProcessAction().execute(freshInput).getProcessUUID());
+         new CancelProcessAction().execute(freshInput);
          assertThat(collectingLogger.getCollectedMessages())
             .noneMatch(m -> m.getMessage().contains("does not have a custom cancel step"))
             .anyMatch(m -> m.getMessage().contains("Running cancel step"));

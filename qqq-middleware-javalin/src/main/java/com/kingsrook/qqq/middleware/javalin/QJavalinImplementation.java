@@ -1199,7 +1199,7 @@ public class QJavalinImplementation
          }
 
          String                    mimeType              = null;
-         Optional<FieldAdornment>  fileDownloadAdornment = fieldMetaData.getAdornments().stream().filter(a -> a.getType().equals(AdornmentType.FILE_DOWNLOAD)).findFirst();
+         Optional<FieldAdornment>  fileDownloadAdornment = CollectionUtils.nonNullList(fieldMetaData.getAdornments()).stream().filter(a -> a.getType().equals(AdornmentType.FILE_DOWNLOAD)).findFirst();
          Map<String, Serializable> adornmentValues       = null;
          if(fileDownloadAdornment.isPresent())
          {

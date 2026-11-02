@@ -310,4 +310,40 @@ class EsbStatsTest
       assertThat(stats.trigger(TRIGGER).avgMs()).isEqualTo(500L);
    }
 
+
+
+   /*******************************************************************************
+    ** withTriggers rolls the triggers' consumption into a destination's counters
+    ** (#1365): sums, weighted average, longest run, latest activity and error.
+    *******************************************************************************/
+   @Test
+   void testDestinationWithTriggers()
+   {
+      EsbStats stats = EsbStats.getInstance();
+      stats.published(DESTINATION);
+      stats.consumed(TRIGGER);
+      stats.succeeded(TRIGGER, 10);
+      stats.consumed("other.orderEvents");
+      stats.succeeded("other.orderEvents", 30);
+      stats.consumed("other.orderEvents");
+      stats.failed("other.orderEvents", new Exception("boom"));
+      stats.deadLettered("other.orderEvents");
+
+      EsbCounterSnapshot destination = stats.destination(DESTINATION);
+      assertThat(destination.consumed()).isZero();
+
+      EsbCounterSnapshot rolledUp = destination.withTriggers(List.of(stats.trigger(TRIGGER), stats.trigger("other.orderEvents")));
+      assertThat(rolledUp.published()).isEqualTo(1);
+      assertThat(rolledUp.consumed()).isEqualTo(3);
+      assertThat(rolledUp.succeeded()).isEqualTo(2);
+      assertThat(rolledUp.failed()).isEqualTo(1);
+      assertThat(rolledUp.deadLettered()).isEqualTo(1);
+      assertThat(rolledUp.avgMs()).isEqualTo(20);
+      assertThat(rolledUp.maxMs()).isEqualTo(30);
+      assertThat(rolledUp.lastError()).isEqualTo("boom");
+      assertThat(rolledUp.lastActivity()).isEqualTo(stats.trigger("other.orderEvents").lastActivity());
+
+      assertThat(EsbCounterSnapshot.EMPTY.withTriggers(List.of())).isEqualTo(EsbCounterSnapshot.EMPTY);
+   }
+
 }

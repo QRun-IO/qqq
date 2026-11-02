@@ -1,0 +1,15 @@
+name: Original Core seven-job qualification
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  core:
+    uses: self:KofTwentyTwo/platform-ci/.gitea/workflows/java-core.yaml@0452f5a6dfccdef49187d5db32c41fa2199f9ade
+    with:
+      runner: linux-small
+      docker-runner: container-build
+      java-version: '21'
+      browsers: true
+      core-mode: snapshot

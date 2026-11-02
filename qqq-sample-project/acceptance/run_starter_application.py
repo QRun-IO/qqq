@@ -403,10 +403,15 @@ def stage_starter(source, destination, postgres=False):
     java = provider.read_text()
     import_marker = "import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSTableBackendDetails;"
     require(java.count(import_marker) == 1, import_marker)
-    postgres_import = ("\nimport com.kingsrook.qqq.backend.module.postgres.model.metadata.PostgreSQLBackendMetaData;"
-                       if postgres else "")
-    java = java.replace(import_marker, import_marker + postgres_import
+    java = java.replace(import_marker, import_marker
                         + "\nimport com.qrunio.acceptance.orderdesk.OrderDeskAppQBitConfig;\nimport com.qrunio.acceptance.orderdesk.OrderDeskAppQBitProducer;")
+    if postgres:
+        # Checkstyle wants imports sorted: ...module.postgres sorts before the first ...module.rdbms import.
+        first_rdbms = re.search(r"^import com\.kingsrook\.qqq\.backend\.module\.rdbms\.", java, re.MULTILINE)
+        require(first_rdbms is not None, "import com.kingsrook.qqq.backend.module.rdbms.")
+        java = (java[:first_rdbms.start()]
+                + "import com.kingsrook.qqq.backend.module.postgres.model.metadata.PostgreSQLBackendMetaData;\n"
+                + java[first_rdbms.start():])
     if postgres:
         backend_marker = "      return new RDBMSBackendMetaData()\n         .withName(RDBMS_BACKEND_NAME)"
         require(java.count(backend_marker) == 1, backend_marker)

@@ -1613,7 +1613,7 @@
       ],
       "acceptance_status": "verified",
       "acceptance_stage": "source",
-      "acceptance_note": "Owner hook/no-hook calls, completed-run no-hook behavior, unknown/missing IDs, cross-session denial, checked/runtime hook exceptions and a fresh run after failure pass. Existing Medium #473/#474/#478/#479/#480 and Low #481 remain deferred: these checks do not certify terminal cancellation, worker/resource cleanup, failed-run reuse or malformed-UUID diagnostics.",
+      "acceptance_note": "Owner hook/no-hook calls, unknown/missing IDs, cross-session denial, checked/runtime hook exceptions and a fresh run after failure pass. Cancelling is terminal: a cancelled run refuses further steps with a 400 and repeat cancellation is a no-op (owner hook and no-hook runs). Existing Medium #473/#474/#478/#479/#480 and Low #481 remain deferred: these checks do not certify worker/resource cleanup, active-callback signalling, failed-run reuse or malformed-UUID diagnostics.",
       "deferred_issues": [
         {
           "issue": 473,

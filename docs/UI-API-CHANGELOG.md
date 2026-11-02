@@ -132,8 +132,9 @@ Fixes for issues found while building the terminal clients (`qqq-cli`) and nativ
   field error (was a 500 from the failed query on RDBMS backends).
 - **Malformed process UUID on cancel is 400** (#1346, behaviour fix): `POST
   /processes/{processName}/{processUUID}/cancel` answers 400 with a `processUUID` field error (was
-  500) when the UUID is malformed. A cancelled run still keeps its state and can be stepped; making
-  cancel terminal is deferred (see `SampleProcessCancellationContractTest`).
+  500) when the UUID is malformed. A cancelled run keeps its state, but cancelling is terminal: a
+  further step on it answers 400 ("This process was cancelled, so it cannot run any more steps.")
+  and cancelling it again is a no-op (see `SampleProcessCancellationContractTest`).
 - **`stepProcess` declares `isStepBack`** (#1347): the optional boolean query parameter it already
   honored (go back: restart at the named back step).
 - **Url-encoded process bodies** (#1336): `initProcess` and `stepProcess` also declare an

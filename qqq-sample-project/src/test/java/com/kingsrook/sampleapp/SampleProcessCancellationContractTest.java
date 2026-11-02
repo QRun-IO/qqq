@@ -55,7 +55,6 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 /*******************************************************************************
@@ -136,23 +135,38 @@ class SampleProcessCancellationContractTest
 
 
    /*******************************************************************************
-    ** Cancel invokes the application hook; terminal lifecycle is a known deferral.
+    ** Cancel invokes the application hook once, and is terminal: a cancelled run
+    ** refuses any further step with a 400 (also when it has no hook), cancelling
+    ** again is a no-op, and the caller's context is preserved throughout.
     *******************************************************************************/
    @Test
    void testOwnerCancelHookAndNoHookPreserveCaller() throws Exception
    {
+      String cancelledMessage = "This process was cancelled, so it cannot run any more steps.";
+
       RunProcessInput input = startPaused();
       assertEquals("wait", new CancelProcessAction().execute(input).getProcessState().getNextStepName().orElseThrow());
       assertEquals(1, cancelCalls.get());
       assertEquals(0, afterStepCalls.get());
+
+      input.setStartAfterStep("wait");
+      QBadRequestException refused = assertThrows(QBadRequestException.class, () -> new RunProcessAction().execute(input));
+      assertEquals(cancelledMessage, refused.getMessage());
+      assertEquals(0, afterStepCalls.get());
+      assertSame(owner, QContext.getQSession());
+
       instance.getProcess("ownedPaused").setCancelStep(null);
       new CancelProcessAction().execute(input);
       assertEquals(1, cancelCalls.get());
       assertSame(owner, QContext.getQSession());
-      input.setStartAfterStep("wait");
-      new RunProcessAction().execute(input);
-      assertEquals(1, afterStepCalls.get());
-      assertTrue(new CancelProcessAction().execute(input).getProcessState().getNextStepName().isEmpty());
+
+      RunProcessInput noHook = startPaused();
+      new CancelProcessAction().execute(noHook);
+      assertEquals(1, cancelCalls.get());
+      assertSame(owner, QContext.getQSession());
+      noHook.setStartAfterStep("wait");
+      assertEquals(cancelledMessage, assertThrows(QBadRequestException.class, () -> new RunProcessAction().execute(noHook)).getMessage());
+      assertEquals(0, afterStepCalls.get());
    }
 
 

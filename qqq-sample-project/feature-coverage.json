@@ -5622,7 +5622,7 @@
       ],
       "gap": "Published-artifact consumption remains separate from this source-generated starter acceptance.",
       "verified_tests": [
-        "qqq.acceptance.StarterApplicationSourceAcceptance#sourceGeneratedMySqlCrudAndNegativeProbes",
+        "qqq.acceptance.StarterApplicationSourceAcceptance#sourceGeneratedPostgresCrudAndNegativeProbes",
         "com.kingsrook.qqq.starterapp.StarterApplicationLivePermissionTest#deniedInsertHasAllowedControlAndNoDatabaseWrite",
         "com.kingsrook.qqq.starterapp.StarterApplicationAcceptanceTest#configuredMockAuthenticationDeniesUnpermittedInsert"
       ],
@@ -5650,7 +5650,7 @@
       ],
       "gap": "Published-artifact consumption remains separate from this source-generated application acceptance.",
       "verified_tests": [
-        "qqq.acceptance.StarterApplicationSourceAcceptance#sourceGeneratedMySqlCrudAndNegativeProbes",
+        "qqq.acceptance.StarterApplicationSourceAcceptance#sourceGeneratedPostgresCrudAndNegativeProbes",
         "com.kingsrook.qqq.starterapp.StarterApplicationAcceptanceTest#generatedQBitIsRegisteredInRealStarterHost",
         "com.kingsrook.qqq.starterapp.StarterApplicationAcceptanceTest#invalidConfigurationAndDuplicateRegistrationFail",
         "com.qrunio.acceptance.orderdesk.OrderDeskAppQBitProducerTest#orderDeskProcessTransformsPendingRecord"

@@ -354,7 +354,7 @@ class FeatureCoverageGateTest(unittest.TestCase):
 
     def test_required_starter_feature_reads_external_junit_and_rejects_failures(self):
         starter = next(f for f in self.inventory['features'] if f['id'] == 'train.starter')
-        starter['verified_tests'] = ['qqq.acceptance.StarterApplicationSourceAcceptance#sourceGeneratedMySqlCrudAndNegativeProbes']
+        starter['verified_tests'] = ['qqq.acceptance.StarterApplicationSourceAcceptance#sourceGeneratedPostgresCrudAndNegativeProbes']
         reports = self.sample / 'target' / 'starter-application-junit'
         reports.mkdir()
         command = [sys.executable, str(self.sample / 'verify-feature-coverage.py'), '--stage', 'source',
@@ -363,10 +363,10 @@ class FeatureCoverageGateTest(unittest.TestCase):
         self.assertEqual(1, subprocess.run(command, capture_output=True).returncode)
         report = reports / 'TEST-starter-live.xml'
         report.write_text('<testsuite><testcase classname="qqq.acceptance.StarterApplicationSourceAcceptance" '
-                          'name="sourceGeneratedMySqlCrudAndNegativeProbes"/></testsuite>')
+                          'name="sourceGeneratedPostgresCrudAndNegativeProbes"/></testsuite>')
         self.assertEqual(0, subprocess.run(command, capture_output=True).returncode)
         report.write_text('<testsuite><testcase classname="qqq.acceptance.StarterApplicationSourceAcceptance" '
-                          'name="sourceGeneratedMySqlCrudAndNegativeProbes"><failure/></testcase></testsuite>')
+                          'name="sourceGeneratedPostgresCrudAndNegativeProbes"><failure/></testcase></testsuite>')
         self.assertEqual(1, subprocess.run(command, capture_output=True).returncode)
 
     def test_repeatable_required_features_override_report_only_and_reject_all_bad_evidence(self):

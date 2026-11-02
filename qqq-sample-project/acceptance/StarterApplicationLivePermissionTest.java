@@ -75,6 +75,7 @@ class StarterApplicationLivePermissionTest
       String marker = UUID.randomUUID().toString();
       String allowedName = "Allowed-" + marker;
       String deniedName = "Denied-" + marker;
+      Throwable failure = null;
       try
       {
          server.start();
@@ -91,16 +92,35 @@ class StarterApplicationLivePermissionTest
             assertEquals(1, count(allowedName), "denial must not undo the allowed control");
          }
       }
+      catch(Throwable throwable)
+      {
+         failure = throwable;
+         throw throwable;
+      }
       finally
       {
          allow = false;
-         server.stop();
-         QContext.clear();
-         try(Connection connection = ConnectionManager.getConnection((RDBMSBackendMetaData) StarterAppMetaDataProvider.defineRDBMSBackend());
-            PreparedStatement delete = connection.prepareStatement("DELETE FROM orderDeskEntity WHERE name=?"))
+         try
          {
-            delete.setString(1, allowedName);
-            delete.executeUpdate();
+            server.stop();
+            QContext.clear();
+            try(Connection connection = ConnectionManager.getConnection((RDBMSBackendMetaData) StarterAppMetaDataProvider.defineRDBMSBackend());
+               PreparedStatement delete = connection.prepareStatement("DELETE FROM \"orderDeskEntity\" WHERE \"name\"=?"))
+            {
+               delete.setString(1, allowedName);
+               delete.executeUpdate();
+            }
+         }
+         catch(Exception cleanupFailure)
+         {
+            ///////////////////////////////////////////////////////////////////////////
+            // cleanup (e.g., an unreachable database) must not hide the real failure //
+            ///////////////////////////////////////////////////////////////////////////
+            if(failure == null)
+            {
+               throw cleanupFailure;
+            }
+            failure.addSuppressed(cleanupFailure);
          }
       }
    }
@@ -117,7 +137,7 @@ class StarterApplicationLivePermissionTest
    private int count(String name) throws Exception
    {
       try(Connection connection = ConnectionManager.getConnection((RDBMSBackendMetaData) StarterAppMetaDataProvider.defineRDBMSBackend());
-         PreparedStatement query = connection.prepareStatement("SELECT COUNT(*) FROM orderDeskEntity WHERE name=?"))
+         PreparedStatement query = connection.prepareStatement("SELECT COUNT(*) FROM \"orderDeskEntity\" WHERE \"name\"=?"))
       {
          query.setString(1, name);
          try(ResultSet result = query.executeQuery())

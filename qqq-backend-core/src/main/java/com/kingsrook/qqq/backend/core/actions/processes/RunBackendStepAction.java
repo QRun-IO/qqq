@@ -302,9 +302,18 @@ public class RunBackendStepAction
    private RunBackendStepOutput runStepCode(QCodeReference code, RunBackendStepInput runBackendStepInput)
    {
       RunBackendStepOutput runBackendStepOutput = new RunBackendStepOutput();
+      ProcessStateAccess   ownership            = null;
+      List<String>         stepList             = null;
       try
       {
          runBackendStepOutput.seedFromRequest(runBackendStepInput);
+
+         ///////////////////////////////////////////////////////////////////////////////////
+         // the step edits the seeded state in place, so take what a failure must keep    //
+         // (ownership, step list) now, before any of the step's own changes are in it    //
+         ///////////////////////////////////////////////////////////////////////////////////
+         ownership = runBackendStepOutput.getProcessState().getStateAccess();
+         stepList = runBackendStepOutput.getProcessState().getStepList() == null ? null : new ArrayList<>(runBackendStepOutput.getProcessState().getStepList());
 
          Object codeObject;
          if(code instanceof QCodeReferenceLambda<?> qCodeReferenceLambda)
@@ -326,7 +335,17 @@ public class RunBackendStepAction
       }
       catch(Exception e)
       {
+         ///////////////////////////////////////////////////////////////////////////////////
+         // a failed step publishes none of its partial output (values, records, secrets, //
+         // audits).  but the stored state must stay owned by, and identified with, this  //
+         // process run - or its owner could never cancel or resume it.                   //
+         ///////////////////////////////////////////////////////////////////////////////////
          runBackendStepOutput = new RunBackendStepOutput();
+         runBackendStepOutput.getProcessState().setStateAccess(ownership);
+         if(stepList != null)
+         {
+            runBackendStepOutput.getProcessState().setStepList(stepList);
+         }
          runBackendStepOutput.setException(e);
          LOG.info("Error running backend step code", e);
       }

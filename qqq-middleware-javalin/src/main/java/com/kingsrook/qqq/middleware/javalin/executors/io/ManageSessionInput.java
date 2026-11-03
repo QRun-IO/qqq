@@ -17,6 +17,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+// SPDX-License-Identifier: Apache-2.0
 
 package com.kingsrook.qqq.middleware.javalin.executors.io;
 
@@ -32,6 +33,59 @@ public class ManageSessionInput extends AbstractMiddlewareInput
    private String redirectUri;
    private String sessionUUID;
    private String basicAuthString;
+   private String authenticationFlow;
+   private String expectedNonce;
+
+
+
+   /*******************************************************************************
+    ** Original nonce from the client's retained native browser attempt.
+    *******************************************************************************/
+   public String getExpectedNonce()
+   {
+      return (expectedNonce);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for expectedNonce; never include it in logging or session output.
+    *******************************************************************************/
+   public void setExpectedNonce(String expectedNonce)
+   {
+      this.expectedNonce = expectedNonce;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for the explicit optional native session flow marker.
+    *******************************************************************************/
+   public String getAuthenticationFlow()
+   {
+      return (authenticationFlow);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for the explicit optional native session flow marker.
+    *******************************************************************************/
+   public void setAuthenticationFlow(String authenticationFlow)
+   {
+      this.authenticationFlow = authenticationFlow;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for the explicit optional native session flow marker.
+    *******************************************************************************/
+   public ManageSessionInput withAuthenticationFlow(String authenticationFlow)
+   {
+      this.authenticationFlow = authenticationFlow;
+      return (this);
+   }
 
 
 

@@ -30,6 +30,8 @@ import java.nio.file.FileSystems;
 import java.nio.file.FileVisitResult;
 import java.nio.file.FileVisitor;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.nio.file.SimpleFileVisitor;
@@ -38,6 +40,7 @@ import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -63,6 +66,29 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 public class AbstractFilesystemAction extends AbstractBaseFilesystemAction<File>
 {
    private static final QLogger LOG = QLogger.getLogger(AbstractFilesystemAction.class);
+
+
+
+   /*******************************************************************************
+    ** Resolve local metadata paths with the same native representation as Files.
+    *******************************************************************************/
+   @Override
+   public String getFullBasePath(QTableMetaData table, QBackendMetaData backend)
+   {
+      String path = Path.of(super.getFullBasePath(table, backend)).toAbsolutePath().toString();
+      return (path.endsWith(File.separator) ? path : path + File.separator);
+   }
+
+
+
+   /*******************************************************************************
+    ** Local filesystem paths retain native host semantics.
+    *******************************************************************************/
+   @Override
+   public String getPathSeparator()
+   {
+      return (File.separator);
+   }
 
 
 
@@ -220,12 +246,41 @@ public class AbstractFilesystemAction extends AbstractBaseFilesystemAction<File>
     *******************************************************************************/
    private void validateTableFilePath(QBackendMetaData backend, QTableMetaData table, String filePath) throws IOException
    {
-      Path base = new File(getFullBasePath(table, backend)).getCanonicalFile().toPath();
-      Path file = new File(filePath).getCanonicalFile().toPath();
+      Path base = resolveExistingPath(Path.of(getFullBasePath(table, backend)));
+      Path file = resolveExistingPath(Path.of(filePath));
       if(file.equals(base) || !file.startsWith(base))
       {
          throw new IOException("File path must remain inside its table directory");
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Resolve links in existing ancestors before validating a possibly new file.
+    ** Only missing paths permit ascent; access errors and dangling links fail.
+    *******************************************************************************/
+   protected static Path resolveExistingPath(Path path) throws IOException
+   {
+      Path absolute = path.toAbsolutePath();
+      Path existing = absolute;
+      while(true)
+      {
+         try
+         {
+            Files.readAttributes(existing, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+            break;
+         }
+         catch(NoSuchFileException e)
+         {
+            existing = existing.getParent();
+            if(existing == null)
+            {
+               throw e;
+            }
+         }
+      }
+      return (existing.toRealPath().resolve(existing.relativize(absolute)).normalize());
    }
 
 
@@ -327,7 +382,7 @@ public class AbstractFilesystemAction extends AbstractBaseFilesystemAction<File>
    public String stripBackendAndTableBasePathsFromFileName(String filePath, QBackendMetaData backend, QTableMetaData table)
    {
       String tablePath    = getFullBasePath(table, backend);
-      String strippedPath = filePath.replaceFirst(".*" + tablePath, "");
+      String strippedPath = filePath.replaceFirst(".*" + Pattern.quote(tablePath), "");
       return (strippedPath);
    }
 

@@ -22,11 +22,6 @@ package com.kingsrook.qqq.backend.module.filesystem.s3.utils;
 
 
 import java.io.InputStream;
-import java.net.URI;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.FileSystems;
-import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.util.ArrayList;
 import java.util.List;
@@ -34,6 +29,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.module.filesystem.base.model.metadata.AbstractFilesystemTableBackendDetails;
+import com.kingsrook.qqq.backend.module.filesystem.base.utils.RemotePaths;
 import com.kingsrook.qqq.backend.module.filesystem.exceptions.FilesystemException;
 import com.kingsrook.qqq.backend.module.filesystem.local.actions.AbstractFilesystemAction;
 import com.kingsrook.qqq.backend.module.filesystem.s3.model.S3ObjectSummary;
@@ -122,30 +118,22 @@ public class S3Utils
          prefix += requestedPath;
       }
 
-      ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-      // mmm, we're assuming here we always want more than 1 file - so there must be some * in the glob.                //
-      // That's a bad assumption, as it doesn't consider other wildcards like ? and [-] - but - put that aside for now. //
-      // Anyway, add a trailing /* to globs with no wildcards (or just a '*' if it's a request for the root (""))       //
-      ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      // ---------------------------------------------------------------------------
+      // Empty or directory globs list immediate children. Preserve other patterns //
+      // verbatim, including literal names, ?, character classes and alternatives. //
+      // ---------------------------------------------------------------------------
       if(glob == null)
       {
          glob = "";
       }
 
-      if(!glob.contains("*"))
+      if(glob.isEmpty() || glob.endsWith("/"))
       {
-         if(glob.equals(""))
-         {
-            glob += "*";
-         }
-         else
-         {
-            glob += "/*";
-         }
+         glob += "*";
       }
 
-      String      pathMatcherArg = AbstractFilesystemAction.stripDuplicatedSlashes("glob:/" + path + "/" + glob);
-      PathMatcher pathMatcher    = FileSystems.getDefault().getPathMatcher(pathMatcherArg);
+      String      pathMatcherArg = AbstractFilesystemAction.stripDuplicatedSlashes("glob:/" + glob);
+      PathMatcher pathMatcher    = RemotePaths.getPathMatcher(pathMatcherArg);
 
       ListObjectsV2Response listObjectsV2Response = null;
       List<S3ObjectSummary> rs                    = new ArrayList<>();
@@ -189,7 +177,16 @@ public class S3Utils
             ///////////////////////////////////////////
             // skip files that do not match the glob //
             ///////////////////////////////////////////
-            if(!pathMatcher.matches(Path.of(URI.create("file:///" + URLEncoder.encode(key, StandardCharsets.UTF_8)))))
+            String relativeKey = key;
+            if(!path.isEmpty())
+            {
+               if(!key.startsWith(path + "/"))
+               {
+                  continue;
+               }
+               relativeKey = key.substring(path.length() + 1);
+            }
+            if(!pathMatcher.matches(RemotePaths.get("/", relativeKey)))
             {
                // LOG.debug("Skipping file [{}] that does not match glob [{}]", key, glob);
                continue;

@@ -21,7 +21,6 @@
 package com.kingsrook.qqq.backend.module.filesystem.base.actions;
 
 
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Serializable;
@@ -34,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Pattern;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordDiscovery;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.UniqueKeyLookup;
@@ -167,7 +167,7 @@ public abstract class AbstractBaseFilesystemAction<FILE>
    public String stripBackendAndTableBasePathsFromFileName(String filePath, QBackendMetaData backend, QTableMetaData table)
    {
       String tablePath           = getFullBasePath(table, backend);
-      String strippedPath        = filePath.replaceFirst(".*" + tablePath, "");
+      String strippedPath        = filePath.replaceFirst(".*" + Pattern.quote(tablePath), "");
       String withoutLeadingSlash = stripLeadingSlash(strippedPath); // todo - dangerous, do all backends really want this??
       return (withoutLeadingSlash);
    }
@@ -196,13 +196,24 @@ public abstract class AbstractBaseFilesystemAction<FILE>
       AbstractFilesystemTableBackendDetails tableDetails = getTableBackendDetails(AbstractFilesystemTableBackendDetails.class, table);
       if(StringUtils.hasContent(tableDetails.getBasePath()))
       {
-         fullPath += File.separatorChar + tableDetails.getBasePath();
+         fullPath += getPathSeparator() + tableDetails.getBasePath();
       }
 
-      fullPath += File.separatorChar;
+      fullPath += getPathSeparator();
       fullPath = stripDuplicatedSlashes(fullPath);
 
       return fullPath;
+   }
+
+
+
+   /*******************************************************************************
+    ** Remote filesystems use POSIX separators, independently of the host OS.
+    ** Local actions override this with their native separator.
+    *******************************************************************************/
+   public String getPathSeparator()
+   {
+      return ("/");
    }
 
 
@@ -565,7 +576,7 @@ public abstract class AbstractBaseFilesystemAction<FILE>
          return null;
       }
 
-      return (filePath.replaceFirst(".*/", ""));
+      return (filePath.substring(filePath.lastIndexOf(getPathSeparator()) + 1));
    }
 
 
@@ -776,7 +787,7 @@ public abstract class AbstractBaseFilesystemAction<FILE>
             {
                try
                {
-                  String fullPath = stripDuplicatedSlashes(getFullBasePath(table, backend) + File.separator + record.getValueString(tableDetails.getFileNameFieldName()));
+                  String fullPath = stripDuplicatedSlashes(getFullBasePath(table, backend) + getPathSeparator() + record.getValueString(tableDetails.getFileNameFieldName()));
                   writeFile(backend, table, record, fullPath, record.getValueByteArray(tableDetails.getContentsFieldName()));
                   record.addBackendDetail(FilesystemRecordBackendDetailFields.FULL_PATH, fullPath);
                   output.addRecord(record);

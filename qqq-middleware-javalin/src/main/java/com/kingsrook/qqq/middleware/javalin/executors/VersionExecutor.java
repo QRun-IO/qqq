@@ -17,6 +17,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+// SPDX-License-Identifier: Apache-2.0
 
 package com.kingsrook.qqq.middleware.javalin.executors;
 
@@ -27,6 +28,7 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.jobs.DurableJobsTables;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2AuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.ClientChannelsMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.profile.UserProfilesMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
@@ -84,7 +86,10 @@ public class VersionExecutor extends AbstractMiddlewareExecutor<VersionInput, Ve
     ** installed; "durableJobs" only when the durable jobs tables (which the
     ** /jobs routes are bound for) are installed; and "recordSearch" only when
     ** there is something to search - a record search provider, or a table
-    ** with search fields.
+    ** with search fields.  The native session features are advertised only
+    ** when the OAuth2 native session login policy is valid ("nativeSessionLogin"),
+    ** requires nonce validation ("nativeSessionNonceValidation"), or has provider
+    ** logout configured ("nativeSessionLogout").
     ***************************************************************************/
    static List<String> advertisedFeatures(List<String> features)
    {
@@ -93,11 +98,17 @@ public class VersionExecutor extends AbstractMiddlewareExecutor<VersionInput, Ve
       boolean   durableJobsInstalled = qInstance.getTable(DurableJobsTables.TABLE_JOB) != null && qInstance.getTable(DurableJobsTables.TABLE_LOG) != null;
       boolean   recordSearchBacked   = qInstance.getRecordSearchProvider() != null
          || CollectionUtils.nonNullMap(qInstance.getTables()).values().stream().anyMatch(table -> CollectionUtils.nullSafeHasContents(table.getSearchFields()));
+      boolean nativeSessionLogin = qInstance.getAuthentication() instanceof OAuth2AuthenticationMetaData oauth2
+         && oauth2.getNativeSessionLogin() != null && oauth2.getNativeSessionLogin().isValid();
+      boolean nativeNonce = nativeSessionLogin && ((OAuth2AuthenticationMetaData) qInstance.getAuthentication()).getNativeSessionLogin().getRequireNonceValidation();
 
       return (features.stream()
          .filter(feature -> profilesInstalled || !FEATURE_AVATARS.equals(feature))
          .filter(feature -> durableJobsInstalled || !FEATURE_DURABLE_JOBS.equals(feature))
          .filter(feature -> recordSearchBacked || !FEATURE_RECORD_SEARCH.equals(feature))
+         .filter(feature -> nativeSessionLogin || !"nativeSessionLogin".equals(feature))
+         .filter(feature -> nativeNonce || !"nativeSessionNonceValidation".equals(feature))
+         .filter(feature -> !"nativeSessionLogout".equals(feature) || com.kingsrook.qqq.backend.core.modules.authentication.implementations.NativeSessionLogoutSupport.isConfigured(qInstance))
          .toList());
    }
 

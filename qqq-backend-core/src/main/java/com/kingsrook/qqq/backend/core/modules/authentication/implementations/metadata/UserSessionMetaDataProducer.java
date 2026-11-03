@@ -17,6 +17,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+// SPDX-License-Identifier: Apache-2.0
 
 package com.kingsrook.qqq.backend.core.modules.authentication.implementations.metadata;
 
@@ -27,6 +28,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducer;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.AuditLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.QAuditRules;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.UniqueKey;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.model.UserSession;
@@ -41,6 +44,18 @@ import com.kingsrook.qqq.backend.core.modules.authentication.implementations.mod
 public class UserSessionMetaDataProducer extends MetaDataProducer<QTableMetaData>
 {
    private final String backendName;
+   private boolean nativeLogoutContext;
+
+
+
+   /*******************************************************************************
+    ** Opt in only after adding the nullable nativeLogoutContext storage column.
+    *******************************************************************************/
+   public UserSessionMetaDataProducer withNativeLogoutContext()
+   {
+      nativeLogoutContext = true;
+      return (this);
+   }
 
 
 
@@ -70,6 +85,10 @@ public class UserSessionMetaDataProducer extends MetaDataProducer<QTableMetaData
          .withUniqueKey(new UniqueKey("uuid"))
          .withFieldsFromEntity(UserSession.class)
          .withAuditRules(new QAuditRules().withAuditLevel(AuditLevel.NONE));
+      if(nativeLogoutContext)
+      {
+         tableMetaData.withField(new QFieldMetaData("nativeLogoutContext", QFieldType.STRING).withMaxLength(131072).withIsHidden(true).withIsEditable(false));
+      }
       return (SystemTablePermissions.lockInternalTable(tableMetaData));
    }
 

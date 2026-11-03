@@ -17,6 +17,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+// SPDX-License-Identifier: Apache-2.0
 
 package com.kingsrook.qqq.backend.core.modules.authentication.implementations;
 
@@ -103,6 +104,228 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *******************************************************************************/
 class OAuth2AuthenticationModuleRefreshTokenTest extends BaseTest
 {
+   /*******************************************************************************
+    ** Logout waits for a refreshing resume to finish caching, then removes it.
+    *******************************************************************************/
+   @Test
+   void logoutCannotBeUndoneByConcurrentResumeCacheWrite() throws Exception
+   {
+      String uuid = UUID.randomUUID().toString();
+      insertSession(uuid, createJwt(-60), "concurrent-logout-refresh", Instant.now());
+      stubTokenEndpoint("refresh_token", 200, tokenResponse(createJwt(3600), null));
+      OAuth2AuthenticationMetaData auth = (OAuth2AuthenticationMetaData) qInstance.getAuthentication();
+      auth.setSessionStoreEnabled(true);
+      auth.setCustomizer(new com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference(BlockingResumeCustomizer.class));
+      BlockingResumeCustomizer.entered = new CountDownLatch(1);
+      BlockingResumeCustomizer.release = new CountDownLatch(1);
+      ExecutorService workers = Executors.newFixedThreadPool(2);
+      var registry = com.kingsrook.qqq.backend.core.modules.authentication.QSessionStoreRegistry.getInstance();
+      var beforeProvider = registry.getProvider();
+      var cache = new java.util.concurrent.ConcurrentHashMap<String, QSession>();
+      var store = org.mockito.Mockito.mock(com.kingsrook.qqq.backend.core.modules.authentication.QSessionStoreProviderInterface.class);
+      org.mockito.Mockito.when(store.getDefaultTtl()).thenReturn(java.time.Duration.ofMinutes(5));
+      org.mockito.Mockito.when(store.loadAndTouch(org.mockito.ArgumentMatchers.anyString()))
+         .thenAnswer(call -> java.util.Optional.ofNullable(cache.get(call.getArgument(0))));
+      org.mockito.Mockito.doAnswer(call ->
+      {
+         cache.put(call.getArgument(0), call.getArgument(1));
+         return (null);
+      }).when(store).store(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+      org.mockito.Mockito.doAnswer(call ->
+      {
+         cache.remove(call.getArgument(0));
+         return (null);
+      }).when(store).remove(org.mockito.ArgumentMatchers.anyString());
+      registry.register(store);
+      try
+      {
+         Future<QSession> resumed = workers.submit(() ->
+         {
+            QContext.init(qInstance, new QSystemUserSession());
+            try
+            {
+               return (new OAuth2AuthenticationModule().createSession(qInstance, Map.of("sessionUUID", uuid)));
+            }
+            finally
+            {
+               QContext.clear();
+            }
+         });
+         assertTrue(BlockingResumeCustomizer.entered.await(5, TimeUnit.SECONDS));
+         CountDownLatch logoutStarted = new CountDownLatch(1);
+         Future<?> ended = workers.submit(() ->
+         {
+            QContext.init(qInstance, new QSystemUserSession());
+            try
+            {
+               logoutStarted.countDown();
+               new OAuth2AuthenticationModule().logout(qInstance, uuid);
+            }
+            finally
+            {
+               QContext.clear();
+            }
+         });
+         assertTrue(logoutStarted.await(5, TimeUnit.SECONDS));
+         assertThrows(java.util.concurrent.TimeoutException.class, () -> ended.get(100, TimeUnit.MILLISECONDS));
+         BlockingResumeCustomizer.release.countDown();
+         resumed.get(5, TimeUnit.SECONDS);
+         ended.get(5, TimeUnit.SECONDS);
+         org.mockito.Mockito.verify(store).store(org.mockito.ArgumentMatchers.eq(uuid), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+         assertNull(getUserSessionRecord(uuid));
+         assertNull(getRefreshTokenRecord(uuid));
+         assertTrue(com.kingsrook.qqq.backend.core.modules.authentication.QSessionStoreHelper.loadAndTouchSession(uuid).isEmpty());
+         assertThrows(QAuthenticationException.class, () -> new OAuth2AuthenticationModule().createSession(qInstance, Map.of("sessionUUID", uuid)));
+      }
+      finally
+      {
+         BlockingResumeCustomizer.release.countDown();
+         workers.shutdownNow();
+         registry.clear();
+         beforeProvider.ifPresent(registry::register);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Simulate another node writing its old session after logout's invalidation.
+    ** A late cache entry cannot replace the authoritative row, even on a new module.
+    *******************************************************************************/
+   @Test
+   void lateCacheWriteAfterLogoutCannotRestoreCookieSession() throws Exception
+   {
+      String uuid = UUID.randomUUID().toString();
+      insertUserSessionRow(uuid, createJwt(3600));
+      getOAuth2MetaData().setSessionStoreEnabled(true);
+      var registry = com.kingsrook.qqq.backend.core.modules.authentication.QSessionStoreRegistry.getInstance();
+      var beforeProvider = registry.getProvider();
+      var cache = new java.util.concurrent.ConcurrentHashMap<String, QSession>();
+      var store = org.mockito.Mockito.mock(com.kingsrook.qqq.backend.core.modules.authentication.QSessionStoreProviderInterface.class);
+      org.mockito.Mockito.when(store.getDefaultTtl()).thenReturn(java.time.Duration.ofMinutes(5));
+      org.mockito.Mockito.when(store.loadAndTouch(org.mockito.ArgumentMatchers.anyString()))
+         .thenAnswer(call -> java.util.Optional.ofNullable(cache.get(call.getArgument(0))));
+      org.mockito.Mockito.doAnswer(call ->
+      {
+         cache.put(call.getArgument(0), call.getArgument(1));
+         return (null);
+      }).when(store).store(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+      org.mockito.Mockito.doAnswer(call ->
+      {
+         cache.remove(call.getArgument(0));
+         return (null);
+      }).when(store).remove(org.mockito.ArgumentMatchers.anyString());
+      registry.register(store);
+      try
+      {
+         OAuth2AuthenticationModule module = new OAuth2AuthenticationModule();
+         QSession live = module.createSession(qInstance, Map.of("sessionUUID", uuid));
+         assertEquals(live, new OAuth2AuthenticationModule().createSession(qInstance, Map.of("sessionUUID", uuid)), "An existing valid cache entry remains usable");
+         module.logout(qInstance, uuid);
+         assertNull(getUserSessionRecord(uuid));
+         cache.put(uuid, live);
+         assertThrows(QAuthenticationException.class, () -> new OAuth2AuthenticationModule().createSession(qInstance, Map.of("sessionUUID", uuid)));
+         assertFalse(cache.containsKey(uuid));
+         assertThrows(QAuthenticationException.class, () -> new OAuth2AuthenticationModule().createSession(qInstance, Map.of("sessionUUID", uuid)), "No access-token memo can recreate the evicted entry");
+      }
+      finally
+      {
+         registry.clear();
+         beforeProvider.ifPresent(registry::register);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Pause exactly between successful refresh and the session-cache write.
+    *******************************************************************************/
+   public static class BlockingResumeCustomizer implements com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleCustomizerInterface
+   {
+      private static CountDownLatch entered;
+      private static CountDownLatch release;
+
+
+
+      /*******************************************************************************
+       ** Bounded deterministic synchronization; no provider or timing guess.
+       *******************************************************************************/
+      @Override
+      public void finalCustomizeSession(QInstance instance, QSession session)
+      {
+         entered.countDown();
+         try
+         {
+            if(!release.await(5, TimeUnit.SECONDS))
+            {
+               throw (new IllegalStateException("Timed out waiting for test release"));
+            }
+         }
+         catch(InterruptedException exception)
+         {
+            Thread.currentThread().interrupt();
+            throw (new IllegalStateException("Test interrupted"));
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Legacy native login remains available but cannot retain unvalidated hints.
+    *******************************************************************************/
+   @Test
+   void nativeLogoutRequiresStrictNoncePolicyForRetention() throws Exception
+   {
+      String callback = "com.example.handheld:/oauth2/callback";
+      OAuth2AuthenticationMetaData auth = (OAuth2AuthenticationMetaData) qInstance.getAuthentication();
+      auth.withNativeSessionLogin(new com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2NativeSessionLoginMetaData()
+         .withIssuer("https://login.example.test/").withDiscoveryUrl("https://login.example.test/discovery").withRedirectUris(List.of(callback)));
+      auth.withNativeSessionLogout(new com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2NativeSessionLogoutMetaData()
+         .withPostLogoutRedirectUris(List.of(callback)));
+      qInstance.getTable(UserSession.TABLE_NAME).withField(new UserSessionMetaDataProducer(BACKEND_NAME)
+         .withNativeLogoutContext().produce(qInstance).getField(NativeSessionLogoutSupport.FIELD));
+      String original = createJwt(3600);
+      stubTokenEndpoint("authorization_code", 200, tokenResponse(createJwt(3600), null).put("id_token", original));
+      QCollectingLogger logger = QLogger.activateCollectingLoggerForClass(OAuth2AuthenticationModule.class);
+      QSession session = new OAuth2AuthenticationModule().createSession(qInstance, Map.of("code", "native-code", "redirectUri", callback,
+         "codeVerifier", "x".repeat(43), NativeSessionLogoutSupport.NATIVE_FLOW_KEY, "AUTHORIZATION_CODE_PKCE_SESSION"));
+      String stored = getUserSessionRecord(session.getUuid()).getValueString(NativeSessionLogoutSupport.FIELD);
+      assertNull(stored);
+      assertFalse(NativeSessionLogoutSupport.isConfigured(qInstance));
+      assertNull(getRefreshTokenRecord(session.getUuid()));
+      assertFalse(JsonUtils.toJson(session).contains(original));
+      assertFalse(logger.getCollectedMessages().toString().contains(original));
+      QSession legacy = new OAuth2AuthenticationModule().createSession(qInstance, pkceContext());
+      assertNull(getUserSessionRecord(legacy.getUuid()).getValueString(NativeSessionLogoutSupport.FIELD));
+   }
+
+
+
+   /*******************************************************************************
+    ** Failure to read the optional refresh table cannot skip authoritative deletion.
+    *******************************************************************************/
+   @Test
+   void logoutInvalidatesSessionWhenRefreshCleanupThrows() throws Exception
+   {
+      String uuid = UUID.randomUUID().toString();
+      insertUserSessionRow(uuid, createJwt(3600));
+      QTableMetaData refresh = qInstance.getTable(UserSessionRefreshToken.TABLE_NAME);
+      String backend = refresh.getBackendName();
+      refresh.setBackendName("missing-refresh-backend");
+      try
+      {
+         new OAuth2AuthenticationModule().logout(qInstance, uuid);
+         assertNull(getUserSessionRecord(uuid));
+      }
+      finally
+      {
+         refresh.setBackendName(backend);
+      }
+   }
+
+
+
    private static final String BACKEND_NAME         = "memory";
    private static final String REDIRECT_STATE_TABLE = "oauthRedirectState";
    private static final String TOKEN_PATH           = "/oauth/token";
@@ -572,7 +795,8 @@ class OAuth2AuthenticationModuleRefreshTokenTest extends BaseTest
       stubTokenEndpoint("refresh_token", 200, tokenResponse(createJwt(3600), null));
 
       assertSessionEndedWithoutRefresh(sessionUuid);
-      assertThat(collectingLogger.getCollectedMessages()).anyMatch(m -> m.getMessage().contains("could not be decrypted") && m.getMessage().contains("authenticationFailed") && m.getMessage().contains(sessionUuid));
+      assertThat(collectingLogger.getCollectedMessages()).anyMatch(m -> m.getMessage().contains("could not be decrypted") && m.getMessage().contains("authenticationFailed"));
+      assertNoLogContains(collectingLogger, sessionUuid);
       assertNoLogContains(collectingLogger, refresh);
       assertNoLogContains(collectingLogger, storedValue);
    }

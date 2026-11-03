@@ -23,8 +23,10 @@ package com.kingsrook.qqq.backend.module.filesystem;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
@@ -95,7 +97,7 @@ public class TestUtils
    ///////////////////////////////////////////////////////////////////
    // shouldn't be accessed directly, as we append a counter to it. //
    ///////////////////////////////////////////////////////////////////
-   public static final String BASE_PATH = "/tmp/filesystem-tests";
+   public static final String BASE_PATH = Path.of(System.getProperty("java.io.tmpdir"), "qqq-filesystem-tests-" + UUID.randomUUID()).toAbsolutePath().toString();
 
    //////////////////////////////////////////////////////////////////////////////
    // Used to make each test method have a unique folder path, more or less... //

@@ -21,7 +21,6 @@
 package com.kingsrook.qqq.backend.module.filesystem.processes.implementations.etl.basic;
 
 
-import java.io.File;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -104,7 +103,7 @@ public class BasicETLCleanupSourceFilesStep implements BackendStep
                throw (new QException("Field [" + FIELD_DESTINATION_FOR_MOVES + "] is missing a value."));
             }
             String filePathWithoutBase = actionBase.stripBackendAndTableBasePathsFromFileName(sourceFile, backend, table);
-            String destinationPath     = destinationForMoves + File.separator + filePathWithoutBase;
+            String destinationPath     = destinationForMoves + actionBase.getPathSeparator() + filePathWithoutBase;
             actionBase.moveFile(QContext.getQInstance(), table, sourceFile, destinationPath);
          }
          else

@@ -301,6 +301,61 @@ components:
                   \ grant, then send the access token as Authorization: Bearer. Absent\
                   \ when the app has no native client. Since 1.6.0."
                 type: "string"
+              nativeSessionLogin:
+                description: "Optional configured native browser-to-QQQ cookie-session\
+                  \ login policy (1.9.0). Uses clientId/scopes, not nativeClientId.\
+                  \ Absent means this flow is unavailable."
+                properties:
+                  codeChallengeMethod:
+                    enum:
+                    - "S256"
+                    type: "string"
+                  discoveryUrl:
+                    description: "Explicit public HTTPS OIDC discovery document URL,\
+                      \ without credentials, query or fragment."
+                    type: "string"
+                  flow:
+                    description: "Send this exact authenticationFlow to POST /manageSession\
+                      \ with code, codeVerifier and redirectUri."
+                    enum:
+                    - "AUTHORIZATION_CODE_PKCE_SESSION"
+                    type: "string"
+                  issuer:
+                    description: "Explicit public HTTPS issuer. Match the discovery\
+                      \ document issuer exactly; never infer it from baseUrl."
+                    type: "string"
+                  nonceValidation:
+                    description: "When REQUIRED, send the original browser request\
+                      \ nonce as expectedNonce to manageSession. Never accept a nonce\
+                      \ from the callback."
+                    enum:
+                    - "REQUIRED"
+                    type: "string"
+                  prompt:
+                    description: "Request fresh provider authentication in the external\
+                      \ browser. This is not provider-global logout or proof of authentication\
+                      \ time."
+                    enum:
+                    - "login"
+                    type: "string"
+                  redirectUris:
+                    description: "Exact allowed native callback URIs. Use only a callback\
+                      \ owned by this installed client; do not alter or infer one."
+                    items:
+                      type: "string"
+                    type: "array"
+                type: "object"
+              nativeSessionLogout:
+                properties:
+                  flow:
+                    enum:
+                    - "OIDC_RP_INITIATED_LOGOUT"
+                    type: "string"
+                  postLogoutRedirectUris:
+                    items:
+                      type: "string"
+                    type: "array"
+                type: "object"
               scopes:
                 description: "OAuth2 scopes to request (space-separated)"
                 type: "string"
@@ -1821,6 +1876,18 @@ components:
           type: "string"
       type: "object"
     LogoutResponseV1:
+      properties:
+        nativeLogoutData:
+          properties:
+            endSessionEndpoint:
+              type: "string"
+            idTokenHint:
+              type: "string"
+            issuer:
+              type: "string"
+            postLogoutRedirectUri:
+              type: "string"
+          type: "object"
       type: "object"
     ManageSessionResponseV1:
       properties:
@@ -2156,6 +2223,56 @@ components:
           description: "Map of all widgets within the QQQ Instance (that the user\
             \ has permission to see that they exist)."
           type: "object"
+      type: "object"
+    NativeSessionLogin:
+      properties:
+        codeChallengeMethod:
+          enum:
+          - "S256"
+          type: "string"
+        discoveryUrl:
+          description: "Explicit public HTTPS OIDC discovery document URL, without\
+            \ credentials, query or fragment."
+          type: "string"
+        flow:
+          description: "Send this exact authenticationFlow to POST /manageSession\
+            \ with code, codeVerifier and redirectUri."
+          enum:
+          - "AUTHORIZATION_CODE_PKCE_SESSION"
+          type: "string"
+        issuer:
+          description: "Explicit public HTTPS issuer. Match the discovery document\
+            \ issuer exactly; never infer it from baseUrl."
+          type: "string"
+        nonceValidation:
+          description: "When REQUIRED, send the original browser request nonce as\
+            \ expectedNonce to manageSession. Never accept a nonce from the callback."
+          enum:
+          - "REQUIRED"
+          type: "string"
+        prompt:
+          description: "Request fresh provider authentication in the external browser.\
+            \ This is not provider-global logout or proof of authentication time."
+          enum:
+          - "login"
+          type: "string"
+        redirectUris:
+          description: "Exact allowed native callback URIs. Use only a callback owned\
+            \ by this installed client; do not alter or infer one."
+          items:
+            type: "string"
+          type: "array"
+      type: "object"
+    NativeSessionLogout:
+      properties:
+        flow:
+          enum:
+          - "OIDC_RP_INITIATED_LOGOUT"
+          type: "string"
+        postLogoutRedirectUris:
+          items:
+            type: "string"
+          type: "array"
       type: "object"
     OrderBy:
       properties:
@@ -8284,7 +8401,7 @@ info:
     \ its own\nconfiguration, identity and permission administration, audits, API\
     \ keys or secrets), exactly as if the user had\nno permission for them.\n"
   title: "QQQ Middleware API"
-  version: "1.9.0"
+  version: "1.10.0"
 openapi: "3.0.3"
 paths:
   /qqq/v1/version:
@@ -8824,9 +8941,24 @@ paths:
               description: "Data required to create the session.  Specific needs may\
                 \ vary based on the AuthenticationModule type in the QQQ Backend."
               properties:
+                authenticationFlow:
+                  description: "Optional explicit native cookie-session flow (1.9.0).\
+                    \ Requires advertised nativeSessionLogin, code, an RFC7636 verifier\
+                    \ and an exact configured redirectUri. Cannot be combined with\
+                    \ accessToken, sessionUUID, uuid or Authorization. Omit for existing\
+                    \ web sign-in and session resume."
+                  enum:
+                  - "AUTHORIZATION_CODE_PKCE_SESSION"
+                  type: "string"
                 accessToken:
                   description: "An access token from a downstream authentication provider\
                     \ (e.g., Auth0), to use as the basis for authentication and authorization."
+                  type: "string"
+                expectedNonce:
+                  description: "Original URL-safe nonce retained by the native browser\
+                    \ attempt (16..512 characters). Required for explicit native flow\
+                    \ when nonceValidation is REQUIRED; never inferred from the returned\
+                    \ token."
                   type: "string"
                 code:
                   description: "OAuth2 authorization code, for the backend to exchange\
@@ -8910,12 +9042,29 @@ paths:
         \ logout\n(clearing localStorage, redirecting to IdP logout, etc.) to ensure\
         \ the\nsession cannot be resumed."
       operationId: "logout"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                nativeLogout:
+                  description: "Optional 1.10 native provider logout. Only the current\
+                    \ authenticated cookie can receive sensitive logout data. Absence\
+                    \ retains local-only behavior."
+                  properties:
+                    postLogoutRedirectUri:
+                      description: "Exact registered callback from nativeSessionLogout.postLogoutRedirectUris."
+                      type: "string"
+                  type: "object"
+              type: "object"
+        required: false
       responses:
         200:
           content:
             application/json:
               examples:
-                Successful logout: {}
+                Successful logout:
+                  value: {}
               schema:
                 $ref: "#/components/schemas/LogoutResponseV1"
           description: "Session has been invalidated"

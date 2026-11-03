@@ -326,16 +326,26 @@ public class SampleJavalinServerTest
             assertFalse(deniedBody.has("distinctCount"));
             String invalid = URLEncoder.encode("{\"criteria\":[{\"fieldName\":\"missingField\",\"operator\":\"EQUALS\",\"values\":[1]}]}", StandardCharsets.UTF_8);
             HttpResponse<String> rejected = request(client, baseUri, "GET", "/data/person/count?filter=" + invalid, null, null);
-            assertEquals(500, rejected.statusCode(), rejected.body());
-            assertFalse(JsonUtils.toJSONObject(rejected.body()).has("count"));
+            assertEquals(400, rejected.statusCode(), rejected.body());
+            JSONObject rejectedBody = JsonUtils.toJSONObject(rejected.body());
+            assertEquals("BAD_REQUEST", rejectedBody.getString("code"));
+            assertEquals("Query Filter contained 1 unrecognized field name: missingField", rejectedBody.getString("error"));
+            assertFalse(rejectedBody.has("count"));
+            assertFalse(rejectedBody.has("distinctCount"));
             assertEquals(5, requestJson(client, baseUri, "GET", "/data/person/count", null).getInt("count"));
             String privateFilter = URLEncoder.encode("{\"criteria\":[{\"fieldName\":\"annualSalary\",\"operator\":\"GREATER_THAN\",\"values\":[100000]}]}", StandardCharsets.UTF_8);
+            HttpResponse<String> privateRejected = request(client, baseUri, "GET", "/data/person/count?filter=" + privateFilter, null, null);
+            JSONObject privateRejectedBody = JsonUtils.toJSONObject(privateRejected.body());
             JSONObject legacyQuery = requestJson(client, baseUri, "GET", "/data/person", null);
             JSONObject versionedQuery = requestJson(client, baseUri, "POST", "/qqq/v1/table/person/query", "{}");
             assertAll(
                () -> assertFalse(legacyQuery.getJSONArray("records").getJSONObject(0).getJSONObject("values").has("annualSalary")),
                () -> assertFalse(versionedQuery.getJSONArray("records").getJSONObject(0).getJSONObject("values").has("annualSalary")),
-               () -> assertEquals(500, request(client, baseUri, "GET", "/data/person/count?filter=" + privateFilter, null, null).statusCode()),
+               () -> assertEquals(400, privateRejected.statusCode(), privateRejected.body()),
+               () -> assertEquals("BAD_REQUEST", privateRejectedBody.getString("code")),
+               () -> assertEquals("Query Filter contained 1 unrecognized field name: annualSalary", privateRejectedBody.getString("error")),
+               () -> assertFalse(privateRejectedBody.has("count")),
+               () -> assertFalse(privateRejectedBody.has("distinctCount")),
                () -> assertFalse(joinedRecord.getJSONObject("values").has("animal.name")),
                () -> assertFalse(associatedRecord.getJSONObject("associatedRecords").getJSONArray("pets").getJSONObject(0).getJSONObject("values").has("name")));
          }

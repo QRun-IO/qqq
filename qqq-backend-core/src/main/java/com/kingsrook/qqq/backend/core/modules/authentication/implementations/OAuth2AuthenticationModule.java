@@ -17,6 +17,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+// SPDX-License-Identifier: Apache-2.0
 
 package com.kingsrook.qqq.backend.core.modules.authentication.implementations;
 
@@ -29,7 +30,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.Collection;
 import java.util.HashMap;
@@ -128,7 +128,6 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
 {
    private static final QLogger LOG = QLogger.getLogger(OAuth2AuthenticationModule.class);
 
-   private static boolean mayMemoize = true;
 
    ///////////////////////////////////////////////////////////////////////////////
    // session values (server-set only) that mark a stateless bearer-token      //
@@ -138,14 +137,6 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
    public static final String BEARER_SESSION_EXPIRES_AT_VALUE_KEY = "qqq.oauth2.bearerExpiresAt";
 
    private static final Pattern UUID_PATTERN = Pattern.compile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
-
-   ////////////////////////////////////////////////////////////////////////
-   // session-keyed: cleared on every node when the session ends (logout, //
-   // back-channel logout) through ClusterCaches; the TTL is the backstop //
-   ////////////////////////////////////////////////////////////////////////
-   private static final Memoization<String, String> getAccessTokenFromSessionUUIDMemoization = ClusterCaches.sessionKeyed("oauth2.accessTokenBySession", new Memoization<String, String>()
-      .withTimeout(Duration.of(1, ChronoUnit.MINUTES))
-      .withMaxSize(1000));
 
    private static final Memoization<String, OIDCProviderMetadata> oidcProviderMetadataMemoization = ClusterCaches.nodeLocal(new Memoization<String, OIDCProviderMetadata>()
       .withMayStoreNullValues(false), "the provider's discovery document is the same for every node");
@@ -233,7 +224,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
                QRecord redirectStateRecord = GetAction.execute(oauth2MetaData.getRedirectStateTableName(), Map.of("state", requestContext.get("state")));
                if(redirectStateRecord == null)
                {
-                  LOG.warn("OAuth callback state not found", logPair("state", requestContext.get("state")));
+                  LOG.warn("OAuth callback state not found");
                   throw (new QAuthenticationException("State not found"));
                }
                redirectUri.set(redirectStateRecord.getValueString("redirectUri"));
@@ -264,11 +255,21 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
             Secret               clientSecret = new Secret(oauth2MetaData.getClientSecret());
             ClientAuthentication clientAuth   = new ClientSecretBasic(clientID, clientSecret);
 
-            URI          tokenEndpoint = getOIDCProviderMetadata(oauth2MetaData).getTokenEndpointURI();
-            Scope        scope         = new Scope(oauth2MetaData.getScopes());
-            TokenRequest tokenRequest  = new TokenRequest(tokenEndpoint, clientAuth, codeGrant, scope);
-
-            return createSessionFromTokenRequest(tokenRequest);
+            boolean nativeFlow = com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2NativeSessionLoginMetaData.FLOW.equals(context.get(NativeSessionLogoutSupport.NATIVE_FLOW_KEY));
+            boolean requireNonce = nativeFlow && oauth2MetaData.getNativeSessionLogin() != null && oauth2MetaData.getNativeSessionLogin().getRequireNonceValidation();
+            String expectedNonce = requireNonce ? context.get("expectedNonce") : null;
+            if(requireNonce && (expectedNonce == null || !expectedNonce.matches("[A-Za-z0-9_-]{16,512}")))
+            {
+               throw new QAuthenticationException("Native identity nonce is required");
+            }
+            if(requireNonce && (!oauth2MetaData.getNativeSessionLogin().isValid() || !oauth2MetaData.getNativeSessionLogin().getRedirectUris().contains(callback.toString())))
+            {
+               throw new QAuthenticationException("Native identity policy is invalid");
+            }
+            URI tokenEndpoint = requireNonce ? NativeSessionNonceSupport.tokenEndpoint(oauth2MetaData) : getOIDCProviderMetadata(oauth2MetaData).getTokenEndpointURI();
+            Scope scope = new Scope(oauth2MetaData.getScopes());
+            TokenRequest tokenRequest = new TokenRequest(tokenEndpoint, clientAuth, codeGrant, scope);
+            return createSessionFromTokenRequest(tokenRequest, nativeFlow ? callback.toString() : null, expectedNonce);
          }
          else if(context.containsKey("sessionUUID") || context.containsKey("sessionId") || context.containsKey("uuid"))
          {
@@ -281,60 +282,73 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
                Objects.requireNonNullElseGet(sessionContext.get("sessionId"), () ->
                   sessionContext.get("uuid")));
 
-            ///////////////////////////////////////////////////////////////////////////
-            // if session store is enabled, try to load cached session first         //
-            // this avoids re-deriving security keys and other expensive operations  //
-            ///////////////////////////////////////////////////////////////////////////
-            ////////////////////////////////////////////////////////////////////////
-            // a durable job's worker asks for a fresh session (bypassSessionStore) //
-            // so the user's current permissions apply (JobSessions)               //
-            ////////////////////////////////////////////////////////////////////////
-            boolean useSessionStore = Boolean.TRUE.equals(oauth2MetaData.getSessionStoreEnabled()) && !"true".equals(context.get("bypassSessionStore"));
-            if(useSessionStore)
+            ReentrantLock resumeLock = REFRESH_LOCKS[Math.floorMod(uuid.hashCode(), REFRESH_LOCK_STRIPES)];
+            resumeLock.lock();
+            try
             {
-               Optional<QSession> cachedSession = QSessionStoreHelper.loadAndTouchSession(uuid);
-               if(cachedSession.isPresent())
+               ///////////////////////////////////////////////////////////////////////////
+               // if session store is enabled, try to load cached session first         //
+               // this avoids re-deriving security keys and other expensive operations  //
+               ///////////////////////////////////////////////////////////////////////////
+               ////////////////////////////////////////////////////////////////////////
+               // a durable job's worker asks for a fresh session (bypassSessionStore) //
+               // so the user's current permissions apply (JobSessions)               //
+               ////////////////////////////////////////////////////////////////////////
+               boolean useSessionStore = Boolean.TRUE.equals(oauth2MetaData.getSessionStoreEnabled()) && !"true".equals(context.get("bypassSessionStore"));
+               if(useSessionStore)
                {
-                  ///////////////////////////////////////////////////////////////////////
-                  // a bearer session's uuid is derived from its token: it is never a //
-                  // credential of its own                                            //
-                  ///////////////////////////////////////////////////////////////////////
-                  if("true".equals(cachedSession.get().getValue(BEARER_SESSION_VALUE_KEY)))
+                  Optional<QSession> cachedSession = QSessionStoreHelper.loadAndTouchSession(uuid);
+                  if(cachedSession.isPresent())
                   {
-                     throw (new QAuthenticationException("Session not found"));
+                     ///////////////////////////////////////////////////////////////////////
+                     // a bearer session's uuid is derived from its token: it is never a //
+                     // credential of its own                                            //
+                     ///////////////////////////////////////////////////////////////////////
+                     if("true".equals(cachedSession.get().getValue(BEARER_SESSION_VALUE_KEY)))
+                     {
+                        throw (new QAuthenticationException("Session not found"));
+                     }
+                     if(isCachedSessionCurrent(uuid, cachedSession.get()))
+                     {
+                        return cachedSession.get();
+                     }
+                     QSessionStoreHelper.removeSession(uuid);
                   }
-                  return cachedSession.get();
                }
+
+               String   accessToken = doGetAccessTokenFromSessionUUID(uuid);
+               QSession session     = createSessionFromToken(accessToken);
+               session.setUuid(uuid);
+               //////////////////////////////////////////////////////////////////////////////
+               // Update idReference to match the UUID from the context so getIdReference() //
+               // returns the correct session identifier for cookie management               //
+               //////////////////////////////////////////////////////////////////////////////
+               session.setIdReference(uuid);
+
+               //////////////////////////////////////////////////////////////////
+               // todo - do we need to validate its age or ping the provider?? //
+               //////////////////////////////////////////////////////////////////
+
+               //////////////////////////////////////////////////////////////
+               // allow customizer to do custom things here, if so desired //
+               //////////////////////////////////////////////////////////////
+               finalCustomizeSession(qInstance, session);
+
+               ///////////////////////////////////////////////////////////////////////
+               // if session store is enabled, store the session for future use    //
+               // this happens after finalCustomizeSession so security keys cached //
+               ///////////////////////////////////////////////////////////////////////
+               if(useSessionStore)
+               {
+                  QSessionStoreHelper.storeSession(uuid, session, QSessionStoreHelper.getDefaultTtl());
+               }
+
+               return (session);
             }
-
-            String   accessToken = getAccessTokenFromSessionUUID(uuid);
-            QSession session     = createSessionFromToken(accessToken);
-            session.setUuid(uuid);
-            //////////////////////////////////////////////////////////////////////////////
-            // Update idReference to match the UUID from the context so getIdReference() //
-            // returns the correct session identifier for cookie management               //
-            //////////////////////////////////////////////////////////////////////////////
-            session.setIdReference(uuid);
-
-            //////////////////////////////////////////////////////////////////
-            // todo - do we need to validate its age or ping the provider?? //
-            //////////////////////////////////////////////////////////////////
-
-            //////////////////////////////////////////////////////////////
-            // allow customizer to do custom things here, if so desired //
-            //////////////////////////////////////////////////////////////
-            finalCustomizeSession(qInstance, session);
-
-            ///////////////////////////////////////////////////////////////////////
-            // if session store is enabled, store the session for future use    //
-            // this happens after finalCustomizeSession so security keys cached //
-            ///////////////////////////////////////////////////////////////////////
-            if(useSessionStore)
+            finally
             {
-               QSessionStoreHelper.storeSession(uuid, session, QSessionStoreHelper.getDefaultTtl());
+               resumeLock.unlock();
             }
-
-            return (session);
          }
          else
          {
@@ -510,6 +524,16 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
     ***************************************************************************/
    private QSession createSessionFromTokenRequest(TokenRequest tokenRequest) throws ParseException, IOException, QException
    {
+      return (createSessionFromTokenRequest(tokenRequest, null, null));
+   }
+
+
+
+   /***************************************************************************
+    ** Retain optional logout material only for the validated native exchange.
+    ***************************************************************************/
+   private QSession createSessionFromTokenRequest(TokenRequest tokenRequest, String nativeCallback, String expectedNonce) throws ParseException, IOException, QException
+   {
       ///////////////////////////////////////////////////////////////////////////
       // log token request details before sending to aid debugging auth issues //
       ///////////////////////////////////////////////////////////////////////////
@@ -518,7 +542,24 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
          logPair("clientId", tokenRequest.getClientAuthentication() != null ? tokenRequest.getClientAuthentication().getClientID() : null),
          logPair("grantType", tokenRequest.getAuthorizationGrant() != null ? tokenRequest.getAuthorizationGrant().getType() : null));
 
-      TokenResponse tokenResponse = TokenResponse.parse(tokenRequest.toHTTPRequest().send());
+      HTTPRequest httpRequest = tokenRequest.toHTTPRequest();
+      if(expectedNonce != null)
+      {
+         NativeSessionNonceSupport.secureTransport(httpRequest);
+      }
+      TokenResponse tokenResponse;
+      try
+      {
+         tokenResponse = TokenResponse.parse(expectedNonce != null ? NativeSessionNonceSupport.sendBounded(httpRequest, 262144) : httpRequest.send());
+      }
+      catch(Exception e)
+      {
+         if(expectedNonce != null)
+         {
+            throw new QAuthenticationException("Native identity token exchange failed");
+         }
+         throw e;
+      }
 
       if(tokenResponse.indicatesSuccess())
       {
@@ -533,24 +574,37 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
          // typically place in the ID token (groups, permissions, custom claims) //
          ///////////////////////////////////////////////////////////////////////
          JSONObject idTokenPayload = null;
-         try
+         if(expectedNonce != null)
          {
-            OIDCTokens oidcTokens = tokenResponse.toSuccessResponse().getTokens().toOIDCTokens();
-            if(oidcTokens != null && oidcTokens.getIDToken() != null)
-            {
-               idTokenPayload = new JSONObject(oidcTokens.getIDToken().getJWTClaimsSet().toJSONObject());
-            }
+            idTokenPayload = NativeSessionNonceSupport.validate((OAuth2AuthenticationMetaData) QContext.getQInstance().getAuthentication(),
+               tokenResponse.toSuccessResponse().getCustomParameters().get("id_token"), accessToken.getValue(), expectedNonce);
          }
-         catch(Exception e)
+         else
          {
-            ////////////////////////////////////////////////////////////////////
-            // not an OIDC flow or ID token parsing failed - continue without //
-            ////////////////////////////////////////////////////////////////////
-            LOG.debug("Could not extract ID token from token response", e);
+            try
+            {
+               OIDCTokens oidcTokens = tokenResponse.toSuccessResponse().getTokens().toOIDCTokens();
+               if(oidcTokens != null && oidcTokens.getIDToken() != null)
+               {
+                  idTokenPayload = new JSONObject(oidcTokens.getIDToken().getJWTClaimsSet().toJSONObject());
+               }
+            }
+            catch(Exception e)
+            {
+               ////////////////////////////////////////////////////////////////////
+               // not an OIDC flow or ID token parsing failed - continue without //
+               ////////////////////////////////////////////////////////////////////
+               LOG.debug("Could not extract ID token from token response");
+            }
          }
 
          QSession session = createSessionFromToken(accessToken.getValue(), accessToken.getValue(), idTokenPayload);
          insertUserSession(accessToken.getValue(), session);
+         if(nativeCallback != null && expectedNonce != null)
+         {
+            Object rawIdToken = tokenResponse.toSuccessResponse().getCustomParameters().get("id_token");
+            nativeLogoutSupport().retain(session, rawIdToken instanceof String value ? value : null, nativeCallback);
+         }
 
          /////////////////////////////////////////////////////////////////////////
          // if the provider issued a refresh token (e.g., offline_access), keep //
@@ -583,12 +637,11 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
       {
          ErrorObject errorObject = tokenResponse.toErrorResponse().getErrorObject();
          LOG.warn("Token request failed",
-            logPair("code", errorObject.getCode()),
-            logPair("description", errorObject.getDescription()),
+            logPair("code", safeOAuthErrorCode(errorObject.getCode())),
             logPair("httpStatus", errorObject.getHTTPStatusCode()),
             logPair("tokenEndpoint", tokenRequest.getEndpointURI()),
             logPair("clientId", tokenRequest.getClientAuthentication() != null ? tokenRequest.getClientAuthentication().getClientID() : null));
-         throw (new QAuthenticationException(errorObject.getDescription()));
+         throw (new QAuthenticationException("OAuth2 token request failed"));
       }
    }
 
@@ -617,11 +670,11 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
          // near expiry, and a refresh token is stored), so a refreshable session //
          // stays valid here.                                                     //
          ///////////////////////////////////////////////////////////////////////////
-         String     accessToken = getAccessTokenFromSessionUUID(session.getUuid());
+         String     accessToken = doGetAccessTokenFromSessionUUID(session.getUuid());
          DecodedJWT jwt         = JWT.decode(accessToken);
          if(jwt.getExpiresAtAsInstant().isBefore(Instant.now()))
          {
-            LOG.debug("accessToken is expired", logPair("sessionUUID", session.getUuid()));
+            LOG.debug("accessToken is expired");
             return (false);
          }
 
@@ -989,38 +1042,40 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
 
 
    /*******************************************************************************
-    ** Look up access_token from session UUID
-    **
+    ** A late cache write on another node cannot recreate authoritative login.
+    ** Read storage on every cached cookie resume, independently of memoization.
+    ** Expired access tokens fall through to the existing authoritative refresh.
     *******************************************************************************/
-   private String getAccessTokenFromSessionUUID(String sessionUUID) throws QAuthenticationException
+   private boolean isCachedSessionCurrent(String uuid, QSession cached) throws QAuthenticationException
    {
-      if(mayMemoize)
+      CapturedContext before = QContext.capture();
+      try
       {
-         String accessToken = getAccessTokenFromSessionUUIDMemoization.getResultThrowing(sessionUUID, (String x) ->
-            doGetAccessTokenFromSessionUUID(sessionUUID)
-         ).orElse(null);
-
-         //////////////////////////////////////////////////////////////////////////
-         // a memoized token may have reached its refresh window since it was    //
-         // cached - if so, forget it and go back to the store (which refreshes  //
-         // when possible), rather than letting the session lapse.               //
-         //////////////////////////////////////////////////////////////////////////
-         if(accessToken == null || !isTokenExpiredOrNearExpiry(accessToken, getRefreshSkewSeconds()))
+         QContext.setQSession(new QSystemUserSession(QContext.getQInstance()));
+         QRecord row = new GetAction().executeForRecord(new GetInput(UserSession.TABLE_NAME).withUniqueKey(Map.of("uuid", uuid))
+            .withShouldMaskPasswords(false).withShouldOmitHiddenFields(false));
+         if(row == null || cached.getUser() == null || !Objects.equals(uuid, cached.getUuid())
+            || !Objects.equals(row.getValueString("userId"), cached.getUser().getIdReference()))
          {
-            return (accessToken);
+            throw new QAuthenticationException("Session not found");
          }
-
-         getAccessTokenFromSessionUUIDMemoization.clearKey(sessionUUID);
-         accessToken = doGetAccessTokenFromSessionUUID(sessionUUID);
-         if(accessToken != null)
+         DecodedJWT token = JWT.decode(row.getValueString("accessToken"));
+         String identity = token.getSubject() != null ? token.getSubject() : token.getClaim("email").asString();
+         if(identity == null || !identity.equals(row.getValueString("userId")) || token.getExpiresAtAsInstant() == null
+            || (token.getNotBeforeAsInstant() != null && token.getNotBeforeAsInstant().isAfter(Instant.now())))
          {
-            getAccessTokenFromSessionUUIDMemoization.storeResult(sessionUUID, accessToken);
+            throw new QAuthenticationException("Session not found");
          }
-         return (accessToken);
+         return (token.getExpiresAtAsInstant().isAfter(Instant.now()));
       }
-      else
+      catch(Exception ignored)
       {
-         return (doGetAccessTokenFromSessionUUID(sessionUUID));
+         QSessionStoreHelper.removeSession(uuid);
+         throw (new QAuthenticationException("Session not found"));
+      }
+      finally
+      {
+         QContext.init(before);
       }
    }
 
@@ -1073,7 +1128,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
                DecodedJWT jwt = JWT.decode(accessToken);
                if(jwt.getExpiresAtAsInstant().isBefore(Instant.now()))
                {
-                  LOG.warn("Session accessToken is expired", logPair("sessionUUID", sessionUUID));
+                  LOG.warn("Session accessToken is expired");
                   throw (new QAuthenticationException("accessToken is expired"));
                }
 
@@ -1089,7 +1144,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
 
                if(storedUserId != null && tokenIdentity != null && !storedUserId.equals(tokenIdentity))
                {
-                  LOG.warn("Session userId mismatch", logPair("sessionUUID", sessionUUID), logPair("storedUserId", storedUserId), logPair("tokenIdentity", tokenIdentity));
+                  LOG.warn("Session userId mismatch", logPair("storedUserId", storedUserId), logPair("tokenIdentity", tokenIdentity));
                   throw (new QAuthenticationException("Session identity mismatch"));
                }
             }
@@ -1194,12 +1249,14 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
    @Override
    public void logout(QInstance qInstance, String sessionUUID)
    {
-      if(sessionUUID == null)
+      if(sessionUUID == null || qInstance.getTable(UserSession.TABLE_NAME) == null)
       {
          return;
       }
 
       QSession beforeSession = QContext.getQSession();
+      ReentrantLock lock = REFRESH_LOCKS[Math.floorMod(sessionUUID.hashCode(), REFRESH_LOCK_STRIPES)];
+      lock.lock();
       try
       {
          QContext.setQSession(new QSystemUserSession());
@@ -1208,29 +1265,72 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
          // revoke (when the provider advertises a revocation endpoint) and //
          // delete any stored refresh token, before the session itself      //
          /////////////////////////////////////////////////////////////////////
-         removeStoredRefreshToken(qInstance, sessionUUID, true);
+         try
+         {
+            removeStoredRefreshToken(qInstance, sessionUUID, true);
+         }
+         catch(Exception ignored)
+         {
+            LOG.warn("Provider revocation or refresh-token cleanup failed during logout");
+         }
 
          /////////////////////////////////////////////
          // delete the session record from database //
          /////////////////////////////////////////////
-         new DeleteAction().execute(new DeleteInput(UserSession.TABLE_NAME)
+         var deleted = new DeleteAction().execute(new DeleteInput(UserSession.TABLE_NAME)
             .withQueryFilter(new QQueryFilter(new QFilterCriteria("uuid", QCriteriaOperator.EQUALS, sessionUUID))));
+         if(CollectionUtils.nullSafeHasContents(deleted.getRecordsWithErrors())
+            || getRecordByUniqueKey(UserSession.TABLE_NAME, "uuid", sessionUUID) != null)
+         {
+            throw (new QException("Session invalidation failed"));
+         }
 
          ///////////////////////////////////////////
          // clear the session from memoization cache //
          ///////////////////////////////////////////
-         clearAccessTokenCache(sessionUUID);
-
-         LOG.debug("Logged out session", logPair("sessionUUID", sessionUUID));
+         LOG.debug("Logged out session");
       }
       catch(Exception e)
       {
-         LOG.warn("Error during logout", e, logPair("sessionUUID", sessionUUID));
+         throw (new IllegalStateException("Session invalidation failed"));
       }
       finally
       {
-         QContext.setQSession(beforeSession);
+         try
+         {
+            clearAccessTokenCache(sessionUUID);
+         }
+         finally
+         {
+            QContext.setQSession(beforeSession);
+            lock.unlock();
+         }
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Optional logout data for the authenticated caller; not a login credential.
+    *******************************************************************************/
+   public NativeSessionLogoutData prepareNativeLogout(String sessionUuid, String callback)
+   {
+      QSession session = QContext.getQSession();
+      if(session == null || !Objects.equals(sessionUuid, session.getUuid()) || !isSessionValid(QContext.getQInstance(), session))
+      {
+         return (null);
+      }
+      return (nativeLogoutSupport().prepare(sessionUuid, callback));
+   }
+
+
+
+   /*******************************************************************************
+    ** Provider discovery seam for bounded transport tests.
+    *******************************************************************************/
+   protected NativeSessionLogoutSupport nativeLogoutSupport()
+   {
+      return (new NativeSessionLogoutSupport());
    }
 
 
@@ -1332,7 +1432,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
          }
          catch(QException e)
          {
-            LOG.warn("Not storing refresh token for session - it could not be encrypted", logPair("sessionUUID", sessionUuid), logPair("reason", e.getMessage()));
+            LOG.warn("Not storing refresh token for session - it could not be encrypted", logPair("reason", e.getMessage()));
             return;
          }
 
@@ -1348,7 +1448,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
             ////////////////////////////////////////////////////////////////////
             // not fatal for the login - the session just won't be refreshable //
             ////////////////////////////////////////////////////////////////////
-            LOG.warn("Error storing refresh token for session", logPair("sessionUUID", sessionUuid), logPair("errors", inserted.getErrorsAsString()));
+            LOG.warn("Error storing refresh token for session", logPair("errors", inserted.getErrorsAsString()));
          }
       });
    }
@@ -1443,7 +1543,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
          }
          catch(QException e)
          {
-            LOG.warn("Stored refresh token could not be decrypted - ending session", logPair("sessionUUID", sessionUUID), logPair("reason", e.getMessage()));
+            LOG.warn("Stored refresh token could not be decrypted - ending session", logPair("reason", e.getMessage()));
             endSession(tableName, sessionUUID);
             throw (new QAuthenticationException("Session has ended (stored refresh token is unusable)"));
          }
@@ -1459,7 +1559,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
          boolean refreshExpired    = storedRefreshToken.getRefreshTokenExpiresAt() != null && storedRefreshToken.getRefreshTokenExpiresAt().isBefore(now);
          if(lifetimeExceeded || refreshExpired)
          {
-            LOG.info("Not refreshing OAuth2 session", logPair("sessionUUID", sessionUUID), logPair("reason", lifetimeExceeded ? "maxSessionLifetimeExceeded" : "refreshTokenExpired"));
+            LOG.info("Not refreshing OAuth2 session", logPair("reason", lifetimeExceeded ? "maxSessionLifetimeExceeded" : "refreshTokenExpired"));
             removeStoredRefreshToken(qInstance, sessionUUID, lifetimeExceeded);
             return (null);
          }
@@ -1472,7 +1572,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
       }
       catch(Exception e)
       {
-         LOG.warn("Error refreshing OAuth2 session", logPair("sessionUUID", sessionUUID), logPair("exceptionType", e.getClass().getSimpleName()));
+         LOG.warn("Error refreshing OAuth2 session", logPair("exceptionType", e.getClass().getSimpleName()));
          return (null);
       }
       finally
@@ -1498,7 +1598,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
       httpRequest.setConnectTimeout(TOKEN_ENDPOINT_TIMEOUT_MILLIS);
       httpRequest.setReadTimeout(TOKEN_ENDPOINT_TIMEOUT_MILLIS);
 
-      LOG.debug("Sending refresh token request", logPair("tokenEndpoint", tokenEndpoint), logPair("sessionUUID", sessionUUID));
+      LOG.debug("Sending refresh token request", logPair("tokenEndpoint", tokenEndpoint));
       TokenResponse tokenResponse = TokenResponse.parse(httpRequest.send());
 
       if(tokenResponse.indicatesSuccess())
@@ -1532,7 +1632,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
             .withValue("accessToken", newAccessToken)));
 
          clearAccessTokenCache(sessionUUID);
-         LOG.info("Refreshed OAuth2 session access token", logPair("sessionUUID", sessionUUID), logPair("rotatedRefreshToken", rotatedToken != null));
+         LOG.info("Refreshed OAuth2 session access token", logPair("rotatedRefreshToken", rotatedToken != null));
          return (newAccessToken);
       }
 
@@ -1556,7 +1656,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
             }
          }
 
-         LOG.info("Refresh token was rejected by the provider - ending session", logPair("sessionUUID", sessionUUID), logPair("code", errorObject.getCode()));
+         LOG.info("Refresh token was rejected by the provider - ending session", logPair("code", safeOAuthErrorCode(errorObject.getCode())));
          endSession(tableName, sessionUUID);
          throw (new QAuthenticationException("Session has ended (refresh token was rejected)"));
       }
@@ -1566,11 +1666,25 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
       // keep the stored token, so a later request can try again.               //
       ////////////////////////////////////////////////////////////////////////////
       LOG.warn("Refresh token request failed",
-         logPair("code", errorObject.getCode()),
+         logPair("code", safeOAuthErrorCode(errorObject.getCode())),
          logPair("httpStatus", errorObject.getHTTPStatusCode()),
-         logPair("tokenEndpoint", tokenEndpoint),
-         logPair("sessionUUID", sessionUUID));
+         logPair("tokenEndpoint", tokenEndpoint));
       return (null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Provider error values are untrusted; retain only known OAuth categories.
+    *******************************************************************************/
+   private static String safeOAuthErrorCode(String code)
+   {
+      return (switch(Objects.toString(code, ""))
+      {
+         case "invalid_request", "invalid_client", "invalid_grant", "unauthorized_client",
+              "unsupported_grant_type", "invalid_scope", "access_denied", "server_error", "temporarily_unavailable" -> code;
+         default -> "unknown";
+      });
    }
 
 
@@ -1707,7 +1821,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
             }
             catch(QException e)
             {
-               LOG.info("Not revoking stored refresh token - it could not be decrypted", logPair("sessionUUID", sessionUUID), logPair("reason", e.getMessage()));
+               LOG.info("Not revoking stored refresh token - it could not be decrypted", logPair("reason", e.getMessage()));
             }
          }
       }
@@ -1739,12 +1853,12 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
          HTTPResponse httpResponse = httpRequest.send();
          if(!httpResponse.indicatesSuccess())
          {
-            LOG.info("Refresh token revocation was not successful", logPair("sessionUUID", sessionUUID), logPair("httpStatus", httpResponse.getStatusCode()));
+            LOG.info("Refresh token revocation was not successful", logPair("httpStatus", httpResponse.getStatusCode()));
          }
       }
       catch(Exception e)
       {
-         LOG.info("Error revoking refresh token", logPair("sessionUUID", sessionUUID), logPair("exceptionType", e.getClass().getSimpleName()));
+         LOG.info("Error revoking refresh token", logPair("exceptionType", e.getClass().getSimpleName()));
       }
    }
 
@@ -1784,7 +1898,6 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
     *******************************************************************************/
    public static void clearAccessTokenCache(String sessionUUID)
    {
-      getAccessTokenFromSessionUUIDMemoization.clearKey(sessionUUID);
       QSessionStoreHelper.removeSession(sessionUUID);
       ClusterCaches.sessionEnded(sessionUUID);
    }

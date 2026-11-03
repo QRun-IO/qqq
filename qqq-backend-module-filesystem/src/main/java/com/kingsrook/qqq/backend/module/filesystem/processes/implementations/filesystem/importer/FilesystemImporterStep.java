@@ -21,7 +21,6 @@
 package com.kingsrook.qqq.backend.module.filesystem.processes.implementations.filesystem.importer;
 
 
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Serializable;
@@ -206,7 +205,7 @@ public class FilesystemImporterStep implements BackendStep
                String archivedPath = null;
                if(archiveFileEnabled)
                {
-                  archivedPath = archiveFile(runBackendStepInput, sourceFileName, bytes);
+                  archivedPath = archiveFile(runBackendStepInput, sourceFileName, sourceActionBase.getPathSeparator(), bytes);
                }
 
                /////////////////////////////////
@@ -336,7 +335,7 @@ public class FilesystemImporterStep implements BackendStep
    /*******************************************************************************
     **
     *******************************************************************************/
-   private String archiveFile(RunBackendStepInput runBackendStepInput, String sourceFileName, byte[] bytes) throws QException, IOException
+   private String archiveFile(RunBackendStepInput runBackendStepInput, String sourceFileName, String sourcePathSeparator, byte[] bytes) throws QException, IOException
    {
       String         archiveTableName = runBackendStepInput.getValueString(FIELD_ARCHIVE_TABLE_NAME);
       QTableMetaData archiveTable;
@@ -358,11 +357,11 @@ public class FilesystemImporterStep implements BackendStep
 
       LocalDateTime now = LocalDateTime.now();
       String path = archiveActionBase.getFullBasePath(archiveTable, archiveBackend)
-         + File.separator + archivePath
-         + File.separator + now.getYear()
-         + File.separator + now.getMonth()
-         + File.separator + UUID.randomUUID()
-         + "-" + sourceFileName.replaceAll(".*" + File.separator, "");
+         + archiveActionBase.getPathSeparator() + archivePath
+         + archiveActionBase.getPathSeparator() + now.getYear()
+         + archiveActionBase.getPathSeparator() + now.getMonth()
+         + archiveActionBase.getPathSeparator() + UUID.randomUUID()
+         + "-" + sourceFileName.substring(sourceFileName.lastIndexOf(sourcePathSeparator) + 1);
       path = AbstractBaseFilesystemAction.stripDuplicatedSlashes(path);
 
       LOG.info("Archiving file", logPair("path", path), logPair("archiveBackendName", archiveBackend.getName()), logPair("archiveTableName", archiveTable.getName()));

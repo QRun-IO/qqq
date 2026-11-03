@@ -43,7 +43,7 @@ import org.junit.jupiter.api.BeforeEach;
  *******************************************************************************/
 public abstract class SpecTestBase
 {
-   protected static int PORT = 6400;
+   protected static int PORT;
 
    protected static Javalin service;
    protected QInstance serverQInstance;
@@ -102,13 +102,10 @@ public abstract class SpecTestBase
    @BeforeEach
    void beforeEach() throws Exception
    {
-      //////////////////////////////////////////////////////////////////////////////////////
-      // during initial dev here, we were having issues running multiple tests together,  //
-      // where the second (but not first, and not any after second) would fail w/ javalin //
-      // not responding... so, this "works" - to constantly change our port, and stop     //
-      // and restart aggresively... could be optimized, but it works.                     //
-      //////////////////////////////////////////////////////////////////////////////////////
-      PORT++;
+      //////////////////////////////////////////////////////////////////////
+      // Restart each fixture and let the OS reserve an available port.  //
+      // A guessed or incremented port may belong to an unrelated server. //
+      //////////////////////////////////////////////////////////////////////
       if(service != null)
       {
          service.stop();
@@ -146,7 +143,8 @@ public abstract class SpecTestBase
                   config.routes.apiBuilder(() -> additionalSpec.defineRoute(middlewareVersion, versionBasePath));
                }
             }
-         ).start(PORT);
+         ).start(0);
+         PORT = service.port();
       }
    }
 

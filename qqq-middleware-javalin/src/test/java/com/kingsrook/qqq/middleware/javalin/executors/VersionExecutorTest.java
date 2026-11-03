@@ -17,6 +17,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+// SPDX-License-Identifier: Apache-2.0
 
 package com.kingsrook.qqq.middleware.javalin.executors;
 
@@ -93,7 +94,7 @@ class VersionExecutorTest
       VersionResponseV1 output = execute();
 
       assertThat(output.getFeatures()).doesNotContain(AVATARS);
-      List<String> expected = MiddlewareVersionV1.FEATURES.stream().filter(f -> !AVATARS.equals(f)).toList();
+      List<String> expected = MiddlewareVersionV1.FEATURES.stream().filter(f -> !AVATARS.equals(f) && !List.of("nativeSessionLogin", "nativeSessionLogout", "nativeSessionNonceValidation").contains(f)).toList();
       assertThat(output.getFeatures()).containsExactlyElementsOf(expected);
    }
 
@@ -112,7 +113,7 @@ class VersionExecutorTest
       VersionResponseV1 output = execute();
 
       assertThat(output.getFeatures()).contains(AVATARS);
-      assertThat(output.getFeatures()).containsExactlyElementsOf(MiddlewareVersionV1.FEATURES);
+      assertThat(output.getFeatures()).containsExactlyElementsOf(MiddlewareVersionV1.FEATURES.stream().filter(f -> !List.of("nativeSessionLogin", "nativeSessionLogout", "nativeSessionNonceValidation").contains(f)).toList());
    }
 
 

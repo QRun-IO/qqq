@@ -17,14 +17,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+// SPDX-License-Identifier: Apache-2.0
 
 package com.kingsrook.qqq.middleware.javalin.specs.v1.responses;
 
 
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.Auth0AuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2AuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.branding.QBrandingMetaData;
+import com.kingsrook.qqq.backend.core.modules.authentication.implementations.NativeSessionLogoutSupport;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.middleware.javalin.executors.io.AuthenticationMetaDataOutputInterface;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.NextDashboardCspSources;
@@ -32,6 +35,8 @@ import com.kingsrook.qqq.middleware.javalin.schemabuilder.SchemaBuilder;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIOneOf;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.NativeSessionLogin;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.NativeSessionLogout;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.PublicBranding;
 import com.kingsrook.qqq.openapi.model.Schema;
 
@@ -43,7 +48,7 @@ public class AuthenticationMetaDataResponseV1 implements AuthenticationMetaDataO
 {
    @OpenAPIDescription("""
       Specifier for the type of authentication module being used.
-      
+
       Frontends should use this value to determine how to prompt the user for authentication credentials.
       In addition, depending on this value, additional properties will be included in this object, as
       may be needed to complete the authorization workflow with the provider (e.g., a baseUrl, clientId,
@@ -256,6 +261,50 @@ public class AuthenticationMetaDataResponseV1 implements AuthenticationMetaDataO
       @OpenAPIDescription("True when the server accepts the provider's access tokens as Authorization: Bearer <JWT>. Since 1.6.0.")
       private Boolean bearerTokensAccepted;
 
+      @OpenAPIDescription("Optional configured native browser-to-QQQ cookie-session login policy (1.9.0). Uses clientId/scopes, not nativeClientId. Absent means this flow is unavailable.")
+      private NativeSessionLogin nativeSessionLogin;
+      private NativeSessionLogout nativeSessionLogout;
+
+
+
+      /*******************************************************************************
+       ** Optional 1.10 provider logout policy.
+       *******************************************************************************/
+      public NativeSessionLogout getNativeSessionLogout()
+      {
+         return (nativeSessionLogout);
+      }
+
+
+
+      /*******************************************************************************
+       ** Setter for nativeSessionLogout.
+       *******************************************************************************/
+      public void setNativeSessionLogout(NativeSessionLogout nativeSessionLogout)
+      {
+         this.nativeSessionLogout = nativeSessionLogout;
+      }
+
+
+
+      /*******************************************************************************
+       ** Getter for the configured native cookie-session protocol.
+       *******************************************************************************/
+      public NativeSessionLogin getNativeSessionLogin()
+      {
+         return (nativeSessionLogin);
+      }
+
+
+
+      /*******************************************************************************
+       ** Setter for the configured native cookie-session protocol.
+       *******************************************************************************/
+      public void setNativeSessionLogin(NativeSessionLogin nativeSessionLogin)
+      {
+         this.nativeSessionLogin = nativeSessionLogin;
+      }
+
 
 
       /*******************************************************************************
@@ -435,6 +484,15 @@ public class AuthenticationMetaDataResponseV1 implements AuthenticationMetaDataO
             oauth2Values.setNativeClientBaseUrl(oauth2MetaData.getNativeClientBaseUrl());
          }
          oauth2Values.setBearerTokensAccepted(Boolean.TRUE.equals(oauth2MetaData.getBearerTokensEnabled()));
+         if(oauth2MetaData.getNativeSessionLogin() != null && oauth2MetaData.getNativeSessionLogin().isValid())
+         {
+            oauth2Values.setNativeSessionLogin(new NativeSessionLogin().withConfiguration(oauth2MetaData.getNativeSessionLogin()));
+         }
+         if(QContext.getQInstance() != null && QContext.getQInstance().getAuthentication() == oauth2MetaData
+            && NativeSessionLogoutSupport.isConfigured(QContext.getQInstance()))
+         {
+            oauth2Values.setNativeSessionLogout(new NativeSessionLogout().withConfiguration(oauth2MetaData.getNativeSessionLogout()));
+         }
       }
       else if(qAuthenticationMetaData instanceof Auth0AuthenticationMetaData auth0MetaData)
       {

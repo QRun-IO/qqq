@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise a copied starter and generated QBit against a disposable MySQL DB."""
+"""Exercise a copied starter and generated QBit against a disposable PostgreSQL DB."""
 
 import argparse
 import json
@@ -75,7 +75,7 @@ def exercise(base_url):
                 remaining = request(base_url, "POST", f"/qqq/v1/table/{table}/query", {})
                 require(all(record["values"]["id"] != record_id for record in remaining["records"]),
                         f"deleted {table}/{record_id} remained queryable")
-    print("PASS: starter metadata and MySQL read/insert/update/delete; generated parent/child relationship")
+    print("PASS: starter metadata and PostgreSQL read/insert/update/delete; generated parent/child relationship")
 
 
 if __name__ == "__main__":

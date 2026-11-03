@@ -1,5 +1,27 @@
 # UI API changelog (`/qqq/v1`)
 
+## 1.10.0 — optional native provider logout and nonce validation
+
+Adds conditional `nativeSessionLogout` and typed authentication metadata with explicit
+`postLogoutRedirectUris`. An opt-in `POST /logout` request can return sensitive
+`nativeLogoutData` for the authenticated cookie session after local invalidation.
+Empty/legacy/TABLE logout stays local-only. Enabling this requires the private optional
+session column, encryption configuration and explicit provider post-logout registration;
+see [native provider logout](NATIVE-PROVIDER-LOGOUT.md). API 1.9 native login alone does
+not promise this capability. Provider failure never substitutes for local invalidation.
+
+Optional `nativeSessionLogin.requireNonceValidation` advertises
+`nativeSessionNonceValidation` and `nativeSessionLogin.nonceValidation: REQUIRED`.
+Native manageSession then requires the original `expectedNonce` and validates the
+direct HTTPS ID-token response and matching access-token subject before session
+creation. Existing web/TABLE and disabled-policy behavior remains unchanged.
+
+Bug fix: when a backend step throws, the run keeps its original process ownership and step
+list, so its owner can still resubmit the step or cancel it; another session stays denied.
+The failure response is unchanged, and the failed step's partial values, records, one-time
+secrets and audits are still discarded. This is not a rollback: values and records stored
+before the failed step are not preserved either. No API or version change.
+
 The UI/UX API is `/qqq/v1` (`qqq-middleware-javalin`, `specs/v1`). It is the only API that drives a
 UI (Next today; CLI, TUI and native iOS clients later), and it is semantically versioned
 independently of QQQ's own release version.
@@ -80,6 +102,20 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 
 ## Versions
 
+### 1.9.0 (unreleased) - explicit native cookie-session login
+
+- `GET /metaData/authentication` optionally includes typed `values.nativeSessionLogin`
+  for configured OAuth2 applications: fixed `AUTHORIZATION_CODE_PKCE_SESSION` flow,
+  `S256`, fixed `prompt: login`, explicit public HTTPS issuer/discovery URL and an exact callback allowlist.
+  It uses existing `values.clientId` and `values.scopes`; it is distinct from the
+  separate native bearer client. No configuration means no descriptor or
+  `nativeSessionLogin` feature in `GET /version`.
+- `POST /manageSession` accepts optional `authenticationFlow` to select that
+  advertised flow. Unknown/unconfigured flows, invalid PKCE verifiers, unlisted
+  callbacks and mixed credentials are rejected before provider exchange. Requests
+  without the marker retain existing web, TABLE_BASED, Auth0 and resume behavior.
+- See [NATIVE-SESSION-LOGIN.md](NATIVE-SESSION-LOGIN.md) for configuration and the
+  native client contract. Existing release baselines remain unchanged.
 ### 1.9.0 (next QQQ 4.1 release) - terminal client findings and native-client contract fixes
 
 Fixes for issues found while building the terminal clients (`qqq-cli`) and native clients.
@@ -102,8 +138,9 @@ Fixes for issues found while building the terminal clients (`qqq-cli`) and nativ
   field error (was a 500 from the failed query on RDBMS backends).
 - **Malformed process UUID on cancel is 400** (#1346, behaviour fix): `POST
   /processes/{processName}/{processUUID}/cancel` answers 400 with a `processUUID` field error (was
-  500) when the UUID is malformed. A cancelled run still keeps its state and can be stepped; making
-  cancel terminal is deferred (see `SampleProcessCancellationContractTest`).
+  500) when the UUID is malformed. A cancelled run keeps its state, but cancelling is terminal: a
+  further step on it answers 400 ("This process was cancelled, so it cannot run any more steps.")
+  and cancelling it again is a no-op (see `SampleProcessCancellationContractTest`).
 - **`stepProcess` declares `isStepBack`** (#1347): the optional boolean query parameter it already
   honored (go back: restart at the named back step).
 - **Url-encoded process bodies** (#1336): `initProcess` and `stepProcess` also declare an

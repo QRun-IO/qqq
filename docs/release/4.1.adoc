@@ -12,6 +12,8 @@ Known Next limitations and parity/browser/visual follow-ups remain tracked separ
 
 == Before a publishing branch or tag
 
+* Verify the resolved runtime Guava version for core and fresh consumers is at least the patched `33.7.2-jre`, following xref:../GUAVA-SECURITY-UPDATE.md[the Guava security update qualification]. Parent/BOM source declarations alone do not prove downstream adoption.
+
 * Merge the reviewed integration into `develop` through the protected PR workflow. It includes the branch reconciliation and Apache consistency work from #796/#797; confirm their ancestry rather than applying them twice.
 * Use the pinned public `kingsrook/qqq-orb@0.6.8`. Its reviewed successor work includes settings redaction, candidate-tag behavior, version calculations and tokenless frontend publishing. Confirm the exact runtime and dry-run version calculation before using publishing workflows.
 * Require the full reactor, sample, static analysis, both real-broker suites and default-entry-point acceptance against the intended source. A report-only green job does not satisfy strict acceptance. Every supported non-Next scenario must pass or have an exact, owner-approved deferral in `qqq-sample-project/release-deferrals.json`; a historical ledger note is not that approval.

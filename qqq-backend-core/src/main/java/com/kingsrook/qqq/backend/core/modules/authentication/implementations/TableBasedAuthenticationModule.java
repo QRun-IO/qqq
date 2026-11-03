@@ -88,6 +88,7 @@ public class TableBasedAuthenticationModule implements QAuthenticationModuleInte
    public static final String SESSION_ID_KEY   = "sessionId";
    public static final String SESSION_UUID_KEY = "sessionUUID";
    public static final String BASIC_AUTH_KEY   = "basicAuthString";
+   public static final String ACCESS_TOKEN_KEY = "accessToken";
 
    public static final String SESSION_ID_NOT_PROVIDED_ERROR = "Session ID was not provided";
 
@@ -141,6 +142,16 @@ public class TableBasedAuthenticationModule implements QAuthenticationModuleInte
       if(!StringUtils.hasContent(sessionUuid))
       {
          sessionUuid = context.get(SESSION_UUID_KEY);
+      }
+
+      ///////////////////////////////////////////////////////////////////////////////
+      // a native (non-browser) client sends the uuid it got from manageSession as //
+      // `Authorization: Bearer {sessionUUID}`, which arrives as the access token  //
+      // (QRun-IO/qqq#1342) - the same session, looked up the same way as a cookie //
+      ///////////////////////////////////////////////////////////////////////////////
+      if(!StringUtils.hasContent(sessionUuid) && !context.containsKey(BASIC_AUTH_KEY))
+      {
+         sessionUuid = context.get(ACCESS_TOKEN_KEY);
       }
 
       ///////////////////////////////////////////////////////////
@@ -378,7 +389,7 @@ public class TableBasedAuthenticationModule implements QAuthenticationModuleInte
 
       try
       {
-         LOG.debug("Re-validating session (validation interval passed, never set, or idle): " + session.getIdReference());
+         LOG.debug("Re-validating session (validation interval passed, never set, or idle)");
          revalidateSession(instance, session.getIdReference(), lastActivity.orElse(null));
          rememberValidation(session.getIdReference(), now);
          return (true);

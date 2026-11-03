@@ -241,6 +241,7 @@ public class HealthRunner implements AutoCloseable
                {
                   sync();
                }
+               refreshNodeLeases(now);
                closeAbandoned(now);
                List<Execution> executions = new ArrayList<>();
                for(QRecord check : HealthStore.query(HealthMetaDataProvider.CHECK_TABLE, new QQueryFilter()))
@@ -334,10 +335,10 @@ public class HealthRunner implements AutoCloseable
       Map<String, HealthCheckMetaData> resolved = new LinkedHashMap<>();
       for(HealthCheckMetaData check : HealthChecksMetaData.ofOrWithNew(qInstance).resolveAll(qInstance))
       {
-         resolved.put(check.getName(), check);
+         resolved.put(check.storageName(podId), check);
       }
       definitions = Map.copyOf(resolved);
-      new HealthCheckSync().sync(qInstance, List.copyOf(resolved.values()));
+      new HealthCheckSync().sync(qInstance, List.copyOf(resolved.values()), podId, clock.instant());
       lastSync = clock.instant();
    }
 
@@ -401,6 +402,54 @@ public class HealthRunner implements AutoCloseable
          if(!submitted)
          {
             capacity.release();
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Node leases are independent of probe results. An expired node is UNKNOWN,
+    ** never recovered by another replica; after one hour it is retired as history.
+    ** Compare-and-set prevents an expiration sweep overwriting a fresh heartbeat.
+    *******************************************************************************/
+   private void refreshNodeLeases(Instant now) throws QException
+   {
+      for(QRecord row : HealthStore.query(HealthMetaDataProvider.CHECK_TABLE, new QQueryFilter()))
+      {
+         String owner = row.getValueString("runnerPod");
+         if(owner == null || !Boolean.TRUE.equals(row.getValueBoolean("registered")))
+         {
+            continue;
+         }
+         HealthCheckMetaData definition = definitions.get(row.getValueString("name"));
+         if(podId.equals(owner) && definition != null)
+         {
+            HealthStore.update(HealthMetaDataProvider.CHECK_TABLE, new QRecord().withValue("id", row.getValue("id"))
+               .withValue("runnerLeaseExpiresAt", now.plusSeconds(Math.max(60L, definition.getIntervalSeconds() * 3L))));
+            continue;
+         }
+         Instant expires = row.getValueInstant("runnerLeaseExpiresAt");
+         if(expires == null || !now.isAfter(expires))
+         {
+            continue;
+         }
+         boolean retired = now.isAfter(expires.plusSeconds(3600));
+         if(!retired && HealthStatus.UNKNOWN.name().equals(row.getValueString("currentStatus")))
+         {
+            continue;
+         }
+         boolean changed = HealthStore.expireNode(row, expires, retired, now);
+         if(changed)
+         {
+            rollup(row.getValueString("component"), now);
+            if(retired)
+            {
+               for(String type : List.of("down", "degraded", "flapping"))
+               {
+                  QAlerts.resolve("health.check." + type, row.getValueString("name"), "Node lease expired; check retired, not recovered");
+               }
+            }
          }
       }
    }
@@ -487,6 +536,14 @@ public class HealthRunner implements AutoCloseable
          Exception redactedException = new Exception(outcome.getMessage());
          redactedException.setStackTrace(e.getCause().getStackTrace());
          LOG.debug("Health check threw an exception", redactedException, logPair("check", execution.definition().getName()));
+      }
+      if(execution.definition().getExecutionScope() == HealthCheckMetaData.ExecutionScope.NODE_LOCAL)
+      {
+         if(outcome.getDetails() == null)
+         {
+            outcome.withDetails(new HealthDetails());
+         }
+         outcome.getDetails().withValue("runnerPod", podId);
       }
       outcome = sanitize(outcome, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - execution.started()));
       cacheOutcome(execution.definition().getName(), outcome);

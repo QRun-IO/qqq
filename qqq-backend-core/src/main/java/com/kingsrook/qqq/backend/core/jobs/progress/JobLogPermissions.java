@@ -23,8 +23,11 @@ package com.kingsrook.qqq.backend.core.jobs.progress;
 
 
 import com.kingsrook.qqq.backend.core.actions.permissions.CustomPermissionChecker;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
+import com.kingsrook.qqq.backend.core.jobs.DurableJobsTables;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
@@ -40,7 +43,8 @@ import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 public class JobLogPermissions implements CustomPermissionChecker
 {
    /*******************************************************************************
-    ** Authorize reads with jobs_job.read; deny user writes regardless of role.
+    ** Authorize reads by the jobs_job table's read permission; deny user writes
+    ** regardless of role.
     *******************************************************************************/
    @Override
    public void checkPermissionsThrowing(AbstractActionInput input, MetaDataWithPermissionRules metadata) throws QPermissionDeniedException
@@ -50,7 +54,7 @@ public class JobLogPermissions implements CustomPermissionChecker
          return;
       }
       if(input instanceof InsertInput || input instanceof UpdateInput || input instanceof DeleteInput || input instanceof ConditionalUpdateInput
-         || !QContext.getQSession().hasPermission("jobs_job.read"))
+         || !PermissionsHelper.hasTablePermission(input, DurableJobsTables.TABLE_JOB, TablePermissionSubType.READ))
       {
          throw (new QPermissionDeniedException("Job logs are read-only."));
       }

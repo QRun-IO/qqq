@@ -17,6 +17,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+// SPDX-License-Identifier: Apache-2.0
 
 package com.kingsrook.qqq.backend.core.actions.processes;
 
@@ -44,6 +45,11 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
  *******************************************************************************/
 public final class ProcessStateAccess implements Serializable
 {
+   ///////////////////////////////////////////////////////////////////////////
+   // Preserve saved state written before the public identity accessor.     //
+   ///////////////////////////////////////////////////////////////////////////
+   private static final long serialVersionUID = 348552618397485945L;
+
    private final transient QInstance instance;
    private final String sessionHash;
    private final Map<String, Serializable> backendVariants;
@@ -77,6 +83,18 @@ public final class ProcessStateAccess implements Serializable
    public static ProcessStateAccess capture(String processName, String processUUID) throws QAuthenticationException
    {
       return new ProcessStateAccess(processName, processUUID);
+   }
+
+
+
+   /*******************************************************************************
+    ** Bind server-side application state to this authorized process instance,
+    ** rather than to a caller-editable value. This identifier is not a credential.
+    ******************************************************************************/
+   public String requireCurrentProcessUUID(String expectedName) throws QException
+   {
+      requireAccess(expectedName, processUUID);
+      return processUUID;
    }
 
 

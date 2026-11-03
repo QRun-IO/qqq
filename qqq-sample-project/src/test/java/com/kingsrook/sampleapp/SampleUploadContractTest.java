@@ -364,6 +364,7 @@ class SampleUploadContractTest
             .header("Content-Type", "multipart/form-data; boundary=OwnedMissingBoundary")
             .POST(HttpRequest.BodyPublishers.ofString("not a multipart body")).build(), HttpResponse.BodyHandlers.ofByteArray());
          statuses.add(response.statusCode());
+         assertEquals("close", response.headers().firstValue("Connection").orElse(""), path);
          assertTrue(new JSONObject(body(response)).has("error"), body(response));
          assertEquals(0, EXECUTIONS.get());
          assertTrue(snapshot().isEmpty());

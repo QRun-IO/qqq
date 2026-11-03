@@ -24,6 +24,7 @@ package com.kingsrook.qqq.backend.core.model.actions.reporting;
 import java.util.List;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
 
 
 /*******************************************************************************
@@ -34,6 +35,7 @@ public class ExportInput extends AbstractTableActionInput
    private QQueryFilter queryFilter;
    private Integer      limit;
    private List<String> fieldNames;
+   private List<QueryJoin> queryJoins;
 
    private ReportDestination reportDestination;
 
@@ -219,6 +221,40 @@ public class ExportInput extends AbstractTableActionInput
    public ExportInput withIncludeSensitiveFields(boolean includeSensitiveFields)
    {
       this.includeSensitiveFields = includeSensitiveFields;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for queryJoins - joins (as in a query) whose tables' fields may be
+    ** named (as joinTableOrAlias.fieldName) in fieldNames.  A joined field name
+    ** whose table is not one of these joins (or an exposed join) is joined
+    ** automatically (LEFT).
+    *******************************************************************************/
+   public List<QueryJoin> getQueryJoins()
+   {
+      return (this.queryJoins);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for queryJoins
+    *******************************************************************************/
+   public void setQueryJoins(List<QueryJoin> queryJoins)
+   {
+      this.queryJoins = queryJoins;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for queryJoins
+    *******************************************************************************/
+   public ExportInput withQueryJoins(List<QueryJoin> queryJoins)
+   {
+      this.queryJoins = queryJoins;
       return (this);
    }
 

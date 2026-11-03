@@ -82,7 +82,7 @@ class RDBMSHealthTest
                interval_seconds INTEGER, timeout_ms INTEGER, failure_threshold INTEGER, recovery_threshold INTEGER,
                consecutive_failures INTEGER, consecutive_successes INTEGER, last_latency_ms BIGINT,
                enabled BOOLEAN DEFAULT TRUE, registered BOOLEAN, flapping BOOLEAN,
-               current_since TIMESTAMP, last_run_at TIMESTAMP, next_due_at TIMESTAMP)
+               current_since TIMESTAMP, last_run_at TIMESTAMP, next_due_at TIMESTAMP, runner_pod VARCHAR(255), runner_lease_expires_at TIMESTAMP)
             """);
          statement.execute("""
             CREATE TABLE health_check_result (
@@ -238,6 +238,106 @@ class RDBMSHealthTest
       QRecord next = HealthStore.find(HealthMetaDataProvider.RESULT_TABLE, "slot", start.plusSeconds(312).getEpochSecond() / 10);
       assertThat(next.getValueString("runnerPod")).isEqualTo("B");
       assertThat(next.getValueString("status")).isEqualTo("UP");
+   }
+
+
+
+   /*******************************************************************************
+    ** A healthy replica must not recover pressure observed in another pod's pool.
+    *******************************************************************************/
+   @Test
+   void healthyReplicaCannotRecoverAnotherPodsPoolPressure() throws Exception
+   {
+      AtomicReference<HealthCheckOutcome> sample = new AtomicReference<>(HealthCheckOutcome.degraded("Pool A saturated"));
+      instance.withSupplementalMetaData(new HealthChecksMetaData().withNodeLocalChecksEnabled(true).withCheck(new HealthCheckMetaData()
+         .withName("test.pool").withExecutionScope(HealthCheckMetaData.ExecutionScope.NODE_LOCAL).withComponent("database").withIntervalSeconds(10).withTimeoutMs(1000)
+         .withFailureThreshold(1).withRecoveryThreshold(1).withCheckInstance(new HealthCheck()
+         {
+            /*******************************************************************
+             ** Each tick observes the pool local to its executing replica.
+             *******************************************************************/
+            @Override
+            public HealthCheckOutcome run(HealthCheckInput input)
+            {
+               return (sample.get());
+            }
+         })));
+      Instant start = Instant.parse("2026-10-14T12:00:00Z");
+      try(HealthRunner podA = new HealthRunner(instance, "A", Clock.fixed(start, ZoneOffset.UTC)).withRandom(new Random(1)))
+      {
+         podA.tick();
+      }
+      assertThat(HealthStore.find(HealthMetaDataProvider.CHECK_TABLE, "runnerPod", "A").getValueString("currentStatus")).isEqualTo("DEGRADED");
+      sample.set(HealthCheckOutcome.up("Pool B healthy"));
+      try(HealthRunner podB = new HealthRunner(instance, "B", Clock.fixed(start.plusSeconds(30), ZoneOffset.UTC)).withRandom(new Random(1)))
+      {
+         podB.tick();
+      }
+      assertThat(HealthStore.query(HealthMetaDataProvider.RESULT_TABLE, new QQueryFilter()))
+         .extracting(row -> row.getValueString("runnerPod")).containsExactly("A", "B");
+      assertThat(HealthStore.find(HealthMetaDataProvider.CHECK_TABLE, "runnerPod", "A").getValueString("currentStatus"))
+         .as("Pool A has not supplied a recovery sample").isEqualTo("DEGRADED");
+      assertThat(HealthStore.find(HealthMetaDataProvider.CHECK_TABLE, "runnerPod", "A").getValueBoolean("registered")).isTrue();
+      assertThat(HealthStore.find(HealthMetaDataProvider.COMPONENT_TABLE, "name", "database").getValueString("status")).isEqualTo("DEGRADED");
+
+      try(HealthRunner podB = new HealthRunner(instance, "B", Clock.fixed(start.plusSeconds(61), ZoneOffset.UTC)))
+      {
+         podB.tick();
+      }
+      QRecord staleA = HealthStore.find(HealthMetaDataProvider.CHECK_TABLE, "runnerPod", "A");
+      assertThat(staleA.getValueString("currentStatus")).isEqualTo("UNKNOWN");
+      assertThat(staleA.getValueBoolean("registered")).isTrue();
+      assertThat(HealthStore.find(HealthMetaDataProvider.COMPONENT_TABLE, "name", "database").getValueString("status")).isEqualTo("UNKNOWN");
+
+      try(HealthRunner podB = new HealthRunner(instance, "B", Clock.fixed(start.plusSeconds(3661), ZoneOffset.UTC)))
+      {
+         podB.tick();
+      }
+      assertThat(HealthStore.find(HealthMetaDataProvider.CHECK_TABLE, "runnerPod", "A").getValueBoolean("registered")).isFalse();
+      try(HealthRunner podA = new HealthRunner(instance, "A", Clock.fixed(start.plusSeconds(3671), ZoneOffset.UTC)))
+      {
+         podA.tick();
+      }
+      QRecord recoveredA = HealthStore.find(HealthMetaDataProvider.CHECK_TABLE, "runnerPod", "A");
+      assertThat(recoveredA.getValueBoolean("registered")).isTrue();
+      assertThat(recoveredA.getValueString("currentStatus")).isEqualTo("UP");
+      assertThat(HealthStore.expireNode(staleA, staleA.getValueInstant("runnerLeaseExpiresAt"), true, start.plusSeconds(4000))).isFalse();
+      assertThat(HealthStore.find(HealthMetaDataProvider.CHECK_TABLE, "runnerPod", "A").getValueString("currentStatus")).isEqualTo("UP");
+   }
+
+
+
+   /*******************************************************************************
+    ** Default-off activation produces no rows for an old binary to unregister.
+    *******************************************************************************/
+   @Test
+   void nodeLocalActivationIsExplicitAndSharedOnlySyncPreservesPeers() throws Exception
+   {
+      HealthCheckMetaData local = new HealthCheckMetaData().withName("test.pool").withComponent("database")
+         .withExecutionScope(HealthCheckMetaData.ExecutionScope.NODE_LOCAL).withCheckInstance(input -> HealthCheckOutcome.up("healthy"));
+      HealthChecksMetaData registry = new HealthChecksMetaData().withCheck(local);
+      instance.withSupplementalMetaData(registry);
+      assertThat(registry.resolveAll(instance)).isEmpty();
+      new HealthCheckSync().sync(instance);
+      assertThat(HealthStore.query(HealthMetaDataProvider.CHECK_TABLE, new QQueryFilter())).isEmpty();
+      registry.withNodeLocalChecksEnabled(true);
+      try(HealthRunner podA = new HealthRunner(instance, "A", Clock.fixed(Instant.parse("2026-10-14T12:00:00Z"), ZoneOffset.UTC)))
+      {
+         podA.tick();
+      }
+      new HealthCheckSync().sync(instance, List.of());
+      assertThat(HealthStore.find(HealthMetaDataProvider.CHECK_TABLE, "runnerPod", "A").getValueBoolean("registered")).isTrue();
+      registry.withNodeLocalChecksEnabled(false);
+      try(HealthRunner podA = new HealthRunner(instance, "A", Clock.fixed(Instant.parse("2026-10-14T12:00:30Z"), ZoneOffset.UTC)))
+      {
+         podA.tick();
+      }
+      assertThat(HealthStore.find(HealthMetaDataProvider.CHECK_TABLE, "runnerPod", "A").getValueBoolean("registered")).isTrue();
+      try(HealthRunner podA = new HealthRunner(instance, "A", Clock.fixed(Instant.parse("2026-10-14T14:00:00Z"), ZoneOffset.UTC)))
+      {
+         podA.tick();
+      }
+      assertThat(HealthStore.find(HealthMetaDataProvider.CHECK_TABLE, "runnerPod", "A").getValueBoolean("registered")).isFalse();
    }
 
 

@@ -23,9 +23,12 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.io.Serializable;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -203,6 +206,29 @@ class RealtimeSpecV1Test extends SpecTestBase
       {
          connection.disconnect();
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Event data keeps an empty list (and other empty values) on the stream, as
+    ** the JSON endpoints do; only nulls are omitted (#1354).
+    *******************************************************************************/
+   @Test
+   void eventDataKeepsEmptyValues()
+   {
+      Map<String, Serializable> data = new LinkedHashMap<>();
+      data.put("table", "person");
+      data.put("viewers", new ArrayList<>());
+      data.put("note", "");
+      data.put("missing", null);
+
+      JSONObject json = new JSONObject(RealtimeStreamSpecV1.toEventDataJson(data));
+      assertEquals("person", json.getString("table"));
+      assertTrue(json.has("viewers"), json.toString());
+      assertEquals(0, json.getJSONArray("viewers").length());
+      assertEquals("", json.getString("note"));
+      assertFalse(json.has("missing"), json.toString());
    }
 
 

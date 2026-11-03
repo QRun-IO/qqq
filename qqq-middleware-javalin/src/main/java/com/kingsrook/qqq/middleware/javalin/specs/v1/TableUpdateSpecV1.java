@@ -41,6 +41,7 @@ import com.kingsrook.qqq.middleware.javalin.specs.BasicOperation;
 import com.kingsrook.qqq.middleware.javalin.specs.BasicResponse;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.TableUpdateResponseV1;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.RecordConflictV1;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.utils.QuerySpecUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.utils.TagsV1;
 import com.kingsrook.qqq.openapi.model.Content;
 import com.kingsrook.qqq.openapi.model.Example;
@@ -101,7 +102,8 @@ public class TableUpdateSpecV1 extends AbstractEndpointSpec<TableUpdateInput, Ta
             .withRequired(true)
             .withSchema(new Schema().withType(Type.STRING))
             .withExample("42")
-            .withIn(In.PATH)
+            .withIn(In.PATH),
+         QuerySpecUtils.defineTableVariantQueryParameter("write to")
       );
    }
 
@@ -161,6 +163,7 @@ public class TableUpdateSpecV1 extends AbstractEndpointSpec<TableUpdateInput, Ta
       TableUpdateInput input     = new TableUpdateInput();
       String           tableName = getRequestParam(context, "tableName");
       input.setTableName(tableName);
+      input.setTableVariant(QuerySpecUtils.parseTableVariantParam(getRequestParam(context, "tableVariant")));
       input.setPrimaryKey(getRequestParam(context, "primaryKey"));
 
       UpdateInput updateInput = new UpdateInput(tableName).withInputSource(QInputSource.USER);

@@ -21,9 +21,11 @@
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
+import java.io.Serializable;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -204,7 +206,7 @@ public class RealtimeStreamSpecV1 extends AbstractEndpointSpec<RealtimeExecutor.
                   }
                   else
                   {
-                     client.sendEvent(frame.event(), JsonUtils.toJson(frame.data()), frame.id());
+                     client.sendEvent(frame.event(), toEventDataJson(frame.data()), frame.id());
                   }
                }
             }
@@ -222,6 +224,19 @@ public class RealtimeStreamSpecV1 extends AbstractEndpointSpec<RealtimeExecutor.
             }
          });
       });
+   }
+
+
+
+   /*******************************************************************************
+    ** Serialize an event's data for the stream.  Empty lists, maps and strings
+    ** are kept (as the JSON endpoints keep them), so a schema's non-nullable
+    ** array (e.g. presence viewers: []) holds on the stream too; only nulls are
+    ** omitted (JsonUtils' default, NON_EMPTY, dropped empty values - #1354).
+    *******************************************************************************/
+   static String toEventDataJson(Map<String, Serializable> data)
+   {
+      return (JsonUtils.toJsonCustomized(data, builder -> builder.serializationInclusion(JsonInclude.Include.NON_NULL)));
    }
 
 

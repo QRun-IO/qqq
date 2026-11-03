@@ -66,7 +66,18 @@ public class CancelProcessAction extends RunProcessAction
          throw (new QBadRequestException("Cannot cancel process - processUUID was not given."));
       }
 
-      UUIDAndTypeStateKey    stateKey     = new UUIDAndTypeStateKey(UUID.fromString(runProcessInput.getProcessUUID()), StateType.PROCESS_STATUS);
+      UUID processUUID;
+      try
+      {
+         processUUID = UUID.fromString(runProcessInput.getProcessUUID());
+      }
+      catch(IllegalArgumentException e)
+      {
+         throw (new QBadRequestException("Cannot cancel process - processUUID [" + runProcessInput.getProcessUUID() + "] is not a valid UUID.")
+            .withFieldError("processUUID", "Not a valid UUID."));
+      }
+
+      UUIDAndTypeStateKey    stateKey     = new UUIDAndTypeStateKey(processUUID, StateType.PROCESS_STATUS);
       Optional<ProcessState> processState = runProcessInput.getInputSource() == QInputSource.USER
          ? getStateForUser(runProcessInput.getProcessUUID(), runProcessInput.getProcessName()) : getState(runProcessInput.getProcessUUID());
       if(processState.isEmpty())
@@ -75,6 +86,16 @@ public class CancelProcessAction extends RunProcessAction
       }
 
       RunProcessOutput runProcessOutput = new RunProcessOutput();
+      if(processState.get().getIsCancelled())
+      {
+         //////////////////////////////////////////////////////////
+         // already cancelled - cancelling again is a no-op      //
+         // (the cancel step ran the first time)                 //
+         //////////////////////////////////////////////////////////
+         runProcessOutput.setProcessState(processState.get());
+         return (runProcessOutput);
+      }
+
       try
       {
          if(process.getCancelStep() != null)
@@ -100,9 +121,13 @@ public class CancelProcessAction extends RunProcessAction
       }
       finally
       {
-         //////////////////////////////////////////////////////
-         // always put the final state in the process result //
-         //////////////////////////////////////////////////////
+         //////////////////////////////////////////////////////////////////////
+         // cancelling is terminal: mark the state, so the run refuses any   //
+         // further steps (even if the cancel step failed); and always put   //
+         // the final state in the process result                            //
+         //////////////////////////////////////////////////////////////////////
+         processState.get().setIsCancelled(true);
+         storeState(stateKey, processState.get());
          runProcessOutput.setProcessState(processState.get());
       }
 

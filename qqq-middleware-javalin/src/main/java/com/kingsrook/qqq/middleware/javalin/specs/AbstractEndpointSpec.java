@@ -542,10 +542,20 @@ public abstract class AbstractEndpointSpec<
                      BadMessageException badMessage = ExceptionUtils.findClassInRootChain(e, BadMessageException.class);
                      if(badMessage != null && badMessage.getCode() == 400)
                      {
+                        // Multipart cleanup can fail after the response is sent.
+                        // Tell HTTP/1.1 clients to use a fresh connection next time.
+                        if("HTTP/1.1".equals(context.req().getProtocol()))
+                        {
+                           context.header("Connection", "close");
+                        }
                         throw new QRuntimeException(new QBadRequestException("Malformed multipart request", e));
                      }
                      throw e;
                   }
+               }
+               else if("application/x-www-form-urlencoded".equals(requestContentType))
+               {
+                  value = context.formParam(name);
                }
                else if(ContentType.APPLICATION_JSON.getMimeType().equals(requestContentType))
                {
@@ -586,7 +596,15 @@ public abstract class AbstractEndpointSpec<
       for(String key : jsonObject.keySet())
       {
          Object value = jsonObject.get(key);
-         if(value instanceof Serializable s)
+         if(JSONObject.NULL.equals(value))
+         {
+            /////////////////////////////////////////////////////////
+            // a JSON null is a cleared value (e.g. a field a user //
+            // emptied on a process screen), not an error          //
+            /////////////////////////////////////////////////////////
+            map.put(key, null);
+         }
+         else if(value instanceof Serializable s)
          {
             map.put(key, s);
          }

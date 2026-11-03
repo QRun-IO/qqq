@@ -63,7 +63,8 @@ components:
           type: "boolean"
       type: "object"
     EsbCounter:
-      description: "Activity counters since the server started."
+      description: "Activity counters since the server started.  A destination's consumption\
+        \ counters (consumed through lastError) are summed over its triggers."
       properties:
         published:
           description: "Messages published."

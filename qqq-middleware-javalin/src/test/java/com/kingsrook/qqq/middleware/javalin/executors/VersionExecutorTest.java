@@ -17,6 +17,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+// SPDX-License-Identifier: Apache-2.0
 
 package com.kingsrook.qqq.middleware.javalin.executors;
 
@@ -25,6 +26,7 @@ import java.util.List;
 import com.kingsrook.qqq.backend.core.actions.profile.UserProfileMetaDataProvider;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.jobs.DurableJobsMetaDataProvider;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
@@ -40,8 +42,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 
 /*******************************************************************************
- ** Unit test for VersionExecutor: the "avatars" feature is advertised only
- ** when the application installs user profiles.
+ ** Unit test for VersionExecutor: the "avatars", "durableJobs" and
+ ** "recordSearch" features are advertised only when something backs them.
  *******************************************************************************/
 class VersionExecutorTest
 {
@@ -59,6 +61,12 @@ class VersionExecutorTest
    {
       MemoryRecordStore.fullReset();
       qInstance = TestUtils.defineInstance();
+
+      ///////////////////////////////////////////////////////////////////////
+      // back durableJobs and recordSearch, so only avatars varies by test //
+      ///////////////////////////////////////////////////////////////////////
+      new DurableJobsMetaDataProvider().defineAll(qInstance, TestUtils.BACKEND_NAME_MEMORY, null);
+      qInstance.getTable(TestUtils.TABLE_NAME_PERSON).setSearchFields(List.of("firstName"));
       QContext.init(qInstance, new QSystemUserSession());
    }
 
@@ -86,7 +94,7 @@ class VersionExecutorTest
       VersionResponseV1 output = execute();
 
       assertThat(output.getFeatures()).doesNotContain(AVATARS);
-      List<String> expected = MiddlewareVersionV1.FEATURES.stream().filter(f -> !AVATARS.equals(f)).toList();
+      List<String> expected = MiddlewareVersionV1.FEATURES.stream().filter(f -> !AVATARS.equals(f) && !List.of("nativeSessionLogin", "nativeSessionLogout", "nativeSessionNonceValidation").contains(f)).toList();
       assertThat(output.getFeatures()).containsExactlyElementsOf(expected);
    }
 
@@ -105,7 +113,7 @@ class VersionExecutorTest
       VersionResponseV1 output = execute();
 
       assertThat(output.getFeatures()).contains(AVATARS);
-      assertThat(output.getFeatures()).containsExactlyElementsOf(MiddlewareVersionV1.FEATURES);
+      assertThat(output.getFeatures()).containsExactlyElementsOf(MiddlewareVersionV1.FEATURES.stream().filter(f -> !List.of("nativeSessionLogin", "nativeSessionLogout", "nativeSessionNonceValidation").contains(f)).toList());
    }
 
 
@@ -118,6 +126,28 @@ class VersionExecutorTest
    {
       assertThat(VersionExecutor.advertisedFeatures(List.of("tables", "version"))).containsExactly("tables", "version");
       assertThat(VersionExecutor.advertisedFeatures(List.of())).isEmpty();
+   }
+
+
+
+   /*******************************************************************************
+    ** Without the durable jobs tables (whose routes are then not bound), and
+    ** with no search provider or table with search fields, durableJobs and
+    ** recordSearch are not advertised (#1337, #1343).
+    *******************************************************************************/
+   @Test
+   void testUnbackedJobsAndSearchNotAdvertised() throws QException
+   {
+      QInstance bare = TestUtils.defineInstance();
+      bare.getTables().values().forEach(table -> table.setSearchFields(null));
+      QContext.init(bare, new QSystemUserSession());
+
+      VersionResponseV1 output = execute();
+      assertThat(output.getFeatures()).doesNotContain("durableJobs", "recordSearch");
+      assertThat(output.getFeatures()).contains("tables", "processes");
+
+      bare.getTable(TestUtils.TABLE_NAME_PERSON).setSearchFields(List.of("firstName"));
+      assertThat(execute().getFeatures()).contains("recordSearch").doesNotContain("durableJobs");
    }
 
 

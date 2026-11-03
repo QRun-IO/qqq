@@ -32,17 +32,25 @@ import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
+import com.kingsrook.qqq.backend.core.model.actions.audits.AuditInput;
+import com.kingsrook.qqq.backend.core.model.actions.processes.ProcessState;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReferenceLambda;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QBackendStepMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
+import com.kingsrook.qqq.backend.core.model.secrets.OneTimeSecret;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
@@ -124,6 +132,73 @@ public class RunBackendStepActionTest extends BaseTest
       assertThatThrownBy(() -> new RunBackendStepAction().execute(inputSupplier.get()))
          .isInstanceOf(QUserFacingException.class)
          .hasMessageContaining("Too many records");
+   }
+
+
+
+   /*******************************************************************************
+    ** A required input field with no value (and no callback to ask for it) is a
+    ** user-facing error naming the field (#1348).
+    *******************************************************************************/
+   @Test
+   void testMissingRequiredInputIsUserFacing()
+   {
+      QBackendStepMetaData step = (QBackendStepMetaData) QContext.getQInstance().getProcess(TestUtils.PROCESS_NAME_GREET_PEOPLE).getStep("prepare");
+      step.getInputMetaData().getFieldList().stream()
+         .filter(field -> "greetingPrefix".equals(field.getName()))
+         .forEach(field -> field.withIsRequired(true).withLabel("Greeting Prefix"));
+
+      RunBackendStepInput input = new RunBackendStepInput();
+      input.setProcessName(TestUtils.PROCESS_NAME_GREET_PEOPLE);
+      input.setStepName("prepare");
+      input.setRecords(List.of(new QRecord().withValue("firstName", "Darin")));
+
+      assertThatThrownBy(() -> new RunBackendStepAction().execute(input))
+         .isInstanceOf(QUserFacingException.class)
+         .hasMessageContaining("Missing values for required fields: Greeting Prefix");
+   }
+
+
+
+   /*******************************************************************************
+    ** A step that throws after setting partial output: the failed output carries
+    ** the original exception and none of the partial output (values, records,
+    ** secrets, audits) - but keeps the run's original ownership and step list.
+    *******************************************************************************/
+   @Test
+   void testThrownStepKeepsOwnershipAndDiscardsPartialOutput() throws QException
+   {
+      QException thrown = new QException("step failed on purpose");
+      QContext.getQInstance().addProcess(new QProcessMetaData().withName("throwingProcess")
+         .withStep(new QBackendStepMetaData().withName("boom").withCode(new QCodeReferenceLambda<BackendStep>((in, out) ->
+         {
+            out.addValue("partial", "should-not-be-kept");
+            out.setRecords(List.of(new QRecord().withValue("id", 1)));
+            out.addOneTimeSecret(new OneTimeSecret().withLabel("partial").withValue("partial-secret-value").withMasked("partial-masked"));
+            out.getAuditInputList().add(new AuditInput());
+            throw thrown;
+         }))));
+
+      ProcessStateAccess ownership = ProcessStateAccess.capture("throwingProcess", "some-uuid");
+      ProcessState       state     = new ProcessState();
+      state.setStateAccess(ownership);
+      state.setStepList(List.of("boom"));
+      state.getValues().put("before", "also-not-kept");
+
+      RunBackendStepInput input = new RunBackendStepInput(state);
+      input.setProcessName("throwingProcess");
+      input.setStepName("boom");
+
+      RunBackendStepOutput output = new RunBackendStepAction().execute(input);
+
+      assertSame(thrown, output.getException());
+      assertSame(ownership, output.getProcessState().getStateAccess());
+      assertEquals(List.of("boom"), output.getProcessState().getStepList());
+      assertTrue(output.getValues().isEmpty());
+      assertTrue(output.getRecords().isEmpty());
+      assertTrue(output.getOneTimeSecrets().isEmpty());
+      assertTrue(output.getAuditInputList().isEmpty());
+      assertFalse(output.getProcessState().getIsCancelled());
    }
 
 

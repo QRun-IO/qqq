@@ -89,11 +89,11 @@ public class HealthMetaDataProvider
 
       QTableMetaData checks = table(CHECK_TABLE, "Health Checks", backendName).withUniqueKey(new UniqueKey("name"));
       checks.withoutCapabilities(Capability.TABLE_INSERT, Capability.TABLE_DELETE);
-      fields(checks, QFieldType.STRING, "name", "label", "component", "category", "kind", "severity", "currentStatus", "currentMessage", "recentTransitionsJson");
+      fields(checks, QFieldType.STRING, "name", "label", "component", "category", "kind", "severity", "currentStatus", "currentMessage", "recentTransitionsJson", "runnerPod");
       fields(checks, QFieldType.INTEGER, "intervalSeconds", "timeoutMs", "failureThreshold", "recoveryThreshold", "consecutiveFailures", "consecutiveSuccesses");
       fields(checks, QFieldType.LONG, "lastLatencyMs");
       fields(checks, QFieldType.BOOLEAN, "enabled", "registered", "flapping");
-      fields(checks, QFieldType.DATE_TIME, "currentSince", "lastRunAt", "nextDueAt");
+      fields(checks, QFieldType.DATE_TIME, "currentSince", "lastRunAt", "nextDueAt", "runnerLeaseExpiresAt");
       checks.getField("category").withPossibleValueSourceName(HealthCategory.NAME);
       checks.getField("kind").withPossibleValueSourceName(HealthCheckKind.NAME);
       checks.getField("currentStatus").withPossibleValueSourceName(HealthStatus.NAME);
@@ -106,7 +106,7 @@ public class HealthMetaDataProvider
       {
          checks.getField(editable).setIsEditable(true);
       }
-      checks.withSection(new QFieldSection("identity", new QIcon("badge"), Tier.T1, List.of("id", "name", "label", "component", "category", "kind", "severity", "registered")))
+      checks.withSection(new QFieldSection("identity", new QIcon("badge"), Tier.T1, List.of("id", "name", "label", "component", "category", "kind", "severity", "registered", "runnerPod", "runnerLeaseExpiresAt")))
          .withSection(new QFieldSection("schedule", new QIcon("schedule"), Tier.T2, List.of("enabled", "intervalSeconds", "timeoutMs", "failureThreshold", "recoveryThreshold", "nextDueAt")))
          .withSection(new QFieldSection("currentState", new QIcon("monitor_heart"), Tier.T2, List.of("currentStatus", "currentMessage", "currentSince", "lastRunAt", "lastLatencyMs", "consecutiveFailures", "consecutiveSuccesses", "flapping")))
          .withAssociation(new Association().withName("results").withAssociatedTableName(RESULT_TABLE).withJoinName(RESULT_JOIN))
@@ -254,6 +254,14 @@ public class HealthMetaDataProvider
       for(QBackendMetaData backend : qInstance.getBackends().values())
       {
          HealthCheck check = new QBackendModuleDispatcher().getQBackendModule(backend).getHealthCheck(backend);
+         HealthCheck local = new QBackendModuleDispatcher().getQBackendModule(backend).getNodeLocalHealthCheck(backend);
+         if(local != null)
+         {
+            registry.withCheck(new HealthCheckMetaData().withName("core.pool." + HealthChecksMetaData.toNamePart(backend.getName()))
+               .withLabel("Connection pool " + backend.getName()).withComponent("database").withCategory(HealthCategory.DATABASE)
+               .withKind(HealthCheckKind.DEPENDENCY).withIntervalSeconds(30).withTimeoutMs(1000).withFailureThreshold(1)
+               .withExecutionScope(HealthCheckMetaData.ExecutionScope.NODE_LOCAL).withCheckInstance(local));
+         }
          if(check != null)
          {
             registry.withCheck(new HealthCheckMetaData().withName("core.database." + HealthChecksMetaData.toNamePart(backend.getName())).withLabel("Database " + backend.getName())

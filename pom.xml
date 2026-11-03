@@ -89,6 +89,9 @@
     <!-- ArchUnit (architecture rule tests) -->
     <archunit.version>1.4.1</archunit.version>
 
+    <!-- CVE-2026-102554 / GHSA-xxph-c9ww-hj94: bound Guava collection deserialization allocation. -->
+    <guava.version>33.7.2-jre</guava.version>
+
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     <maven.compiler.release>21</maven.compiler.release>
@@ -189,6 +192,11 @@
   <dependencyManagement>
     <dependencies>
       <!-- Align patched libraries across direct and transitive dependencies. -->
+      <dependency>
+        <groupId>com.google.guava</groupId>
+        <artifactId>guava</artifactId>
+        <version>${guava.version}</version>
+      </dependency>
       <!-- RabbitMQ JMS 3.9.0 still brings amqp-client 5.35.0; fix GHSA-7822-rcf6-97fx and GHSA-cqgh-8p3p-mx4m. -->
       <dependency>
         <groupId>com.rabbitmq</groupId>

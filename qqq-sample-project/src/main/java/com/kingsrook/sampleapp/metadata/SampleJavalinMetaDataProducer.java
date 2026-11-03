@@ -45,6 +45,11 @@ public class SampleJavalinMetaDataProducer extends MetaDataProducer<QJavalinMeta
    public QJavalinMetaData produce(QInstance qInstance) throws QException
    {
       return (new QJavalinMetaData()
+         ///////////////////////////////////////////////////////////////////
+         // process file uploads (e.g. bulk insert) are stored here       //
+         ///////////////////////////////////////////////////////////////////
+         .withUploadedFileArchiveTableName(UploadedFileArchiveTableMetaDataProducer.NAME)
+
          .withRouteProvider(new JavalinRouteProviderMetaData()
             .withHostedPath("/public")
             .withFileSystemPath("site/public"))

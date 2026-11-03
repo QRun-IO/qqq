@@ -28,6 +28,7 @@ import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.middleware.javalin.executors.io.EmptyMiddlewareOutputInterface;
 import com.kingsrook.qqq.middleware.javalin.executors.io.ProcessCancelInput;
+import com.kingsrook.qqq.middleware.javalin.executors.utils.ProcessExecutorUtils;
 
 
 /*******************************************************************************
@@ -46,6 +47,7 @@ public class ProcessCancelExecutor extends AbstractMiddlewareExecutor<ProcessCan
       // the process's state belongs to the variant the process started with //
       /////////////////////////////////////////////////////////////////////////
       ExecutorSessionUtils.setTableVariantInSession(input.getTableVariant());
+      ProcessExecutorUtils.requireValidProcessUUID(input.getProcessUUID());
 
       //////////////////////////////////////////////////////////////////////
       // only the session that ran the process may cancel it: another    //

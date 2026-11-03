@@ -45,6 +45,7 @@ import com.kingsrook.qqq.backend.core.actions.tables.CountAction;
 import com.kingsrook.qqq.backend.core.actions.values.QPossibleValueTranslator;
 import com.kingsrook.qqq.backend.core.actions.values.QValueFormatter;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.instances.QInstanceEnricher;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -179,8 +180,15 @@ public class ColumnStatsStep implements BackendStep
          permissionInput.setFilter(filter);
          permissionInput.setQueryJoins(queryJoin == null ? null : List.of(queryJoin));
          PermissionsHelper.checkJoinedTableReadPermissions(permissionInput, permissionInput.getQueryJoins(), filter);
-         FieldAccessHelper.PendingExactMatch exactMatch = runBackendStepInput.isFieldAccessEnforced()
-            ? FieldAccessHelper.assertCriteriaAllowed(tableName, permissionInput.getQueryJoins(), filter, List.of(fieldName)) : null;
+
+         ////////////////////////////////////////////////////////////////////////////////
+         // statistics expose values (min, max, the most common values), so they are   //
+         // only for a field the caller may read in full, and the filter gets the same //
+         // check a query's would.  checked whether or not this run enforces field     //
+         // access: the results are aggregates, which process-record field access      //
+         // cannot judge value by value.                                               //
+         ////////////////////////////////////////////////////////////////////////////////
+         FieldAccessHelper.PendingExactMatch exactMatch = FieldAccessHelper.assertCriteriaAllowed(tableName, permissionInput.getQueryJoins(), filter, List.of(fieldName));
 
          ///////////////////////////////////////////////////////////////////////////////////////////
          // get the config for this table, if there is one -                                      //
@@ -278,7 +286,7 @@ public class ColumnStatsStep implements BackendStep
             }
 
             Integer count = ValueUtils.getValueAsInteger(result.getAggregateValue(aggregate));
-            valueCounts.add(new QRecord().withValue(fieldName, value).withValue("count", count));
+            valueCounts.add(new QRecord().withTableName(tableName).withValue(fieldName, value).withValue("count", count));
          }
 
          //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -365,7 +373,7 @@ public class ColumnStatsStep implements BackendStep
             fields.add(maxField);
          }
 
-         QRecord statsRecord = new QRecord();
+         QRecord statsRecord = new QRecord().withTableName(tableName);
 
          if(valueCounts.size() < limit)
          {
@@ -501,6 +509,10 @@ public class ColumnStatsStep implements BackendStep
 
          runBackendStepOutput.addValue("statsFields", fields);
          runBackendStepOutput.addValue("statsRecord", statsRecord);
+      }
+      catch(QPermissionDeniedException e)
+      {
+         throw (e);
       }
       catch(Exception e)
       {

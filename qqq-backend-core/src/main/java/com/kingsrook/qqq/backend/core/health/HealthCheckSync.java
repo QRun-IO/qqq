@@ -21,6 +21,7 @@
 package com.kingsrook.qqq.backend.core.health;
 
 
+import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -51,19 +52,39 @@ public class HealthCheckSync
     *******************************************************************************/
    List<HealthCheckMetaData> sync(QInstance qInstance, List<HealthCheckMetaData> definitions) throws QException
    {
+      return (sync(qInstance, definitions, null, Instant.now()));
+   }
+
+
+
+   /*******************************************************************************
+    ** Only the owner registers a local definition; absent nodes retire by lease.
+    *******************************************************************************/
+   List<HealthCheckMetaData> sync(QInstance qInstance, List<HealthCheckMetaData> definitions, String podId, Instant now) throws QException
+   {
       synchronized(HealthStore.lockFor(qInstance))
       {
          Set<String> names = new HashSet<>();
          for(HealthCheckMetaData definition : definitions)
          {
-            names.add(definition.getName());
-            QRecord existing = HealthStore.find(HealthMetaDataProvider.CHECK_TABLE, "name", definition.getName());
-            QRecord identity = new QRecord().withValue("name", definition.getName())
+            boolean local = definition.getExecutionScope() == HealthCheckMetaData.ExecutionScope.NODE_LOCAL;
+            if(local && podId == null)
+            {
+               continue;
+            }
+            String name = definition.storageName(podId);
+            names.add(name);
+            QRecord existing = HealthStore.find(HealthMetaDataProvider.CHECK_TABLE, "name", name);
+            QRecord identity = new QRecord().withValue("name", name).withValue("runnerPod", local ? podId : null)
                .withValue("label", HealthRedactor.redact(definition.getLabel() == null ? definition.getName() : definition.getLabel()))
                .withValue("component", definition.getComponent()).withValue("category", definition.getCategory().name())
                .withValue("kind", definition.getKind().name()).withValue("severity", definition.getSeverity().name()).withValue("registered", true);
             if(existing == null)
             {
+               if(local)
+               {
+                  identity.withValue("runnerLeaseExpiresAt", now.plusSeconds(Math.max(60, definition.getIntervalSeconds() * 3L)));
+               }
                try
                {
                   HealthStore.insert(HealthMetaDataProvider.CHECK_TABLE, new QRecord(identity).withValue("currentStatus", HealthStatus.UNKNOWN.name())
@@ -72,7 +93,7 @@ public class HealthCheckSync
                catch(QException e)
                {
                   // Another pod may have inserted the definition while this pod resolved it.
-                  existing = HealthStore.find(HealthMetaDataProvider.CHECK_TABLE, "name", definition.getName());
+                  existing = HealthStore.find(HealthMetaDataProvider.CHECK_TABLE, "name", name);
                   if(existing == null)
                   {
                      throw e;
@@ -86,7 +107,7 @@ public class HealthCheckSync
          }
          for(QRecord row : HealthStore.query(HealthMetaDataProvider.CHECK_TABLE, new QQueryFilter()))
          {
-            if(!names.contains(row.getValueString("name")))
+            if(!names.contains(row.getValueString("name")) && row.getValueString("runnerPod") == null)
             {
                HealthStore.update(HealthMetaDataProvider.CHECK_TABLE, new QRecord().withValue("id", row.getValue("id")).withValue("registered", false));
             }

@@ -1,0 +1,26 @@
+name: QRun Core
+on:
+  push:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  release:
+    permissions:
+      contents: read
+      actions: read
+    uses: self:KofTwentyTwo/platform-ci/.gitea/workflows/qrun-core-release.yaml@qrun-release-v1
+    with:
+      runner: linux-small
+      docker-runner: container-build
+      java-version: '21'
+      browsers: true
+  postpublish:
+    needs: release
+    if: ${{ success() && needs.release.outputs.capture == 'true' }}
+    permissions:
+      contents: write
+      actions: read
+    uses: self:KofTwentyTwo/platform-ci/.gitea/workflows/qrun-core-source-version.yaml@qrun-release-v1
+    with:
+      runner: linux-small

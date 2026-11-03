@@ -22,10 +22,14 @@ package com.kingsrook.qqq.backend.core.logging;
 
 
 import java.io.Serializable;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -724,7 +728,7 @@ public class QLogger
 
             LogPair variantsLogPair = getVariantsLogPair(session);
 
-            sessionLogPair = logPair("session", logPair("id", session.getUuid()), logPair("user", user), variantsLogPair);
+            sessionLogPair = logPair("session", logPair("id", sessionCorrelation(session.getUuid())), logPair("user", user), variantsLogPair);
          }
 
          try
@@ -739,6 +743,30 @@ public class QLogger
             logPairList = new ArrayList<>(logPairList);
             logPairList.add(sessionLogPair);
          }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Keep stable diagnostic correlation without exposing a replayable session
+    ** credential. Domain separation prevents reuse as an unrelated UUID digest.
+    *******************************************************************************/
+   private static String sessionCorrelation(String uuid)
+   {
+      if(uuid == null)
+      {
+         return ("unknown");
+      }
+      try
+      {
+         byte[] digest = MessageDigest.getInstance("SHA-256")
+            .digest(("qqq.log.session.v1:" + uuid).getBytes(StandardCharsets.UTF_8));
+         return ("sha256:" + HexFormat.of().formatHex(digest));
+      }
+      catch(NoSuchAlgorithmException e)
+      {
+         return ("unknown");
       }
    }
 

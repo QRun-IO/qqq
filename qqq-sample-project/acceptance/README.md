@@ -19,7 +19,7 @@ python3 "$QQQ_SOURCE/qqq-sample-project/acceptance/run_starter_application.py" \
   --starter-source "$QQQ_STARTER_SOURCE" \
   --template-source "$QQQ_TEMPLATE_SOURCE" \
   --maven-repo /tmp/qqq-acceptance-m2 \
-  --live-mysql \
+  --live-postgres \
   --junit-dir "$QQQ_SOURCE/qqq-sample-project/target/starter-application-junit"
 ```
 
@@ -49,14 +49,46 @@ the current QQQ source checkout. It records generated QBit and starter JUnit
 reports plus a live-runner JUnit case under `target/starter-application-junit`.
 The source release gate requires both inventory rows to pass from those reports.
 
-`--live-mysql` requires Docker, the local `mysql:8.4` image, Java and free
-loopback ports 3306 and 8000. It creates and removes a disposable container,
-seeds its schema, packages and starts the copied starter, and performs real
-HTTP CRUD. Deletes must report one deleted record and leave no readable or
-queryable row. A separate live JUnit test proves an allowed insert persists
-and a denied insert returns 403 without a DB write. The runner then probes
-missing child schema, an unavailable DB, and absent DB environment variables.
-Every check is required when `--live-mysql` is selected. Without this switch,
-the runner covers compilation, metadata and no-DB auth behavior only; that
-shorter run is not generated-consumer acceptance. The #607/#608 source rows
-are mapped to the live reports. Published-artifact acceptance remains pending.
+`--live-postgres` requires Docker, the `postgres:17-alpine` image (the one the
+PostgreSQL module and sample integration tests use), Java and free loopback
+port 8000. Nothing is prepared by hand: the runner starts a disposable
+PostgreSQL container with a random password and a Docker-assigned host port,
+waits until it accepts connections, loads `starter-application-postgres.sql`,
+packages and starts the copied starter, and performs real HTTP CRUD. Deletes
+must report one deleted record and leave no readable or queryable row. A
+separate live JUnit test proves an allowed insert persists and a denied insert
+returns 403 without a DB write. The runner then probes a missing child table,
+an unavailable DB, and absent DB environment variables. Every check is required
+when `--live-postgres` is selected. The container is removed on success and on
+failure, and a cleanup problem is only reported as a warning, never in place of
+the failure being diagnosed. Without this switch, the runner covers compilation,
+metadata and no-DB auth behavior only; that shorter run is not generated-consumer
+acceptance. The #607/#608 source rows are mapped to the live reports
+(`sourceGeneratedPostgresCrudAndNegativeProbes`). Published-artifact acceptance
+remains pending. `--live-mysql`, `--mysql-host` and `--mysql-bind-address` no
+longer exist and fail with a message naming the replacement.
+
+The upstream starter's own RDBMS backend only builds MySQL and H2 connections, so
+for this run the disposable copy of the starter (never the checkout) also gets
+the `qqq-backend-module-postgres` dependency and builds a
+`PostgreSQLBackendMetaData` when `RDBMS_VENDOR` is `postgres`. The runner installs
+that module into the dedicated Maven cache with the other candidate modules.
+
+The database endpoint is applied in two places that must agree: the packaged
+server's process environment and the Surefire `environmentVariables` block of the
+copied starter's pom (which overrides the Maven process environment and is what
+the live permission test JVM reads). The runner rewrites and re-reads the copy's
+six `RDBMS_*` values and fails if the pom does not declare one of them.
+
+The address the acceptance process uses to reach the published database port is
+chosen like Testcontainers does for the sample integration tests:
+`TESTCONTAINERS_HOST_OVERRIDE`, then the host of a `tcp://` `DOCKER_HOST`, then
+the default gateway when the process itself runs in a container, then
+127.0.0.1. The runner checks that the published port accepts connections from
+the acceptance process before building, and fails with the host and port when it
+does not. Pass `--postgres-host` only when that discovery is wrong for a Docker
+setup, and `--postgres-bind-address` only to change where the Docker host
+publishes the port (default 127.0.0.1 for a loopback database host, otherwise
+0.0.0.0, protected by the random password). The application still uses local
+port 8000. Original source checkouts remain unchanged, and all live acceptance
+checks are still required.

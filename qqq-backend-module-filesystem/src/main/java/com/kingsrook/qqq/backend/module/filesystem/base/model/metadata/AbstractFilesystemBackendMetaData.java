@@ -21,7 +21,10 @@
 package com.kingsrook.qqq.backend.module.filesystem.base.model.metadata;
 
 
+import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 
 
 /*******************************************************************************
@@ -73,6 +76,23 @@ public class AbstractFilesystemBackendMetaData extends QBackendMetaData
    {
       this.basePath = basePath;
       return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Every table on a filesystem backend needs filesystem table backend details
+    ** (cardinality, record format or contents field, glob, etc.): the actions
+    ** read them unconditionally, so a table without them would fail on every
+    ** query rather than at startup.
+    *******************************************************************************/
+   @Override
+   public void performTableValidation(QInstance qInstance, QTableMetaData table, QInstanceValidator qInstanceValidator)
+   {
+      if(qInstanceValidator.assertCondition(table.getBackendDetails() != null, "Table " + table.getName() + " on filesystem backend " + getName() + " has no backend details: give it filesystem table backend details (cardinality, record format, glob) with withBackendDetails."))
+      {
+         qInstanceValidator.assertCondition(table.getBackendDetails() instanceof AbstractFilesystemTableBackendDetails, "Table " + table.getName() + " on filesystem backend " + getName() + " has backend details of type " + table.getBackendDetails().getClass().getSimpleName() + ", but filesystem table backend details are required.");
+      }
    }
 
 

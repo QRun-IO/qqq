@@ -53,6 +53,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QStepMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
+import com.kingsrook.qqq.backend.core.utils.StringUtils;
 
 
 /*******************************************************************************
@@ -165,7 +166,8 @@ public class RunBackendStepAction
             // but if any required fields ARE missing, then that's an error. //
             ///////////////////////////////////////////////////////////////////
             LOG.info("Missing value for required fields: " + requiredFieldsMissing.stream().map(QFieldMetaData::getName).collect(Collectors.joining(", ")));
-            throw (new QUserFacingException("Missing values for one or more fields",
+            String fieldLabels = requiredFieldsMissing.stream().map(f -> StringUtils.hasContent(f.getLabel()) ? f.getLabel() : f.getName()).collect(Collectors.joining(", "));
+            throw (new QUserFacingException("Missing values for required fields: " + fieldLabels + ".",
                new QException("Function is missing values for fields, but no callback was present to request fields from a user")));
          }
 
@@ -300,9 +302,18 @@ public class RunBackendStepAction
    private RunBackendStepOutput runStepCode(QCodeReference code, RunBackendStepInput runBackendStepInput)
    {
       RunBackendStepOutput runBackendStepOutput = new RunBackendStepOutput();
+      ProcessStateAccess   ownership            = null;
+      List<String>         stepList             = null;
       try
       {
          runBackendStepOutput.seedFromRequest(runBackendStepInput);
+
+         ///////////////////////////////////////////////////////////////////////////////////
+         // the step edits the seeded state in place, so take what a failure must keep    //
+         // (ownership, step list) now, before any of the step's own changes are in it    //
+         ///////////////////////////////////////////////////////////////////////////////////
+         ownership = runBackendStepOutput.getProcessState().getStateAccess();
+         stepList = runBackendStepOutput.getProcessState().getStepList() == null ? null : new ArrayList<>(runBackendStepOutput.getProcessState().getStepList());
 
          Object codeObject;
          if(code instanceof QCodeReferenceLambda<?> qCodeReferenceLambda)
@@ -324,7 +335,17 @@ public class RunBackendStepAction
       }
       catch(Exception e)
       {
+         ///////////////////////////////////////////////////////////////////////////////////
+         // a failed step publishes none of its partial output (values, records, secrets, //
+         // audits).  but the stored state must stay owned by, and identified with, this  //
+         // process run - or its owner could never cancel or resume it.                   //
+         ///////////////////////////////////////////////////////////////////////////////////
          runBackendStepOutput = new RunBackendStepOutput();
+         runBackendStepOutput.getProcessState().setStateAccess(ownership);
+         if(stepList != null)
+         {
+            runBackendStepOutput.getProcessState().setStepList(stepList);
+         }
          runBackendStepOutput.setException(e);
          LOG.info("Error running backend step code", e);
       }

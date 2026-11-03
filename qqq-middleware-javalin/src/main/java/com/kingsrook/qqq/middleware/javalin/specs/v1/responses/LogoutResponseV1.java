@@ -17,10 +17,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+// SPDX-License-Identifier: Apache-2.0
 
 package com.kingsrook.qqq.middleware.javalin.specs.v1.responses;
 
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.kingsrook.qqq.backend.core.modules.authentication.implementations.NativeSessionLogoutData;
 import com.kingsrook.qqq.middleware.javalin.executors.io.LogoutOutputInterface;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 
@@ -30,5 +33,28 @@ import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
  *******************************************************************************/
 public class LogoutResponseV1 implements LogoutOutputInterface, ToSchema
 {
+   @JsonInclude(JsonInclude.Include.NON_NULL)
+   private NativeSessionLogoutData nativeLogoutData;
+
+
+
+   /*******************************************************************************
+    ** Deliberate sensitive response, never part of ordinary session metadata.
+    *******************************************************************************/
+   public NativeSessionLogoutData getNativeLogoutData()
+   {
+      return (nativeLogoutData);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set only after authoritative local session invalidation.
+    *******************************************************************************/
+   @Override
+   public void setNativeLogoutData(NativeSessionLogoutData nativeLogoutData)
+   {
+      this.nativeLogoutData = nativeLogoutData;
+   }
 
 }

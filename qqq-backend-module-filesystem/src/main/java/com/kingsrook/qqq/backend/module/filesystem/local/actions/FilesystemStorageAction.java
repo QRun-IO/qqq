@@ -28,6 +28,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import com.kingsrook.qqq.backend.core.actions.interfaces.QStorageInterface;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
@@ -98,18 +99,38 @@ public class FilesystemStorageAction extends AbstractFilesystemAction implements
    {
       QTableMetaData table = storageInput.getTable();
       QBackendMetaData backend = storageInput.getBackend();
-      File base = new File(getFullBasePath(table, backend)).getCanonicalFile();
       String reference = storageInput.getReference();
-      if(reference == null || reference.isBlank() || new File(reference).isAbsolute())
+      if(reference == null || reference.isBlank())
       {
          throw new QBadRequestException("Storage reference must be a relative file path");
       }
-      File file = new File(base, reference).getCanonicalFile();
-      if(file.equals(base) || !file.toPath().startsWith(base.toPath()))
+      Path referencePath;
+      try
+      {
+         referencePath = Path.of(reference);
+      }
+      catch(InvalidPathException ignored)
+      {
+         throw new QBadRequestException("Storage reference must be a relative file path");
+      }
+      if(referencePath.getRoot() != null)
+      {
+         throw new QBadRequestException("Storage reference must be a relative file path");
+      }
+      for(Path component : referencePath)
+      {
+         if("..".equals(component.toString()))
+         {
+            throw new QBadRequestException("Storage reference must not contain parent directory segments");
+         }
+      }
+      Path base = resolveExistingPath(Path.of(getFullBasePath(table, backend)));
+      Path file = resolveExistingPath(base.resolve(referencePath));
+      if(file.equals(base) || !file.startsWith(base))
       {
          throw new QBadRequestException("Storage reference must remain inside its table directory");
       }
-      return file.getPath();
+      return file.toString();
    }
 
 

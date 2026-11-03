@@ -30,6 +30,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
@@ -137,6 +138,35 @@ class TableQuerySpecV1Test extends SpecTestBase
       assertThat(record.getJSONObject("values").getString("lastName")).isEqualTo("Kelkhoff");
       assertThat(record.getJSONObject("displayValues").getString("lastName")).isEqualTo("Kelkhoff");
       assertThat(record.getJSONObject("displayValues").getString("pet.name")).isIn(List.of("Chester", "Lucy"));
+   }
+
+
+
+   /*******************************************************************************
+    ** A criterion's options are read: CASE_INSENSITIVE makes CONTAINS match
+    ** regardless of case on H2 (case-sensitive without it); an unknown option is
+    ** a 400 (#1358).
+    *******************************************************************************/
+   @Test
+   void testCaseInsensitiveOption()
+   {
+      String criterion = """
+         {"filter":{"criteria":[{"fieldName":"lastName","operator":"CONTAINS","values":["kelk"]%s}]}}""";
+
+      HttpResponse<String> without = Unirest.post(getBaseUrlAndPath() + "/table/person/query")
+         .contentType(ContentType.APPLICATION_JSON.getMimeType()).body(criterion.formatted("")).asString();
+      assertEquals(200, without.getStatus(), without.getBody());
+      assertEquals(0, JsonUtils.toJSONObject(without.getBody()).getJSONArray("records").length());
+
+      HttpResponse<String> with = Unirest.post(getBaseUrlAndPath() + "/table/person/query")
+         .contentType(ContentType.APPLICATION_JSON.getMimeType()).body(criterion.formatted(",\"options\":[\"CASE_INSENSITIVE\"]")).asString();
+      assertEquals(200, with.getStatus(), with.getBody());
+      assertThat(JsonUtils.toJSONObject(with.getBody()).getJSONArray("records").length()).isGreaterThan(0);
+
+      HttpResponse<String> unknown = Unirest.post(getBaseUrlAndPath() + "/table/person/query")
+         .contentType(ContentType.APPLICATION_JSON.getMimeType()).body(criterion.formatted(",\"options\":[\"SHOUTY\"]")).asString();
+      assertEquals(400, unknown.getStatus(), unknown.getBody());
+      assertThat(unknown.getBody()).contains("SHOUTY");
    }
 
 
@@ -316,7 +346,7 @@ class TableQuerySpecV1Test extends SpecTestBase
             .contentType(ContentType.APPLICATION_JSON.getMimeType())
             .body(JsonUtils.toJson(Map.of("filter", new QQueryFilter(new QFilterCriteria("createDate", QCriteriaOperator.IS_NOT_BLANK)))))
             .asString();
-         assertEquals(500, response.getStatus()); // might be better as 400...
+         assertEquals(400, response.getStatus());
          JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
          assertEquals("Query Filter contained 1 unrecognized field name: createDate", jsonObject.getString("error"));
       }
@@ -324,6 +354,24 @@ class TableQuerySpecV1Test extends SpecTestBase
       {
          TestUtils.TablePersonalizer.unregister(serverQInstance);
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Sorting by a field the table does not have is a 400, not a 500 (#1363).
+    *******************************************************************************/
+   @Test
+   void testOrderByUnknownFieldIsBadRequest()
+   {
+      HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/table/person/query")
+         .contentType(ContentType.APPLICATION_JSON.getMimeType())
+         .body(JsonUtils.toJson(Map.of("filter", new QQueryFilter().withOrderBy(new QFilterOrderBy("nosuchfield")))))
+         .asString();
+      assertEquals(400, response.getStatus(), response.getBody());
+      JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
+      assertEquals("Query Filter contained 1 unrecognized field name: nosuchfield", jsonObject.getString("error"));
+      assertEquals("BAD_REQUEST", jsonObject.getString("code"));
    }
 
 }

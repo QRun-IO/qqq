@@ -61,7 +61,7 @@ public class EsbUiApiSchemas
    {
       Map<String, Schema> rs = new LinkedHashMap<>();
 
-      rs.put(COUNTER, object("Activity counters since the server started.",
+      rs.put(COUNTER, object("Activity counters since the server started.  A destination's consumption counters (consumed through lastError) are summed over its triggers.",
          "published", integer("Messages published."),
          "publishFailures", integer("Publish attempts that failed."),
          "consumed", integer("Messages consumed."),

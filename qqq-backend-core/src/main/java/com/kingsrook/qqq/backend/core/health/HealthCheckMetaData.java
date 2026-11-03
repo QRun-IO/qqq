@@ -31,6 +31,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
  *******************************************************************************/
 public class HealthCheckMetaData implements QMetaDataObject
 {
+   private ExecutionScope executionScope = ExecutionScope.SHARED;
    private String name;
    private String label;
    private String component;
@@ -513,5 +514,61 @@ public class HealthCheckMetaData implements QMetaDataObject
    {
       setCheckInstance(checkInstance);
       return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Shared checks observe a service; node-local checks observe one JVM resource.
+    *******************************************************************************/
+   public enum ExecutionScope
+   {
+      SHARED, NODE_LOCAL
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for executionScope.
+    *******************************************************************************/
+   public ExecutionScope getExecutionScope()
+   {
+      return (executionScope);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for executionScope; existing definitions remain shared by default.
+    *******************************************************************************/
+   public void setExecutionScope(ExecutionScope executionScope)
+   {
+      this.executionScope = executionScope == null ? ExecutionScope.SHARED : executionScope;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for executionScope.
+    *******************************************************************************/
+   public HealthCheckMetaData withExecutionScope(ExecutionScope executionScope)
+   {
+      setExecutionScope(executionScope);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Stable, bounded storage identity without mutating the shared definition.
+    *******************************************************************************/
+   public String storageName(String podId)
+   {
+      if(executionScope == ExecutionScope.SHARED)
+      {
+         return (name);
+      }
+      String identity = name + "\u0000" + java.util.Objects.requireNonNull(podId);
+      return (name.substring(0, Math.min(180, name.length())) + ".pod." + java.util.UUID.nameUUIDFromBytes(identity.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
    }
 }

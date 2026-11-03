@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerInterface;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.personalization.TableMetaDataPersonalizerInput;
@@ -200,6 +201,29 @@ class FilterValidationHelperTest extends BaseTest
       queryInput.setFilter(new QQueryFilter(new QFilterCriteria("noSuchField", QCriteriaOperator.EQUALS, "x")));
 
       assertThrows(QUserFacingException.class, () -> FilterValidationHelper.validateFieldNamesInFilter(queryInput));
+   }
+
+
+
+   /*******************************************************************************
+    ** An unknown field in a criteria or an order-by is a client error (400), not
+    ** an internal one (#1363).
+    *******************************************************************************/
+   @Test
+   void testUnknownFieldsAreBadRequests()
+   {
+      QueryInput orderByInput = new QueryInput(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withFilter(new QQueryFilter().withOrderBy(new QFilterOrderBy("noSuchField")));
+      QBadRequestException orderByException = assertThrows(QBadRequestException.class, () -> FilterValidationHelper.validateFieldNamesInFilter(orderByInput));
+      assertEquals("Query Filter contained 1 unrecognized field name: noSuchField", orderByException.getMessage());
+
+      QueryInput criteriaInput = new QueryInput(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withFilter(new QQueryFilter(new QFilterCriteria("noSuchField", QCriteriaOperator.EQUALS, "x")));
+      assertThrows(QBadRequestException.class, () -> FilterValidationHelper.validateFieldNamesInFilter(criteriaInput));
+
+      CountInput countInput = new CountInput(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withFilter(new QQueryFilter().withOrderBy(new QFilterOrderBy("noSuchField")));
+      assertThrows(QBadRequestException.class, () -> FilterValidationHelper.validateFieldNamesInFilter(countInput));
    }
 
 

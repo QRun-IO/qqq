@@ -21,12 +21,16 @@
 package com.kingsrook.qqq.middleware.javalin.executors.io;
 
 
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.TableVariant;
+
+
 /*******************************************************************************
  **
  *******************************************************************************/
 public class TableDeleteInput extends AbstractMiddlewareInput
 {
    private String tableName;
+   private TableVariant tableVariant;
    private String primaryKey;
 
 
@@ -94,6 +98,37 @@ public class TableDeleteInput extends AbstractMiddlewareInput
    public TableDeleteInput withPrimaryKey(String primaryKey)
    {
       this.primaryKey = primaryKey;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for tableVariant
+    *******************************************************************************/
+   public TableVariant getTableVariant()
+   {
+      return (tableVariant);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for tableVariant
+    *******************************************************************************/
+   public void setTableVariant(TableVariant tableVariant)
+   {
+      this.tableVariant = tableVariant;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for tableVariant
+    *******************************************************************************/
+   public TableDeleteInput withTableVariant(TableVariant tableVariant)
+   {
+      this.tableVariant = tableVariant;
       return (this);
    }
 

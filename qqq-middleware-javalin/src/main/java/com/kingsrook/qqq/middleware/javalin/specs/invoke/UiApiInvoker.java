@@ -299,12 +299,12 @@ public class UiApiInvoker
          throw (new QException("JSON and multipart bodies are mutually exclusive"));
       }
       ///////////////////////////////////////////////////////////////////////////
-      // form fields go as multipart when the operation declares only a        //
-      // multipart body (e.g. process step): specs read params only from a     //
-      // content type they declare                                             //
+      // form fields go as multipart when the operation declares a multipart   //
+      // body (e.g. process init and step, which also accept url-encoded       //
+      // fields): specs read params only from a content type they declare     //
       ///////////////////////////////////////////////////////////////////////////
       boolean formAsMultipart = request.getFormParams() != null && request.getJsonBody() == null
-         && declaresMultipartBody(operation) && !declaresBodyType(operation, "application/x-www-form-urlencoded");
+         && declaresMultipartBody(operation);
       if(!request.getMultipartFiles().isEmpty() || formAsMultipart)
       {
          String boundary = "qqq-" + UUID.randomUUID();

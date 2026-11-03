@@ -35,6 +35,33 @@ public class RealtimeMessage implements Serializable
 {
    private String channel;
    private String event;
+   private String audience;
+
+   /***************************************************************************
+    ** Optional server-assigned audience; absent preserves ordinary channel routing.
+    ***************************************************************************/
+   public String getAudience()
+   {
+      return (audience);
+   }
+
+   /***************************************************************************
+    ** Set the audience retained by distributed buses and server replay buffers.
+    ***************************************************************************/
+   public void setAudience(String audience)
+   {
+      this.audience = audience;
+   }
+
+   /***************************************************************************
+    ** Assign an audience which requires a registered event-specific authorizer.
+    ***************************************************************************/
+   public RealtimeMessage withAudience(String audience)
+   {
+      setAudience(audience);
+      return (this);
+   }
+
    private Map<String, Serializable> data = new LinkedHashMap<>();
    private String id = UUID.randomUUID().toString();
    private Instant at = Instant.now();

@@ -57,6 +57,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.state.StateType;
 import com.kingsrook.qqq.backend.core.state.UUIDAndTypeStateKey;
 import com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager;
+import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
+import com.kingsrook.qqq.middleware.javalin.QJavalinMetaData;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
 import io.javalin.Javalin;
 import org.json.JSONArray;
@@ -312,6 +314,30 @@ class SampleInteractiveProcessTest
     *******************************************************************************/
    @Test
    void testVersionedUploadsWithoutAnArchiveTableAreRefused() throws Exception
+   {
+      ///////////////////////////////////////////////////////////////////////
+      // the shipped sample names an archive table (QRun-IO/qqq#784), so   //
+      // take it away for this refusal check                               //
+      ///////////////////////////////////////////////////////////////////////
+      QJavalinMetaData javalinMetaData = QJavalinImplementation.getJavalinMetaData();
+      String archiveTableName = javalinMetaData.getUploadedFileArchiveTableName();
+      javalinMetaData.setUploadedFileArchiveTableName(null);
+      try
+      {
+         assertUploadsWithoutAnArchiveTableAreRefused();
+      }
+      finally
+      {
+         javalinMetaData.setUploadedFileArchiveTableName(archiveTableName);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private void assertUploadsWithoutAnArchiveTableAreRefused() throws Exception
    {
       List<String> before = people();
       for(String name : List.of("ownedUploadInit", "ownedUploadStep"))

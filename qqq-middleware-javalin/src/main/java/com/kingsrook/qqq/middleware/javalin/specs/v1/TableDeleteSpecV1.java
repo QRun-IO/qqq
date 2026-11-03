@@ -30,6 +30,7 @@ import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
 import com.kingsrook.qqq.middleware.javalin.specs.BasicOperation;
 import com.kingsrook.qqq.middleware.javalin.specs.BasicResponse;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.TableDeleteResponseV1;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.utils.QuerySpecUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.utils.TagsV1;
 import com.kingsrook.qqq.openapi.model.Example;
 import com.kingsrook.qqq.openapi.model.HttpMethod;
@@ -83,7 +84,8 @@ public class TableDeleteSpecV1 extends AbstractEndpointSpec<TableDeleteInput, Ta
             .withRequired(true)
             .withSchema(new Schema().withType(Type.STRING))
             .withExample("42")
-            .withIn(In.PATH)
+            .withIn(In.PATH),
+         QuerySpecUtils.defineTableVariantQueryParameter("delete from")
       );
    }
 
@@ -97,6 +99,7 @@ public class TableDeleteSpecV1 extends AbstractEndpointSpec<TableDeleteInput, Ta
    {
       TableDeleteInput input = new TableDeleteInput();
       input.setTableName(getRequestParam(context, "tableName"));
+      input.setTableVariant(QuerySpecUtils.parseTableVariantParam(getRequestParam(context, "tableVariant")));
       input.setPrimaryKey(getRequestParam(context, "primaryKey"));
       return (input);
    }

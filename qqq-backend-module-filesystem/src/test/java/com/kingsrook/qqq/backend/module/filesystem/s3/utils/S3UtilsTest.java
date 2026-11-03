@@ -37,6 +37,24 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  *******************************************************************************/
 public class S3UtilsTest extends BaseS3Test
 {
+   /*******************************************************************************
+    ** Object keys are POSIX strings, not host paths or form-encoded file URIs.
+    *******************************************************************************/
+   @Test
+   void testLiteralKeysAndGlobSyntax() throws Exception
+   {
+      S3Utils utils = getS3Utils();
+      String prefix = "portable[1]+(v2)";
+      String name = "space + % é.csv";
+      utils.writeFile(BUCKET_NAME, prefix + "/" + name, "portable".getBytes(StandardCharsets.UTF_8), "text/plain");
+      assertEquals(1, utils.listObjectsInBucketMatchingGlob(BUCKET_NAME, prefix, "*.{csv,json}").size());
+      assertEquals(0, utils.listObjectsInBucketMatchingGlob(BUCKET_NAME, prefix, "*.CSV").size());
+      assertEquals(1, utils.listObjectsInBucketMatchingGlob(BUCKET_NAME, prefix, name).size());
+      assertEquals(prefix + "/" + name, utils.listObjectsInBucketMatchingGlob(BUCKET_NAME, prefix, "[s-z]*.csv").get(0).getKey());
+   }
+
+
+
 
    /*******************************************************************************
     **

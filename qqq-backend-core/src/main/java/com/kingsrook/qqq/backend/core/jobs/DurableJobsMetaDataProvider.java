@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.function.Consumer;
 import com.kingsrook.qqq.backend.core.actions.ai.AiFieldMetaData;
 import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
+import com.kingsrook.qqq.backend.core.actions.permissions.AvailablePermission;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.jobs.effects.EffectStatus;
 import com.kingsrook.qqq.backend.core.jobs.effects.JobEffectType;
@@ -51,6 +52,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinOn;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinType;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.QJoinMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.DeclaredPermissionsMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.PossibleValueEnum;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
@@ -65,6 +67,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.UniqueKey;
 import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.assist.BulkLoadUploadSources;
 import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.DEFAULT_MAX_ATTEMPTS;
 import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.DEFAULT_PRIORITY;
+import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.PERMISSION_ADMIN;
 import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.SECURITY_KEY_USER;
 import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.SECURITY_KEY_USER_ALL_ACCESS;
 import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.TABLE_CHUNK;
@@ -145,6 +148,13 @@ public class DurableJobsMetaDataProvider
          instance.addProcess(process);
       }
       JobEffectReviewProcesses.defineAll().forEach(instance::addProcess);
+
+      ///////////////////////////////////////////////////////////////////////////////
+      // jobs_admin (see any job, control any job) belongs to no table or process, //
+      // so declare it - else permission listings would never offer it             //
+      ///////////////////////////////////////////////////////////////////////////////
+      DeclaredPermissionsMetaData.ofOrWithNew(instance).withPermission(new AvailablePermission()
+         .withName(PERMISSION_ADMIN).withObjectName("Jobs").withObjectType("Jobs").withPermissionType("Admin"));
    }
 
 

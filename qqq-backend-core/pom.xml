@@ -53,6 +53,12 @@
       <!-- none, this is core.  -->
 
       <!-- 3rd party deps specifically for this module -->
+      <!-- Used directly by process state, file downloads, classpath lookup and FluentList.
+           Declare it here so consumers also select the parent's patched Guava version. -->
+      <dependency>
+         <groupId>com.google.guava</groupId>
+         <artifactId>guava</artifactId>
+      </dependency>
       <!-- Security: Migrated from commons-lang 2.6 to commons-lang3 (no fix available for 2.x) -->
       <dependency>
          <groupId>org.apache.commons</groupId>

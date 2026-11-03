@@ -66,6 +66,8 @@ public class TableUpdateExecutor extends AbstractMiddlewareExecutor<TableUpdateI
    {
       try
       {
+         ExecutorSessionUtils.setTableVariantInSession(input.getTableVariant());
+
          UpdateInput updateInput = new UpdateInput();
          updateInput.setTableName(input.getTableName());
          updateInput.setInputSource(QInputSource.USER);

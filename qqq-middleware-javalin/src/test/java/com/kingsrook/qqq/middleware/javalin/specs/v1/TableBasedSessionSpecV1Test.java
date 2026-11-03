@@ -202,6 +202,41 @@ class TableBasedSessionSpecV1Test extends SpecTestBase
 
 
    /*******************************************************************************
+    ** A native client (no cookie jar) signs in with Basic credentials, then sends
+    ** the session uuid as `Authorization: Bearer` on secured calls and on logout
+    ** (QRun-IO/qqq#1342); an unknown or ended uuid is refused.
+    *******************************************************************************/
+   @Test
+   void testNativeClientBearerSessionUuid() throws QException
+   {
+      HttpResponse<String> signIn = Unirest.post(getBaseUrlAndPath() + "/manageSession")
+         .header("Authorization", "Basic " + basic(USERNAME, PASSWORD))
+         .header("Content-Type", "application/json")
+         .body("{}")
+         .asString();
+      assertEquals(200, signIn.getStatus());
+      String uuid = JsonUtils.toJSONObject(signIn.getBody()).getString("uuid");
+
+      HttpResponse<String> count = Unirest.post(getBaseUrlAndPath() + "/table/person/count")
+         .header("Authorization", "Bearer " + uuid)
+         .asString();
+      assertEquals(200, count.getStatus(), count.getBody());
+      assertEquals(1, sessionCount(), "a bearer call must reuse the session, not sign in again");
+
+      assertEquals(401, Unirest.post(getBaseUrlAndPath() + "/table/person/count").header("Authorization", "Bearer not-a-session").asString().getStatus());
+
+      HttpResponse<String> logout = Unirest.post(getBaseUrlAndPath() + "/logout")
+         .header("Authorization", "Bearer " + uuid)
+         .asString();
+      assertEquals(200, logout.getStatus());
+      assertEquals(0, sessionCount());
+
+      assertEquals(401, Unirest.post(getBaseUrlAndPath() + "/table/person/count").header("Authorization", "Bearer " + uuid).asString().getStatus());
+   }
+
+
+
+   /*******************************************************************************
     ** An empty manageSession request resumes the session named by the
     ** sessionUUID cookie, without echoing its uuid, so a dashboard can resume an
     ** HttpOnly session; without a valid cookie it is refused (QRun-IO/qqq#733).

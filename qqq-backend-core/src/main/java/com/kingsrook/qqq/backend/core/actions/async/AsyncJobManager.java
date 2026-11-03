@@ -99,18 +99,26 @@ public class AsyncJobManager
       {
          asyncJobStatus.setStateAccess(ProcessStateAccess.capture(jobName, processUUID));
       }
-      AsyncJobRegistry.register(jobUUID, asyncJobStatus);
-      AsyncJobRegistry.store(jobUUID, asyncJobStatus, true);
-
+      CompletableFuture<T> future;
       try
       {
+         AsyncJobRegistry.register(jobUUID, asyncJobStatus);
+         AsyncJobRegistry.store(jobUUID, asyncJobStatus, true);
          CapturedContext capturedContext = QContext.capture();
-         CompletableFuture<T> future = CompletableFuture.supplyAsync(() ->
+         future = CompletableFuture.supplyAsync(() ->
          {
             QContext.init(capturedContext);
             return (runAsyncJob(jobName, asyncJob, uuidAndTypeStateKey, asyncJobStatus));
          }, executorService);
+      }
+      catch(RuntimeException | Error e)
+      {
+         AsyncJobRegistry.unregister(jobUUID);
+         throw e;
+      }
 
+      try
+      {
          if(timeout == 0)
          {
             throw (new JobGoingAsyncException(uuidAndTypeStateKey.getUuid().toString()));

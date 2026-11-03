@@ -17,6 +17,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+// SPDX-License-Identifier: Apache-2.0
 
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
@@ -39,7 +40,7 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
     ** and PATCH for fixes (UiApiContractTest enforces it); a breaking change
     ** needs a new URL version (/qqq/v2).
     ***************************************************************************/
-   public static final String SEMANTIC_VERSION = "1.8.0";
+   public static final String SEMANTIC_VERSION = "1.10.0";
 
    /***************************************************************************
     ** Optional core features, published by GET /version.
@@ -47,7 +48,7 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
    public static final List<String> FEATURES = List.of(
       "metaData", "tables", "recordSearch", "tableVariants", "recordDeveloper", "possibleValues",
       "widgets", "processes", "processCancel", "reports", "exports", "downloads", "version", "extensions", "recordFeatures", "realtime",
-      "help", "preferences", "durableJobs", "delivery", "avatars");
+      "help", "preferences", "durableJobs", "delivery", "avatars", "nativeSessionLogin", "nativeSessionLogout", "nativeSessionNonceValidation");
 
    private final List<AbstractEndpointSpec<?, ?, ?>> list = new ArrayList<>();
 

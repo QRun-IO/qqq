@@ -49,7 +49,7 @@ class SFTPTestConnectionActionTest extends BaseSFTPTest
          .withUsername(BaseSFTPTest.USERNAME)
          .withPassword(BaseSFTPTest.PASSWORD)
          .withPort(BaseSFTPTest.getCurrentPort())
-         .withHostName(BaseSFTPTest.HOST_NAME);
+         .withHostName(BaseSFTPTest.getCurrentHost());
       SFTPTestConnectionAction.SFTPTestConnectionTestOutput output = new SFTPTestConnectionAction().testConnection(input);
       assertTrue(output.getIsConnectionSuccess());
       assertNull(output.getConnectionErrorMessage());
@@ -69,7 +69,7 @@ class SFTPTestConnectionActionTest extends BaseSFTPTest
          .withUsername(BaseSFTPTest.USERNAME)
          .withPassword(BaseSFTPTest.PASSWORD)
          .withPort(BaseSFTPTest.getCurrentPort())
-         .withHostName(BaseSFTPTest.HOST_NAME)
+         .withHostName(BaseSFTPTest.getCurrentHost())
          .withBasePath(BaseSFTPTest.BACKEND_FOLDER);
       SFTPTestConnectionAction.SFTPTestConnectionTestOutput output = new SFTPTestConnectionAction().testConnection(input);
       assertTrue(output.getIsConnectionSuccess());
@@ -90,7 +90,7 @@ class SFTPTestConnectionActionTest extends BaseSFTPTest
          .withUsername(BaseSFTPTest.USERNAME)
          .withPassword(BaseSFTPTest.PASSWORD)
          .withPort(BaseSFTPTest.getCurrentPort())
-         .withHostName(BaseSFTPTest.HOST_NAME)
+         .withHostName(BaseSFTPTest.getCurrentHost())
          .withBasePath("no-such-path");
       SFTPTestConnectionAction.SFTPTestConnectionTestOutput output = new SFTPTestConnectionAction().testConnection(input);
       assertTrue(output.getIsConnectionSuccess());
@@ -111,7 +111,7 @@ class SFTPTestConnectionActionTest extends BaseSFTPTest
          .withUsername("not-" + BaseSFTPTest.USERNAME)
          .withPassword(BaseSFTPTest.PASSWORD)
          .withPort(BaseSFTPTest.getCurrentPort())
-         .withHostName(BaseSFTPTest.HOST_NAME);
+         .withHostName(BaseSFTPTest.getCurrentHost());
       SFTPTestConnectionAction.SFTPTestConnectionTestOutput output = new SFTPTestConnectionAction().testConnection(input);
       assertFalse(output.getIsConnectionSuccess());
       assertNotNull(output.getConnectionErrorMessage());
@@ -131,7 +131,7 @@ class SFTPTestConnectionActionTest extends BaseSFTPTest
          .withUsername(BaseSFTPTest.USERNAME)
          .withPassword("not-" + BaseSFTPTest.PASSWORD)
          .withPort(BaseSFTPTest.getCurrentPort())
-         .withHostName(BaseSFTPTest.HOST_NAME);
+         .withHostName(BaseSFTPTest.getCurrentHost());
       SFTPTestConnectionAction.SFTPTestConnectionTestOutput output = new SFTPTestConnectionAction().testConnection(input);
       assertFalse(output.getIsConnectionSuccess());
       assertNotNull(output.getConnectionErrorMessage());
@@ -151,7 +151,7 @@ class SFTPTestConnectionActionTest extends BaseSFTPTest
          .withUsername(BaseSFTPTest.USERNAME)
          .withPassword(BaseSFTPTest.PASSWORD)
          .withPort(BaseSFTPTest.getCurrentPort())
-         .withHostName("not-" + BaseSFTPTest.HOST_NAME);
+         .withHostName("not-" + BaseSFTPTest.getCurrentHost());
       SFTPTestConnectionAction.SFTPTestConnectionTestOutput output = new SFTPTestConnectionAction().testConnection(input);
       assertFalse(output.getIsConnectionSuccess());
       assertNotNull(output.getConnectionErrorMessage());
@@ -171,7 +171,7 @@ class SFTPTestConnectionActionTest extends BaseSFTPTest
          .withUsername(BaseSFTPTest.USERNAME)
          .withPassword(BaseSFTPTest.PASSWORD)
          .withPort(10 * BaseSFTPTest.getCurrentPort())
-         .withHostName(BaseSFTPTest.HOST_NAME);
+         .withHostName(BaseSFTPTest.getCurrentHost());
       SFTPTestConnectionAction.SFTPTestConnectionTestOutput output = new SFTPTestConnectionAction().testConnection(input);
       assertFalse(output.getIsConnectionSuccess());
       assertNotNull(output.getConnectionErrorMessage());
@@ -195,7 +195,7 @@ class SFTPTestConnectionActionTest extends BaseSFTPTest
             .withUsername(BaseSFTPTest.USERNAME)
             .withPrivateKey(privateKeyBytes)
             .withPort(BaseSFTPTest.getCurrentPort())
-            .withHostName(BaseSFTPTest.HOST_NAME);
+            .withHostName(BaseSFTPTest.getCurrentHost());
          SFTPTestConnectionAction.SFTPTestConnectionTestOutput output = new SFTPTestConnectionAction().testConnection(input);
          assertTrue(output.getIsConnectionSuccess());
          assertNull(output.getConnectionErrorMessage());

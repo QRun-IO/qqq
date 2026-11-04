@@ -6,7 +6,7 @@ Updated: 2026-11-04. The user resumed work on Core, Collaboration and Next UI in
 
 This branch integrates server-controlled script isolation, early record hooks, transactional durable-job enlistment, source guards, atomic expected-version checks and confirmed JDBC rollback callbacks. It preserves the existing standard QQQ action and UI API boundaries. Core does not execute untrusted TypeScript itself.
 
-The resume pass corrected rollback-only handling so a failed required operation retains resource compensation until confirmed rollback. A regression test demonstrated the failure before the fix. A second test covers a lost acknowledgement after a successful physical commit: cleanup must not run in that uncertain case. Existing tests were reconciled with advancing record versions and concealed job ownership. Static HTTP fixtures now use LF line endings on all platforms.
+The resume pass corrected rollback-only handling so a failed required operation retains resource compensation until confirmed rollback. A regression test demonstrated the failure before the fix. A second test covers a lost acknowledgement after a successful physical commit: cleanup must not run in that uncertain case. Existing tests were reconciled with advancing record versions and concealed job ownership. Static HTTP fixtures now use LF line endings on all platforms. Downstream browser verification also found that the dashboard policy blocked reading local, receipt-verified PDF blobs; `connect-src` now explicitly permits `blob:` while the preview loader still validates the same-origin source. The full Javalin module passed all 853 tests and style/coverage gates again after this correction.
 
 ## Verification
 

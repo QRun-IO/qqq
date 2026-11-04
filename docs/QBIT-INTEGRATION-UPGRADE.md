@@ -15,6 +15,7 @@ Applications that install the Jobs tables must also apply the three nullable Job
 - A required transactional listener poisons its transaction on failure. A caller cannot catch the failure and commit partial work. Ordinary post hooks are not after-commit hooks.
 - Configured record versions advance on ordinary updates. Clients should use the returned version for the next expected-version guard. Realtime notifications include the changed version field. Timestamp versions can advance by one millisecond beyond the wall clock to distinguish successive writes.
 - JDBC transactions expose rollback callbacks for resource cleanup. Marking a transaction rollback-only retains those callbacks until confirmed rollback. A failed physical commit discards them because its outcome may be uncertain; cleanup must not delete potentially committed files.
+- Dashboard PDF previews need `blob:` in CSP `connect-src` to read locally verified bytes. The Javalin default and matching standalone Next UI policy supply it; hosts replacing the complete policy must preserve that source. This does not authorize arbitrary authenticated API destinations.
 - Backends without confirmed rollback callbacks refuse that capability. Backend shutdown hooks run after application service cleanup.
 
 ## Local verification

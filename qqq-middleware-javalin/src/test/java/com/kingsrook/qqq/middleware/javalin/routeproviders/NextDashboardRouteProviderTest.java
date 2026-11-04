@@ -174,7 +174,7 @@ class NextDashboardRouteProviderTest
       assertEquals(200, login.statusCode());
       String expectedPolicy = "default-src 'self'; "
          + "script-src 'self' " + sha256("(self.__next_f=self.__next_f||[]).push([0])") + " " + sha256("self.__next_f.push([1,\"login\"])") + "; "
-         + "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; "
+         + "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' blob:; frame-src 'self'; "
          + "worker-src 'self' blob:; manifest-src 'self'; media-src 'self' data: blob:; object-src 'none'; base-uri 'self'; "
          + "form-action 'self'; frame-ancestors 'none'";
       assertEquals(expectedPolicy, header(login, "Content-Security-Policy"));
@@ -221,7 +221,7 @@ class NextDashboardRouteProviderTest
 
       NextDashboardRouteProvider provider = new NextDashboardRouteProvider("test-next-dashboard");
       provider.setQInstance(qInstance);
-      assertEquals(Set.of("'self'", "https://idp.example.com", "https://tenant.auth0.example:8443"), provider.getSecurityHeaders().getSources("connect-src"));
+      assertEquals(Set.of("'self'", "blob:", "https://idp.example.com", "https://tenant.auth0.example:8443"), provider.getSecurityHeaders().getSources("connect-src"));
       assertEquals(Set.of("'self'"), provider.getSecurityHeaders().getSources("frame-src"));
 
       qInstance.addWidget(new QWidgetMetaData().withName("sales").withType(WidgetType.QUICK_SIGHT_CHART.getType()));
@@ -238,13 +238,13 @@ class NextDashboardRouteProviderTest
       String base = start(provider);
       assertThat(header(get(base + "/login/"), "Content-Security-Policy"))
          .contains("script-src 'self' https://cdn.example.com 'sha256-")
-         .contains("connect-src 'self' https://idp.example.com https://tenant.auth0.example:8443;")
+         .contains("connect-src 'self' blob: https://idp.example.com https://tenant.auth0.example:8443;")
          .contains("frame-src 'self' https://*.quicksight.aws.amazon.com;");
 
       QInstance mock = new QInstance();
       mock.withInstanceDefaultAuthentication(new QAuthenticationMetaData().withName("mock").withType(QAuthenticationType.MOCK));
       provider.setQInstance(mock);
-      assertEquals(Set.of("'self'"), provider.getSecurityHeaders().getSources("connect-src"));
+      assertEquals(Set.of("'self'", "blob:"), provider.getSecurityHeaders().getSources("connect-src"));
    }
 
 
@@ -316,25 +316,25 @@ class NextDashboardRouteProviderTest
       provider.setQInstance(instanceWithEnvironment(Map.of("GOOGLE_ANALYTICS_ENABLED", "true", "GOOGLE_ANALYTICS_TRACKING_ID", "G-OWNED")));
       assertThat(provider.getSecurityHeaders().getSources("script-src")).containsExactly("'self'", "https://www.googletagmanager.com");
       assertThat(provider.getSecurityHeaders().getSources("connect-src"))
-         .containsExactly("'self'", "https://www.googletagmanager.com", "https://*.google-analytics.com", "https://*.analytics.google.com");
+         .containsExactly("'self'", "blob:", "https://www.googletagmanager.com", "https://*.google-analytics.com", "https://*.analytics.google.com");
       assertEquals(Set.of("'self'"), provider.getSecurityHeaders().getSources("frame-src"));
       assertThat(header(get(base + "/login/"), "Content-Security-Policy"))
          .contains("script-src 'self' https://www.googletagmanager.com 'sha256-")
-         .contains("connect-src 'self' https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com;");
+         .contains("connect-src 'self' blob: https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com;");
 
       ////////////////////////////////////////////////////////////////////
       // PostHog: the default US cloud host, its assets host for scripts //
       ////////////////////////////////////////////////////////////////////
       provider.setQInstance(instanceWithEnvironment(Map.of("POSTHOG_ENABLED", "true", "POSTHOG_API_KEY", "phc_owned")));
-      assertThat(provider.getSecurityHeaders().getSources("connect-src")).containsExactly("'self'", "https://us.i.posthog.com");
+      assertThat(provider.getSecurityHeaders().getSources("connect-src")).containsExactly("'self'", "blob:", "https://us.i.posthog.com");
       assertThat(provider.getSecurityHeaders().getSources("script-src")).containsExactly("'self'", "https://us-assets.i.posthog.com");
 
       provider.setQInstance(instanceWithEnvironment(Map.of("POSTHOG_ENABLED", "true", "POSTHOG_PROJECT_API_KEY", "phc_owned", "POSTHOG_HOST", "https://EU.i.posthog.com/")));
-      assertThat(provider.getSecurityHeaders().getSources("connect-src")).containsExactly("'self'", "https://eu.i.posthog.com");
+      assertThat(provider.getSecurityHeaders().getSources("connect-src")).containsExactly("'self'", "blob:", "https://eu.i.posthog.com");
       assertThat(provider.getSecurityHeaders().getSources("script-src")).containsExactly("'self'", "https://eu-assets.i.posthog.com");
 
       provider.setQInstance(instanceWithEnvironment(Map.of("POSTHOG_ENABLED", "true", "POSTHOG_API_KEY", "phc_owned", "POSTHOG_HOST", "https://i.posthog.com")));
-      assertThat(provider.getSecurityHeaders().getSources("connect-src")).containsExactly("'self'", "https://i.posthog.com");
+      assertThat(provider.getSecurityHeaders().getSources("connect-src")).containsExactly("'self'", "blob:", "https://i.posthog.com");
       assertThat(provider.getSecurityHeaders().getSources("script-src")).containsExactly("'self'", "https://assets.i.posthog.com");
 
       ///////////////////////////////////////////////////////////////////
@@ -342,7 +342,7 @@ class NextDashboardRouteProviderTest
       // both the API and the script                                   //
       ///////////////////////////////////////////////////////////////////
       provider.setQInstance(instanceWithEnvironment(Map.of("POSTHOG_ENABLED", "true", "POSTHOG_API_KEY", "phc_owned", "POSTHOG_HOST", "http://127.0.0.1:18995/ingest")));
-      assertThat(provider.getSecurityHeaders().getSources("connect-src")).containsExactly("'self'", "http://127.0.0.1:18995");
+      assertThat(provider.getSecurityHeaders().getSources("connect-src")).containsExactly("'self'", "blob:", "http://127.0.0.1:18995");
       assertThat(provider.getSecurityHeaders().getSources("script-src")).containsExactly("'self'", "http://127.0.0.1:18995");
 
       //////////////////////////////////////////////////////////////////////
@@ -351,7 +351,7 @@ class NextDashboardRouteProviderTest
       //////////////////////////////////////////////////////////////////////
       provider.setQInstance(instanceWithEnvironment(Map.of("ANALYTICS_PLUGIN_SCRIPT_URLS", "https://cdn.example.com/a.js\n/local/b.js; https://plugins.example.org:8443/c.js")));
       assertThat(provider.getSecurityHeaders().getSources("script-src")).containsExactly("'self'", "https://cdn.example.com", "https://plugins.example.org:8443");
-      assertEquals(Set.of("'self'"), provider.getSecurityHeaders().getSources("connect-src"));
+      assertEquals(Set.of("'self'", "blob:"), provider.getSecurityHeaders().getSources("connect-src"));
 
       Map<String, String> everything = new LinkedHashMap<>();
       everything.put("ANALYTICS_PROVIDERS", " Google , PostHog , owned ");
@@ -364,7 +364,7 @@ class NextDashboardRouteProviderTest
       QInstance qInstance = instanceWithEnvironment(everything);
       qInstance.withInstanceDefaultAuthentication(new OAuth2AuthenticationMetaData().withBaseUrl("https://idp.example.com").withName("oauth2"));
       provider.setQInstance(qInstance);
-      assertThat(provider.getSecurityHeaders().getSources("connect-src")).containsExactly("'self'", "https://idp.example.com",
+      assertThat(provider.getSecurityHeaders().getSources("connect-src")).containsExactly("'self'", "blob:", "https://idp.example.com",
          "https://www.googletagmanager.com", "https://*.google-analytics.com", "https://*.analytics.google.com", "https://us.i.posthog.com");
       assertThat(provider.getSecurityHeaders().getSources("script-src")).containsExactly("'self'",
          "https://www.googletagmanager.com", "https://us-assets.i.posthog.com", "https://cdn.example.com");
@@ -431,7 +431,7 @@ class NextDashboardRouteProviderTest
       HttpResponse<String> login = get(base + "/login/");
       assertThat(header(login, "Content-Security-Policy"))
          .contains("img-src 'self' data: blob: https://cdn.example.com;")
-         .contains("connect-src 'self' https://idp.example.com;")
+         .contains("connect-src 'self' blob: https://idp.example.com;")
          .endsWith("frame-ancestors 'self'");
       assertEquals("SAMEORIGIN", header(login, "X-Frame-Options"));
       assertNull(header(login, "Permissions-Policy"));
@@ -440,7 +440,7 @@ class NextDashboardRouteProviderTest
       qInstance.withInstanceDefaultAuthentication(new OAuth2AuthenticationMetaData().withBaseUrl("https://idp2.example.com").withName("oauth2"));
       provider.setQInstance(qInstance);
       assertThat(header(get(base + "/login/"), "Content-Security-Policy"))
-         .contains("connect-src 'self' https://idp2.example.com;")
+         .contains("connect-src 'self' blob: https://idp2.example.com;")
          .contains("https://cdn.example.com")
          .endsWith("frame-ancestors 'self'");
    }

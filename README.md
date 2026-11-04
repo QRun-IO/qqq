@@ -1,6 +1,6 @@
 # qqq
 
-> **This branch contains paused, unfinished QBit integration work (2026-11-04).** Read the [current integration status](docs/QBIT-RELEASE-STATUS.md) and [known issues](docs/QBIT-KNOWN-ISSUES.md) before building or adopting it. No completed release or deployment is claimed.
+> **QBit integration branch (2026-11-04).** Implementation resumed at the user's request. See [verification status](docs/QBIT-RELEASE-STATUS.md), [upgrade requirements](docs/QBIT-INTEGRATION-UPGRADE.md), and [remaining limitations](docs/QBIT-KNOWN-ISSUES.md). A local snapshot is not a published release.
 
 
 Metadata-driven application framework for building business software in Java.

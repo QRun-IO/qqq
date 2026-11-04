@@ -1,9 +1,9 @@
-# QBit integration known issues
+# QBit integration remaining limitations
 
-Updated: 2026-11-04. Unresolved at closeout.
+Updated: 2026-11-04.
 
-- The reconciliation is unfinished. Review the complete diff and its provenance before using it as a release candidate; do not assume the original private cohort's test results cover every current change.
-- Complete Core/RDBMS transaction, durable-job, permission and lifecycle verification is outstanding. Confirm rollback callbacks execute only after confirmed rollback and never weaken the fail-closed paths.
-- The Scripting, Collaboration and Record Files dependency chain has not completed a clean build and end-to-end verification on this exact candidate.
-- Private qualification versions/build outputs are not installation coordinates. A normal public version and release must precede standalone dependent package publication.
-- Shared CI/CD design work is outside this source checkpoint and remains unfinished. Existing canonical pipeline files were preserved.
+- Core and its affected storage/middleware checks have passed. Collaboration and Next UI acceptance follow next. A coherent public Core/Collaboration/Scripting/Record Files release has not been published from this branch.
+- Applications must migrate the script execution marker and additive Jobs columns before deploying the new metadata. See [upgrade requirements](QBIT-INTEGRATION-UPGRADE.md).
+- The pre-existing optional shell coverage-summary command fails under native Windows Maven. Use `-Dexec.skip=true`; JaCoCo reports and enforcement remain enabled.
+- Existing disabled tests and advisory SpotBugs/PMD findings remain. The integration verification is not a claim to have corrected every historical issue across all QQQ modules.
+- Untrusted-script containment, renderer deployment, physical printing and production throughput belong to the corresponding QBits and configured workers. Core regression tests do not qualify those runtimes.

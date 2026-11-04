@@ -194,11 +194,12 @@ public class QBackendTransaction implements AutoCloseable
     ** Permanently prevent this transaction object from committing after a required
     ** operation fails. Catching the original exception must not restore permission
     ** to commit partial work. Roll back and open a new transaction to retry.
+    ** Preserve rollback compensation until the backend confirms that rollback.
     *******************************************************************************/
    public final void markRollbackOnly()
    {
       rollbackOnly = true;
-      discardAfterCommitCallbacks();
+      afterCommitCallbacks.clear();
    }
 
 
@@ -234,7 +235,7 @@ public class QBackendTransaction implements AutoCloseable
    {
       if(rollbackOnly)
       {
-         discardAfterCommitCallbacks();
+         afterCommitCallbacks.clear();
          throw (new QException("Transaction is rollback-only; open a new transaction to retry"));
       }
    }
@@ -313,6 +314,8 @@ public class QBackendTransaction implements AutoCloseable
     ** Forget all after-commit callbacks, without running them - their work will
     ** not be committed.  For rollback, and for subclasses to call when their
     ** commit fails (so a later commit on this transaction doesn't run them).
+    ** Also forget rollback compensation: a failed physical commit has an unknown
+    ** outcome, so a later rollback cannot establish that those resources are unused.
     *******************************************************************************/
    protected void discardAfterCommitCallbacks()
    {

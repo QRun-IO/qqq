@@ -301,6 +301,68 @@ class RDBMSTransactionTest extends BaseTest
 
 
    /*******************************************************************************
+    ** A required-operation failure prevents commit but must preserve compensation
+    ** until the storage rollback succeeds, including after a refused commit.
+    *******************************************************************************/
+   @Test
+   void rollbackOnlyPreservesResourceCompensation() throws Exception
+   {
+      AtomicInteger compensated = new AtomicInteger();
+      AtomicInteger committed = new AtomicInteger();
+      try(RDBMSTransaction transaction = new RDBMSTransaction(new ConnectionManager().getConnection(TestUtils.defineBackend())))
+      {
+         transaction.addAfterRollbackCallback(compensated::incrementAndGet);
+         transaction.addAfterCommitCallback(committed::incrementAndGet);
+         transaction.markRollbackOnly();
+         assertEquals(0, compensated.get());
+         assertThrows(QException.class, transaction::commit);
+         assertEquals(0, compensated.get());
+         transaction.rollback();
+         assertEquals(1, compensated.get());
+         assertEquals(0, committed.get());
+      }
+      assertEquals(1, compensated.get());
+   }
+
+
+
+   /*******************************************************************************
+    ** A lost commit acknowledgement must not delete resources that the database
+    ** has already committed, even if a subsequent rollback reports success.
+    *******************************************************************************/
+   @Test
+   void uncertainCommitNeverCompensatesResources() throws Exception
+   {
+      AtomicInteger compensated = new AtomicInteger();
+      Connection connection = new ConnectionManager().getConnection(TestUtils.defineBackend());
+      Connection uncertain = (Connection) Proxy.newProxyInstance(Connection.class.getClassLoader(), new Class<?>[] { Connection.class }, (proxy, method, args) ->
+      {
+         try
+         {
+            Object result = method.invoke(connection, args);
+            if("commit".equals(method.getName()))
+            {
+               throw (new SQLException("Simulated lost commit acknowledgement"));
+            }
+            return (result);
+         }
+         catch(InvocationTargetException e)
+         {
+            throw (e.getCause());
+         }
+      });
+      try(RDBMSTransaction transaction = new RDBMSTransaction(uncertain))
+      {
+         transaction.addAfterRollbackCallback(compensated::incrementAndGet);
+         assertThrows(QException.class, transaction::commit);
+         transaction.rollback();
+      }
+      assertEquals(0, compensated.get());
+   }
+
+
+
+   /*******************************************************************************
     ** count rows in the person table - unchecked, for use inside a Runnable.
     *******************************************************************************/
    private static Integer countPeople(Connection connection)

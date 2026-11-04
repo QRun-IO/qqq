@@ -52,6 +52,32 @@ class RDBMSTransactionTest extends BaseTest
 
 
    /*******************************************************************************
+    ** A swallowed required failure must never commit its earlier SQL or callbacks.
+    *******************************************************************************/
+   @Test
+   void rollbackOnlyPreventsPhysicalCommitAfterCaughtFailure() throws Exception
+   {
+      ConnectionManager manager = new ConnectionManager();
+      try(Connection observer = manager.getConnection(TestUtils.defineBackend());
+         RDBMSTransaction transaction = new RDBMSTransaction(manager.getConnection(TestUtils.defineBackend())))
+      {
+         Integer before = QueryManager.executeStatementForSingleValue(observer, Integer.class, "SELECT COUNT(*) FROM person");
+         QueryManager.executeUpdate(transaction.getConnection(), "INSERT INTO person (first_name, last_name, email) VALUES (?, ?, ?)", testToken, testToken, testToken);
+         AtomicInteger callbacks = new AtomicInteger();
+         transaction.addAfterCommitCallback(callbacks::incrementAndGet);
+         transaction.markRollbackOnly();
+         assertThrows(QException.class, transaction::commit);
+         assertEquals(before, QueryManager.executeStatementForSingleValue(observer, Integer.class, "SELECT COUNT(*) FROM person"));
+         transaction.rollback();
+         assertThrows(QException.class, transaction::commit);
+         assertEquals(before, QueryManager.executeStatementForSingleValue(observer, Integer.class, "SELECT COUNT(*) FROM person"));
+         assertEquals(0, callbacks.get());
+      }
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    @BeforeEach
@@ -246,6 +272,30 @@ class RDBMSTransactionTest extends BaseTest
             throw (e.getCause());
          }
       }));
+   }
+
+
+
+   /*******************************************************************************
+    ** Resource compensation follows confirmed rollback and is discarded on commit.
+    *******************************************************************************/
+   @Test
+   void resourceCompensationFollowsRollback() throws Exception
+   {
+      AtomicInteger compensated = new AtomicInteger();
+      try(RDBMSTransaction transaction = new RDBMSTransaction(new ConnectionManager().getConnection(TestUtils.defineBackend())))
+      {
+         transaction.addAfterRollbackCallback(compensated::incrementAndGet);
+         transaction.rollback();
+         transaction.rollback();
+         assertEquals(1, compensated.get());
+         transaction.addAfterRollbackCallback(compensated::incrementAndGet);
+         transaction.commit();
+         transaction.rollback();
+         assertEquals(1, compensated.get());
+         transaction.addAfterRollbackCallback(compensated::incrementAndGet);
+      }
+      assertEquals(2, compensated.get());
    }
 
 

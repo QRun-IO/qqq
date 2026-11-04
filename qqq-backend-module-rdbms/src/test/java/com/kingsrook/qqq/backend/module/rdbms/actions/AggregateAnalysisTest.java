@@ -289,6 +289,9 @@ class AggregateAnalysisTest extends BaseTest
       };
       backend.setName(TestUtils.DEFAULT_BACKEND_NAME);
       backend.setVendor(RDBMSBackendMetaData.VENDOR_H2);
+      backend.setJdbcUrl(TestUtils.defineBackend().getJdbcUrl());
+      backend.setJdbcDriverClassName(TestUtils.defineBackend().getJdbcDriverClassName());
+      backend.setUsername(TestUtils.defineBackend().getUsername());
       QContext.getQInstance().getBackends().put(backend.getName(), backend);
       QVirtualFieldMetaData field = new QVirtualFieldMetaData("textLength", QFieldType.INTEGER)
          .withIsQuerySelectable(true).withIsQueryCriteria(true)

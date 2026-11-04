@@ -40,6 +40,7 @@ import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.jobs.DurableJobsMetaData;
 import com.kingsrook.qqq.backend.core.jobs.SystemScope;
+import com.kingsrook.qqq.backend.core.jobs.TransactionalJobAdmission;
 import com.kingsrook.qqq.backend.core.jobs.store.SkipLockedClaims;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
@@ -68,6 +69,7 @@ public class EffectStore
    private static final long MAX_BACKOFF_SECONDS = 3600;
 
    private final DurableJobsMetaData settings;
+   private final QBackendTransaction boundTransaction;
 
 
 
@@ -76,7 +78,18 @@ public class EffectStore
     *******************************************************************************/
    public EffectStore(DurableJobsMetaData settings)
    {
+      this(settings, null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Bind effect review to the same admitted transaction as its job transition.
+    *******************************************************************************/
+   public EffectStore(DurableJobsMetaData settings, QBackendTransaction transaction)
+   {
       this.settings = settings;
+      this.boundTransaction = transaction;
    }
 
 
@@ -86,6 +99,10 @@ public class EffectStore
     *******************************************************************************/
    public Instant now() throws QException
    {
+      if(boundTransaction instanceof TransactionalJobAdmission admission)
+      {
+         return (admission.jobDatabaseNow());
+      }
       return (new ConditionalUpdateAction().databaseNow(TABLE_EFFECT));
    }
 
@@ -229,7 +246,7 @@ public class EffectStore
     *******************************************************************************/
    public List<QRecord> query(QQueryFilter filter) throws QException
    {
-      return (SystemScope.call(() -> new QueryAction().execute(new QueryInput(TABLE_EFFECT).withFilter(filter)).getRecords()));
+      return (SystemScope.call(() -> new QueryAction().execute(new QueryInput(TABLE_EFFECT).withFilter(filter).withTransaction(boundTransaction)).getRecords()));
    }
 
 
@@ -484,10 +501,15 @@ public class EffectStore
     *******************************************************************************/
    private int cas(Map<String, Serializable> values, QQueryFilter filter, QBackendTransaction transaction) throws QException
    {
+      if(boundTransaction != null && transaction != null && boundTransaction != transaction)
+      {
+         boundTransaction.markRollbackOnly();
+         transaction.markRollbackOnly();
+         throw (new QException("Effect review cannot replace its admitted transaction"));
+      }
       return (SystemScope.call(() -> new ConditionalUpdateAction().execute(new ConditionalUpdateInput(TABLE_EFFECT)
-         .withValues(new LinkedHashMap<>(values))
-         .withFilter(filter)
-         .withTransaction(transaction))));
+         .withValues(new LinkedHashMap<>(values)).withFilter(filter)
+         .withTransaction(boundTransaction == null ? transaction : boundTransaction))));
    }
 
 

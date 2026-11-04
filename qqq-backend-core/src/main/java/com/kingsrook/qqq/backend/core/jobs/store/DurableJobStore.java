@@ -27,11 +27,13 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.tables.ConditionalUpdateAction;
@@ -40,7 +42,9 @@ import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.jobs.DurableJobsMetaData;
+import com.kingsrook.qqq.backend.core.jobs.JobAdmission;
 import com.kingsrook.qqq.backend.core.jobs.SystemScope;
+import com.kingsrook.qqq.backend.core.jobs.TransactionalJobAdmission;
 import com.kingsrook.qqq.backend.core.jobs.model.ChunkOutcome;
 import com.kingsrook.qqq.backend.core.jobs.model.ChunkStatus;
 import com.kingsrook.qqq.backend.core.jobs.model.JobEventType;
@@ -52,6 +56,7 @@ import com.kingsrook.qqq.backend.core.jobs.progress.JobProgressLifecycle;
 import com.kingsrook.qqq.backend.core.jobs.progress.JobProgressMath;
 import com.kingsrook.qqq.backend.core.jobs.progress.JobProgressSnapshot;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
@@ -91,6 +96,7 @@ public class DurableJobStore
    private static final QLogger LOG = QLogger.getLogger(DurableJobStore.class);
 
    private final DurableJobsMetaData settings;
+   private final QBackendTransaction boundTransaction;
 
 
 
@@ -99,7 +105,45 @@ public class DurableJobStore
     *******************************************************************************/
    public DurableJobStore(DurableJobsMetaData settings)
    {
+      this(settings, null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Bind native bookkeeping to an already admitted source/control transaction.
+    ** This store never commits, closes, or replaces that transaction.
+    *******************************************************************************/
+   public DurableJobStore(DurableJobsMetaData settings, QBackendTransaction transaction)
+   {
       this.settings = settings;
+      this.boundTransaction = transaction;
+   }
+
+
+
+   /*******************************************************************************
+    ** Return the explicit owner transaction, or null for the ordinary store.
+    *******************************************************************************/
+   public QBackendTransaction getTransaction()
+   {
+      return (boundTransaction);
+   }
+
+
+
+   /*******************************************************************************
+    ** Require a single connection when a caller also supplies an explicit handle.
+    *******************************************************************************/
+   private QBackendTransaction transaction(QBackendTransaction supplied) throws QException
+   {
+      if(boundTransaction != null && supplied != null && boundTransaction != supplied)
+      {
+         boundTransaction.markRollbackOnly();
+         supplied.markRollbackOnly();
+         throw (new QException("Jobs bookkeeping cannot replace its bound transaction"));
+      }
+      return (boundTransaction == null ? supplied : boundTransaction);
    }
 
 
@@ -109,6 +153,10 @@ public class DurableJobStore
     *******************************************************************************/
    public Instant now() throws QException
    {
+      if(boundTransaction instanceof TransactionalJobAdmission admission)
+      {
+         return (admission.jobDatabaseNow());
+      }
       return (new ConditionalUpdateAction().databaseNow(TABLE_CHUNK));
    }
 
@@ -118,6 +166,20 @@ public class DurableJobStore
     ** Insert a job row; return its id.
     *******************************************************************************/
    public Integer insertJob(QRecord job, QBackendTransaction transaction) throws QException
+   {
+      if(settings.isTransactionalAdmissionEnabled())
+      {
+         return (JobAdmission.insert(settings, job, transaction(transaction), admitted -> insertJobNative(job, admitted)));
+      }
+      return (insertJobNative(job, transaction(transaction)));
+   }
+
+
+
+   /*******************************************************************************
+    ** The native insert, after any required shared admission reservation.
+    *******************************************************************************/
+   private Integer insertJobNative(QRecord job, QBackendTransaction transaction) throws QException
    {
       return (SystemScope.call(() ->
       {
@@ -146,7 +208,12 @@ public class DurableJobStore
       {
          for(int i = 0; i < chunks.size(); i += 500)
          {
-            new InsertAction().execute(new InsertInput(TABLE_CHUNK).withRecords(new ArrayList<>(chunks.subList(i, Math.min(chunks.size(), i + 500)))).withTransaction(transaction));
+            InsertOutput output = new InsertAction().execute(new InsertInput(TABLE_CHUNK).withRecords(new ArrayList<>(chunks.subList(i, Math.min(chunks.size(), i + 500)))).withTransaction(transaction(transaction)));
+            if(output.getRecords().size() != Math.min(500, chunks.size() - i)
+               || output.getRecords().stream().anyMatch(record -> record.getErrors() != null && !record.getErrors().isEmpty()))
+            {
+               throw (new QException("Could not store every planned job chunk"));
+            }
          }
          return (null);
       });
@@ -159,7 +226,7 @@ public class DurableJobStore
     *******************************************************************************/
    public QRecord getJob(Integer jobId) throws QException
    {
-      return (SystemScope.call(() -> GetAction.execute(TABLE_JOB, jobId)));
+      return (SystemScope.call(() -> new GetAction().execute(new GetInput(TABLE_JOB).withPrimaryKey(jobId).withTransaction(boundTransaction)).getRecord()));
    }
 
 
@@ -169,7 +236,7 @@ public class DurableJobStore
     *******************************************************************************/
    public QRecord getChunk(Integer chunkId) throws QException
    {
-      return (SystemScope.call(() -> GetAction.execute(TABLE_CHUNK, chunkId)));
+      return (SystemScope.call(() -> new GetAction().execute(new GetInput(TABLE_CHUNK).withPrimaryKey(chunkId).withTransaction(boundTransaction)).getRecord()));
    }
 
 
@@ -179,7 +246,7 @@ public class DurableJobStore
     *******************************************************************************/
    public List<QRecord> query(String tableName, QQueryFilter filter) throws QException
    {
-      return (SystemScope.call(() -> new QueryAction().execute(new QueryInput(tableName).withFilter(filter)).getRecords()));
+      return (SystemScope.call(() -> new QueryAction().execute(new QueryInput(tableName).withFilter(filter).withTransaction(boundTransaction)).getRecords()));
    }
 
 
@@ -216,6 +283,25 @@ public class DurableJobStore
 
 
    /*******************************************************************************
+    ** Claim a job for a control action that is about to reset its chunks: succeeds
+    ** (and bumps the job's version, leaving the status as it is) only when the job
+    ** is still in one of the from-statuses and still at the version the controller
+    ** read. A loser changes nothing.
+    *******************************************************************************/
+   public boolean fenceJob(Integer jobId, Collection<JobStatus> from, Integer observedVersion) throws QException
+   {
+      Map<String, Serializable> values = new LinkedHashMap<>();
+      values.put("leaseVersion", (observedVersion == null ? 0 : observedVersion) + 1);
+      values.put("modifyDate", now());
+      return (cas(TABLE_JOB, values, new QQueryFilter()
+         .withCriteria(new QFilterCriteria("id", QCriteriaOperator.EQUALS, jobId))
+         .withCriteria(new QFilterCriteria("status", QCriteriaOperator.IN, from.stream().map(Enum::name).toList()))
+         .withCriteria(observedVersion == null ? new QFilterCriteria("leaseVersion", QCriteriaOperator.IS_BLANK) : new QFilterCriteria("leaseVersion", QCriteriaOperator.EQUALS, observedVersion)), null) == 1);
+   }
+
+
+
+   /*******************************************************************************
     ** Compare-and-set a job's status and record its timeline event in one
     ** transaction, so a reader that sees the new status also sees the event
     ** (status first and event after left a window where a finished job had no
@@ -224,6 +310,20 @@ public class DurableJobStore
     *******************************************************************************/
    public boolean setJobStatusWithEvent(Integer jobId, Collection<JobStatus> from, JobStatus to, Map<String, Serializable> extraValues, JobEventType eventType, String detail) throws QException
    {
+      if(boundTransaction == null && settings.isTransactionalAdmissionEnabled())
+      {
+         return (JobAdmission.transaction(settings, null, admitted ->
+            new DurableJobStore(settings, admitted).setJobStatusWithEvent(jobId, from, to, extraValues, eventType, detail)));
+      }
+      if(boundTransaction != null)
+      {
+         boolean changed = setJobStatus(jobId, from, to, extraValues);
+         if(changed && eventType != null)
+         {
+            recordRequiredEvent(jobId, null, eventType, null, null, null, detail);
+         }
+         return (changed);
+      }
       Map<String, Serializable> values = new LinkedHashMap<>();
       if(extraValues != null)
       {
@@ -278,6 +378,24 @@ public class DurableJobStore
    public void updateJob(Integer jobId, Map<String, Serializable> values) throws QException
    {
       cas(TABLE_JOB, values, new QQueryFilter(new QFilterCriteria("id", QCriteriaOperator.EQUALS, jobId)), null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Required same-transaction intent fields must update exactly one job row.
+    *******************************************************************************/
+   public void updateRequiredJob(Integer jobId, Map<String, Serializable> values) throws QException
+   {
+      if(boundTransaction == null)
+      {
+         throw (new QException("Required Jobs fields need the source transaction"));
+      }
+      if(cas(TABLE_JOB, values, new QQueryFilter(new QFilterCriteria("id", QCriteriaOperator.EQUALS, jobId)), boundTransaction) != 1)
+      {
+         boundTransaction.markRollbackOnly();
+         throw (new QException("Required Jobs fields were not stored"));
+      }
    }
 
 
@@ -487,16 +605,18 @@ public class DurableJobStore
          .withLimit(200));
       List<QRecord> reclaimed = new ArrayList<>();
 
-      Map<Integer, QRecord> jobs = new HashMap<>();
+      Map<Integer, QRecord> jobs       = new HashMap<>();
+      Set<Integer>          unreadable = new HashSet<>();
       for(QRecord chunk : expired)
       {
          Integer jobId = chunk.getValueInteger("jobId");
-         QRecord job   = jobs.computeIfAbsent(jobId, id -> getJobQuietly(id));
+         QRecord job   = jobs.computeIfAbsent(jobId, id -> getJobForReclaim(id, unreadable));
 
          int     attempt     = ValueUtils.getValueAsInteger(Objects.requireNonNullElse(chunk.getValue("attempt"), 0));
          int     maxAttempts = ValueUtils.getValueAsInteger(Objects.requireNonNullElse(chunk.getValue("maxAttempts"), 1));
          int     version     = ValueUtils.getValueAsInteger(Objects.requireNonNullElse(chunk.getValue("leaseVersion"), 0));
-         boolean idempotent  = job == null || !JobIdempotency.NONE.name().equals(job.getValueString("idempotency"));
+         // a job that could not be read is not assumed idempotent: review beats a possible second run
+         boolean idempotent  = !unreadable.contains(jobId) && (job == null || !JobIdempotency.NONE.name().equals(job.getValueString("idempotency")));
 
          ChunkStatus next = !idempotent ? ChunkStatus.NEEDS_REVIEW : (attempt >= maxAttempts ? ChunkStatus.FAILED : ChunkStatus.RETRY);
 
@@ -577,6 +697,19 @@ public class DurableJobStore
     *******************************************************************************/
    public void recordEvent(Integer jobId, Integer chunkId, JobEventType type, String actorUserId, String clientChannel, String pod, String detail)
    {
+      if(boundTransaction != null)
+      {
+         try
+         {
+            recordRequiredEvent(jobId, chunkId, type, actorUserId, clientChannel, pod, detail);
+            return;
+         }
+         catch(QException error)
+         {
+            boundTransaction.markRollbackOnly();
+            throw (new IllegalStateException("Required Jobs event could not be stored", error));
+         }
+      }
       try
       {
          SystemScope.call(() -> new InsertAction().execute(new InsertInput(TABLE_EVENT).withRecord(new QRecord()
@@ -592,6 +725,28 @@ public class DurableJobStore
       catch(Exception e)
       {
          LOG.warn("Could not record a job event", e, logPair("jobId", jobId), logPair("type", type));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Persist required history on the bound transaction; reject per-record errors.
+    *******************************************************************************/
+   public void recordRequiredEvent(Integer jobId, Integer chunkId, JobEventType type, String actorUserId, String clientChannel, String pod, String detail) throws QException
+   {
+      if(boundTransaction == null)
+      {
+         throw (new QException("Required Jobs history needs an explicit transaction"));
+      }
+      InsertOutput output = SystemScope.call(() -> new InsertAction().execute(new InsertInput(TABLE_EVENT).withTransaction(boundTransaction).withRecord(new QRecord()
+         .withValue("jobId", jobId).withValue("chunkId", chunkId).withValue("type", type.name())
+         .withValue("actorUserId", actorUserId).withValue("clientChannel", clientChannel).withValue("pod", pod)
+         .withValue("detail", StringUtils.safeTruncate(detail, 4000)).withValue("createDate", now()))));
+      if(output.getRecords().size() != 1 || (output.getRecords().get(0).getErrors() != null && !output.getRecords().get(0).getErrors().isEmpty()))
+      {
+         boundTransaction.markRollbackOnly();
+         throw (new QException("Required Jobs history was refused"));
       }
    }
 
@@ -664,18 +819,50 @@ public class DurableJobStore
     *******************************************************************************/
    private int cas(String tableName, Map<String, Serializable> values, QQueryFilter filter, QBackendTransaction transaction) throws QException
    {
-      return (SystemScope.call(() -> new ConditionalUpdateAction().execute(new ConditionalUpdateInput(tableName)
-         .withValues(new LinkedHashMap<>(values))
-         .withFilter(filter)
-         .withTransaction(transaction))));
+      QBackendTransaction effective = transaction(transaction);
+      if(settings.isTransactionalAdmissionEnabled() && TABLE_JOB.equals(tableName)
+         && values.keySet().stream().anyMatch(Set.of("status", "userId", "clientChannel", "processName")::contains))
+      {
+         return (JobAdmission.transaction(settings, effective, admitted ->
+         {
+            List<QRecord> matches = new DurableJobStore(settings, admitted).query(TABLE_JOB, filter.clone().withLimit(2));
+            if(matches.size() > 1)
+            {
+               throw (new QException("A capacity transition must address at most one job"));
+            }
+            if(matches.isEmpty())
+            {
+               return (0);
+            }
+            QRecord before = matches.get(0);
+            QRecord after = new QRecord();
+            before.getValues().forEach(after::setValue);
+            values.forEach(after::setValue);
+            JobAdmission.requireCapacity(settings, admitted, before, after);
+            return (casNative(tableName, values, filter, admitted));
+         }));
+      }
+      return (casNative(tableName, values, filter, effective));
    }
 
 
 
    /*******************************************************************************
-    **
+    ** Execute the already-admitted native compare-and-set on its exact connection.
     *******************************************************************************/
-   private QRecord getJobQuietly(Integer jobId)
+   private int casNative(String tableName, Map<String, Serializable> values, QQueryFilter filter, QBackendTransaction transaction) throws QException
+   {
+      return (SystemScope.call(() -> new ConditionalUpdateAction().execute(new ConditionalUpdateInput(tableName)
+         .withValues(new LinkedHashMap<>(values)).withFilter(filter).withTransaction(transaction))));
+   }
+
+
+
+   /*******************************************************************************
+    ** Read a job for the reclaim decision; a failed read is recorded so the caller does
+    ** not treat the job as idempotent.
+    *******************************************************************************/
+   private QRecord getJobForReclaim(Integer jobId, Set<Integer> unreadable)
    {
       try
       {
@@ -683,6 +870,7 @@ public class DurableJobStore
       }
       catch(Exception e)
       {
+         unreadable.add(jobId);
          return (null);
       }
    }

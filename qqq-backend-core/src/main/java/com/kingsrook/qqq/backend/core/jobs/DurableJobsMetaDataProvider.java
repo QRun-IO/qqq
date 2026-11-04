@@ -206,6 +206,15 @@ public class DurableJobsMetaDataProvider
     *******************************************************************************/
    private static QTableMetaData enrich(QTableMetaData table, Consumer<QTableMetaData> backendDetailEnricher)
    {
+      if(!TABLE_LOG.equals(table.getName()))
+      {
+         ///////////////////////////////////////////////////////////////////////////////
+         // kernel tables are written by the jobs kernel only (the log table has its //
+         // own, read-permission-checking, equivalent)                                //
+         ///////////////////////////////////////////////////////////////////////////////
+         table.withPermissionRules(new QPermissionRules().withCustomPermissionChecker(new QCodeReference(JobTablePermissions.class)));
+      }
+
       if(backendDetailEnricher != null)
       {
          backendDetailEnricher.accept(table);
@@ -308,6 +317,10 @@ public class DurableJobsMetaDataProvider
          .withField(readOnly("id", QFieldType.INTEGER))
          .withField(field("label", QFieldType.STRING).withMaxLength(250))
          .withField(readOnly("processName", QFieldType.STRING).withLabel("Process").withMaxLength(250))
+         .withField(confidential(readOnly("enlistmentKey", QFieldType.STRING).withMaxLength(64)))
+         .withField(confidential(readOnly("intentFingerprint", QFieldType.STRING).withMaxLength(64)))
+         .withField(readOnly("processRevision", QFieldType.STRING).withMaxLength(128))
+         .withUniqueKey(new UniqueKey("enlistmentKey"))
          .withField(readOnly("tableName", QFieldType.STRING).withLabel("Table").withMaxLength(250))
          .withField(readOnly("mode", QFieldType.STRING).withPossibleValueSourceName(JobMode.NAME).withMaxLength(20))
          .withField(readOnly("status", QFieldType.STRING).withPossibleValueSourceName(JobStatus.NAME).withMaxLength(30))
@@ -356,7 +369,7 @@ public class DurableJobsMetaDataProvider
          .withSection(new QFieldSection("identity", new QIcon("badge"), Tier.T1, List.of("id", "label", "status", "statusReason", "processName", "tableName", "mode", "userId")))
          .withSection(new QFieldSection("progress", "Progress", new QIcon("speed"), Tier.T2, List.of("currentPhase", "percentDone", "progressMessage", "bytesDone", "bytesTotal", "etaSeconds", "rowsTotal", "rowsDone", "rowsOk", "rowsFailed", "chunksTotal", "chunksDone", "chunksFailed", "lastProgressAt", "errorMessage")))
          .withSection(new QFieldSection("settings", "Settings", new QIcon("tune"), Tier.T2, List.of("priority", "notifyEmail", "sourceType", "idempotency", "semantics", "chunkSize", "maxParallelChunks", "parentJobId", "savedBulkLoadProfileId", "clientChannel")))
-         .withSection(new QFieldSection("data", "Data", new QIcon("data_object"), Tier.T3, List.of("progressJson", "logSeq", "logDropped", "leaseOwner", "summaryJson", "outputStorageJson", "sourceJson", "paramsJson", "credentialScopeJson", "leaseVersion")))
+         .withSection(new QFieldSection("data", "Data", new QIcon("data_object"), Tier.T3, List.of("progressJson", "logSeq", "logDropped", "leaseOwner", "summaryJson", "outputStorageJson", "sourceJson", "paramsJson", "credentialScopeJson", "leaseVersion", "enlistmentKey", "intentFingerprint", "processRevision")))
          .withSection(new QFieldSection("dates", new QIcon("calendar_month"), Tier.T3, List.of("queuedAt", "startedAt", "finishedAt", "createDate", "modifyDate"))));
    }
 

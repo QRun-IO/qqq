@@ -22,6 +22,7 @@ package com.kingsrook.qqq.backend.core.actions.scripts;
 
 
 import java.io.Serializable;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.BaseTest;
@@ -31,12 +32,14 @@ import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
+import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.scripts.RunAssociatedScriptInput;
 import com.kingsrook.qqq.backend.core.model.actions.scripts.RunAssociatedScriptOutput;
 import com.kingsrook.qqq.backend.core.model.actions.scripts.StoreAssociatedScriptInput;
 import com.kingsrook.qqq.backend.core.model.actions.scripts.StoreAssociatedScriptOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetOutput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -45,7 +48,10 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.AssociatedScript;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
+import com.kingsrook.qqq.backend.core.model.scripts.Script;
 import com.kingsrook.qqq.backend.core.model.scripts.ScriptLog;
+import com.kingsrook.qqq.backend.core.model.scripts.ScriptRevision;
+import com.kingsrook.qqq.backend.core.model.scripts.ScriptRevisionFile;
 import com.kingsrook.qqq.backend.core.model.scripts.ScriptsMetaDataProvider;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryRecordStore;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
@@ -160,10 +166,24 @@ class RunAssociatedScriptActionTest extends BaseTest
       /////////////////////////////////////////////////////////////////////////////////////////////////////////////
       assertEquals(1, MemoryRecordStore.getStatistics().get(MemoryRecordStore.STAT_INSERTS_RAN));
 
-      //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-      // and we shouldn't have run N queries (which we would have (at least), if we would have built a new Action object inside the loop) //
-      //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-      assertThat(MemoryRecordStore.getStatistics().get(MemoryRecordStore.STAT_QUERIES_RAN)).isLessThan(N);
+      ////////////////////////////////////////////////////////////////////////////////////////////////////
+      // the caching, observed per lookup (not as a total that the isolation checks could pad out):   //
+      // - the association lookups - the record that names the script (a table that isolation never   //
+      //   reads), and the revision's files - ran once for the N runs, not N times (they would have   //
+      //   run every time if we built a new Action object inside the loop)                            //
+      // - the isolation checks are NOT cached: every run re-reads the stored script (marker) and the //
+      //   stored revision (ownership), as it must - the marker is never remembered across runs       //
+      ////////////////////////////////////////////////////////////////////////////////////////////////////
+      Map<String, Integer> queriesByTable = new HashMap<>();
+      for(AbstractActionInput actionInput : MemoryRecordStore.getActionInputs().get(QueryInput.class))
+      {
+         queriesByTable.merge(((QueryInput) actionInput).getTableName(), 1, Integer::sum);
+      }
+
+      assertEquals(1, queriesByTable.get(TestUtils.TABLE_NAME_PERSON_MEMORY), "record -> script id lookup should be cached: " + queriesByTable);
+      assertThat(queriesByTable.getOrDefault(ScriptRevisionFile.TABLE_NAME, 0)).as("revision files lookup should be cached: " + queriesByTable).isLessThanOrEqualTo(1);
+      assertThat(queriesByTable.getOrDefault(Script.TABLE_NAME, 0)).as("script marker is re-read on every run: " + queriesByTable).isGreaterThanOrEqualTo(N);
+      assertThat(queriesByTable.getOrDefault(ScriptRevision.TABLE_NAME, 0)).as("revision ownership is re-read on every run: " + queriesByTable).isGreaterThanOrEqualTo(N);
    }
 
 

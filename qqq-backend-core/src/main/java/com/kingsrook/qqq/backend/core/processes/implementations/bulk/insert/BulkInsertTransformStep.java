@@ -357,20 +357,13 @@ public class BulkInsertTransformStep extends AbstractTransformStep
       // we do this, in case it needs to, for example, adjust values that //
       // are part of a unique key                                         //
       //////////////////////////////////////////////////////////////////////
-      boolean                            didAlreadyRunCustomizer = false;
-      Optional<TableCustomizerInterface> preUpdateCustomizer     = QCodeLoader.getTableCustomizer(table, TableCustomizers.PRE_UPDATE_RECORD.getRole());
-      if(preUpdateCustomizer.isPresent())
+      boolean didAlreadyRunTableCustomizer = false;
+      Optional<TableCustomizerInterface> preUpdateCustomizer = QCodeLoader.getTableCustomizer(table, TableCustomizers.PRE_UPDATE_RECORD.getRole());
+      if(preUpdateCustomizer.isPresent() && preUpdateCustomizer.get().whenToRunPreUpdate(updateInput, true) != TableCustomizerInterface.PreUpdatePhase.BEFORE_FIELD_VALIDATIONS)
       {
          List<QRecord> recordsAfterCustomizer = preUpdateCustomizer.get().preUpdate(updateInput, records, true, Optional.of(oldRecords));
          runBackendStepInput.setRecords(recordsAfterCustomizer);
-
-         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-         // so we used to have a comment here asking "do we care if the customizer runs both now, and in the validation below?" //
-         // when implementing Bulk Load V2, we were seeing that some customizers were adding errors to records, both now, and   //
-         // when they ran below.  so, at that time, we added this boolean, to track and avoid the double-run...                 //
-         // we could also imagine this being a setting on the pre-insert customizer, similar to its whenToRun attribute...      //
-         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-         didAlreadyRunCustomizer = true;
+         didAlreadyRunTableCustomizer = true;
       }
 
       /////////////////////////////////////////////////////////////////////////////////
@@ -378,7 +371,7 @@ public class BulkInsertTransformStep extends AbstractTransformStep
       /////////////////////////////////////////////////////////////////////////////////
       updateInput.setRecords(recordsToUpdate);
       UpdateAction updateAction = new UpdateAction();
-      updateAction.performValidations(updateInput, Optional.of(recordsToUpdate), didAlreadyRunCustomizer);
+      updateAction.performValidations(updateInput, Optional.of(oldRecords), true, didAlreadyRunTableCustomizer);
       List<QRecord> validationResultRecords = updateInput.getRecords();
 
       /////////////////////////////////////////////////////////////////

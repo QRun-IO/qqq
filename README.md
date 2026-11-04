@@ -1,5 +1,8 @@
 # qqq
 
+> **This branch contains paused, unfinished QBit integration work (2026-11-04).** Read the [current integration status](docs/QBIT-RELEASE-STATUS.md) and [known issues](docs/QBIT-KNOWN-ISSUES.md) before building or adopting it. No completed release or deployment is claimed.
+
+
 Metadata-driven application framework for building business software in Java.
 
 **For:** Engineers building internal tools, admin panels, data management apps, or CRUD-heavy systems

@@ -303,6 +303,33 @@ public class PermissionsHelper
 
 
    /*******************************************************************************
+    ** An input of the kind the action itself would use - insert, edit and delete
+    ** take their write input, read takes a query - for callers that check a table
+    ** permission on behalf of an action they are not running (bulk processes, use
+    ** the table's permission). A table's custom permission checker can then tell
+    ** what is being asked, as it can for the real action.
+    *******************************************************************************/
+   public static AbstractTableActionInput tableActionInputFor(String tableName, TablePermissionSubType permissionSubType)
+   {
+      if(permissionSubType == null)
+      {
+         AbstractTableActionInput untyped = new AbstractTableActionInput();
+         untyped.setTableName(tableName);
+         return (untyped);
+      }
+
+      return (switch(permissionSubType)
+      {
+         case INSERT -> new com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput(tableName);
+         case EDIT -> new com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput(tableName);
+         case DELETE -> new com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput(tableName);
+         case READ -> new com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput(tableName);
+      });
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    public static void checkProcessPermissionThrowing(AbstractActionInput actionInput, String processName) throws QPermissionDeniedException

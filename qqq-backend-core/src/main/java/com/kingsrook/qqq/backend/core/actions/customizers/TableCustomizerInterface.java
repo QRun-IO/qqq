@@ -172,6 +172,30 @@ public interface TableCustomizerInterface
 
 
    /*******************************************************************************
+    ** Optional pre-update scheduling. Existing hosts keep their late phase.
+    ** Early callbacks receive only authorized existing records and may change
+    ** values but cannot add/remove/replace records or change their primary keys.
+    ** Native field behaviors and all normal write validations follow them.
+    *******************************************************************************/
+   enum PreUpdatePhase
+   {
+      BEFORE_FIELD_VALIDATIONS,
+      AFTER_ALL_VALIDATIONS
+   }
+
+
+
+   /*******************************************************************************
+    ** Opt in to an early authorized patch phase; legacy default is unchanged.
+    *******************************************************************************/
+   default PreUpdatePhase whenToRunPreUpdate(UpdateInput input, boolean isPreview)
+   {
+      return (PreUpdatePhase.AFTER_ALL_VALIDATIONS);
+   }
+
+
+
+   /*******************************************************************************
     ** custom actions after an update takes place.
     **
     ** General implementation would be, to iterate over the records (the outputs of

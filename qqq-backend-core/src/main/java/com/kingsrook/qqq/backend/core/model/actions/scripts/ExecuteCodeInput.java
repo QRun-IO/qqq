@@ -39,6 +39,14 @@ public class ExecuteCodeInput extends AbstractActionInput
    private Map<String, Serializable>     context;
    private QCodeExecutionLoggerInterface executionLogger;
 
+   /////////////////////////////////////////////////////////////////////////////////////////
+   // the stored Script / ScriptRevision that the code was loaded from, if any.  Set by   //
+   // ExecuteCodeAction.setupExecuteCodeInput - and (with an AdHocScriptCodeReference's   //
+   // ids) used by ExecuteCodeAction.run to refuse code from an isolated Script.          //
+   /////////////////////////////////////////////////////////////////////////////////////////
+   private Integer scriptId;
+   private Integer scriptRevisionId;
+
 
 
    /*******************************************************************************
@@ -214,6 +222,68 @@ public class ExecuteCodeInput extends AbstractActionInput
    public ExecuteCodeInput withExecutionLogger(QCodeExecutionLoggerInterface executionLogger)
    {
       this.executionLogger = executionLogger;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for scriptId
+    *******************************************************************************/
+   public Integer getScriptId()
+   {
+      return (this.scriptId);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for scriptId
+    *******************************************************************************/
+   public void setScriptId(Integer scriptId)
+   {
+      this.scriptId = scriptId;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for scriptId
+    *******************************************************************************/
+   public ExecuteCodeInput withScriptId(Integer scriptId)
+   {
+      this.scriptId = scriptId;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for scriptRevisionId
+    *******************************************************************************/
+   public Integer getScriptRevisionId()
+   {
+      return (this.scriptRevisionId);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for scriptRevisionId
+    *******************************************************************************/
+   public void setScriptRevisionId(Integer scriptRevisionId)
+   {
+      this.scriptRevisionId = scriptRevisionId;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for scriptRevisionId
+    *******************************************************************************/
+   public ExecuteCodeInput withScriptRevisionId(Integer scriptRevisionId)
+   {
+      this.scriptRevisionId = scriptRevisionId;
       return (this);
    }
 

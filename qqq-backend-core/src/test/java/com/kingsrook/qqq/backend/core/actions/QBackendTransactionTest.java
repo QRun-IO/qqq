@@ -45,6 +45,26 @@ class QBackendTransactionTest extends BaseTest
 {
 
    /*******************************************************************************
+    ** Catching a required failure or rolling back cannot rehabilitate its object.
+    *******************************************************************************/
+   @Test
+   void rollbackOnlyDiscardsCallbacksAndCannotBeCleared() throws QException
+   {
+      QBackendTransaction transaction = new QBackendTransaction();
+      AtomicInteger callbacks = new AtomicInteger();
+      transaction.addAfterCommitCallback(callbacks::incrementAndGet);
+      transaction.markRollbackOnly();
+      assertThat(transaction.isRollbackOnly()).isTrue();
+      assertThatThrownBy(transaction::commit).isInstanceOf(QException.class).hasMessageContaining("rollback-only");
+      transaction.rollback();
+      transaction.addAfterCommitCallback(callbacks::incrementAndGet);
+      assertThatThrownBy(transaction::commit).isInstanceOf(QException.class).hasMessageContaining("rollback-only");
+      assertThat(callbacks.get()).isZero();
+   }
+
+
+
+   /*******************************************************************************
     ** Base class commit() should be a no-op (no exception).
     *******************************************************************************/
    @Test
@@ -269,6 +289,20 @@ class QBackendTransactionTest extends BaseTest
       QBackendTransaction tx = new QBackendTransaction();
       assertThatThrownBy(() -> tx.addAfterCommitCallback(null))
          .isInstanceOf(NullPointerException.class);
+   }
+
+
+   /*******************************************************************************
+    ** The base class cannot confirm a rollback, so it refuses rollback callbacks
+    ** rather than pretending to honor them.
+    *******************************************************************************/
+   @Test
+   void baseTransactionRefusesAfterRollbackCallbacks()
+   {
+      QBackendTransaction tx = new QBackendTransaction();
+      assertThat(tx.supportsRollbackCallbacks()).isFalse();
+      assertThatThrownBy(() -> tx.addAfterRollbackCallback(new AtomicInteger()::incrementAndGet))
+         .isInstanceOf(UnsupportedOperationException.class);
    }
 
 }

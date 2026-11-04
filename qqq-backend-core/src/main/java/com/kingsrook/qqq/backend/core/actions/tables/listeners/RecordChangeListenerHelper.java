@@ -54,6 +54,10 @@ public class RecordChangeListenerHelper
     *******************************************************************************/
    public static boolean anyApply(QInstance qInstance, String tableName, RecordChangeType type)
    {
+      if(TransactionalRecordChangeScope.applies(tableName, type))
+      {
+         return (true);
+      }
       if(qInstance == null || CollectionUtils.nullSafeIsEmpty(qInstance.getRecordChangeListeners()))
       {
          return (false);
@@ -88,7 +92,7 @@ public class RecordChangeListenerHelper
     *******************************************************************************/
    public static void fire(QInstance qInstance, RecordChangeEvent event, boolean requiredOnly)
    {
-      if(qInstance == null || event == null || CollectionUtils.nullSafeIsEmpty(event.getRecords()) || CollectionUtils.nullSafeIsEmpty(qInstance.getRecordChangeListeners()))
+      if(qInstance == null || event == null || CollectionUtils.nullSafeIsEmpty(event.getRecords()))
       {
          return;
       }
@@ -96,6 +100,12 @@ public class RecordChangeListenerHelper
       if(requiredOnly)
       {
          event.setNotificationsSuppressed(true);
+      }
+
+      TransactionalRecordChangeScope.fire(event);
+      if(CollectionUtils.nullSafeIsEmpty(qInstance.getRecordChangeListeners()))
+      {
+         return;
       }
 
       for(QCodeReference codeReference : qInstance.getRecordChangeListeners())
@@ -114,10 +124,27 @@ public class RecordChangeListenerHelper
          {
             if(listener.isRequired())
             {
+               if(event.getTransaction() != null)
+               {
+                  event.getTransaction().markRollbackOnly();
+               }
                throw (new RequiredListenerException(e));
             }
             LOG.warn("Error in record change listener", e, logPair("listener", codeReference.getName()), logPair("tableName", event.getTableName()), logPair("type", event.getType()), logPair("recordCount", event.getRecords().size()));
          }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Required event preparation cannot silently omit a successful native write.
+    *******************************************************************************/
+   public static void preparationFailed(String tableName, RecordChangeType type, Throwable error)
+   {
+      if(TransactionalRecordChangeScope.applies(tableName, type))
+      {
+         throw (new RequiredListenerException(error));
       }
    }
 

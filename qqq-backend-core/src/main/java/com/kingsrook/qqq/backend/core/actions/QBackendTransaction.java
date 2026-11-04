@@ -32,6 +32,7 @@ import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistencyGuarantee;
 import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistentReadInput;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleInterface;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
@@ -58,6 +59,57 @@ public class QBackendTransaction implements AutoCloseable
    private static final QLogger LOG = QLogger.getLogger(QBackendTransaction.class);
 
    private List<Runnable> afterCommitCallbacks = new ArrayList<>();
+   private List<Runnable> afterRollbackCallbacks = new ArrayList<>();
+
+
+
+   /*******************************************************************************
+    ** Only implementations with confirmed rollback semantics may compensate resources.
+    *******************************************************************************/
+   public boolean supportsRollbackCallbacks()
+   {
+      return (false);
+   }
+
+
+
+   /*******************************************************************************
+    ** Run only after confirmed rollback, never after an uncertain commit outcome.
+    *******************************************************************************/
+   public void addAfterRollbackCallback(Runnable callback)
+   {
+      if(!supportsRollbackCallbacks())
+      {
+         throw (new UnsupportedOperationException("This transaction cannot confirm rollback."));
+      }
+      afterRollbackCallbacks.add(Objects.requireNonNull(callback));
+   }
+
+
+
+   /*******************************************************************************
+    ** Called by an implementation only after its storage rollback succeeds.
+    *******************************************************************************/
+   protected void runAfterRollbackCallbacks()
+   {
+      var callbacks = afterRollbackCallbacks;
+      afterRollbackCallbacks = new ArrayList<>();
+      for(Runnable callback : callbacks)
+      {
+         try
+         {
+            callback.run();
+         }
+         catch(Exception | LinkageError e)
+         {
+            LOG.warn("Error running after-rollback callback", e);
+         }
+      }
+   }
+
+
+
+   private boolean rollbackOnly;
 
 
 
@@ -128,11 +180,63 @@ public class QBackendTransaction implements AutoCloseable
     *******************************************************************************/
    public void commit() throws QException
    {
+      requireCommitAllowed();
       //////////////////////////////////////////////////////////////////////
       // nothing to commit in base class - so just run any callbacks that //
       // were waiting on the commit                                       //
       //////////////////////////////////////////////////////////////////////
       runAfterCommitCallbacks();
+   }
+
+
+
+   /*******************************************************************************
+    ** Permanently prevent this transaction object from committing after a required
+    ** operation fails. Catching the original exception must not restore permission
+    ** to commit partial work. Roll back and open a new transaction to retry.
+    *******************************************************************************/
+   public final void markRollbackOnly()
+   {
+      rollbackOnly = true;
+      discardAfterCommitCallbacks();
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether a required operation has made this transaction unusable for commit.
+    *******************************************************************************/
+   public final boolean isRollbackOnly()
+   {
+      return (rollbackOnly);
+   }
+
+
+
+   /*******************************************************************************
+    ** Qualify actual atomic writes to a native table on this exact transaction.
+    ** A base/no-op transaction cannot satisfy a required record listener. Backends
+    ** must verify their physical connection and the requested table before opting in.
+    *******************************************************************************/
+   public void requireAtomicWrites(QTableMetaData table) throws QException
+   {
+      throw (new QException("This backend does not support required transactional record listeners"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Backend implementations must call this before their physical commit. The
+    ** marker deliberately survives rollback, so failed rollback or a caught error
+    ** cannot accidentally make the same transaction object safe to commit again.
+    *******************************************************************************/
+   protected final void requireCommitAllowed() throws QException
+   {
+      if(rollbackOnly)
+      {
+         discardAfterCommitCallbacks();
+         throw (new QException("Transaction is rollback-only; open a new transaction to retry"));
+      }
    }
 
 
@@ -175,6 +279,7 @@ public class QBackendTransaction implements AutoCloseable
     *******************************************************************************/
    protected void runAfterCommitCallbacks()
    {
+      afterRollbackCallbacks.clear();
       if(afterCommitCallbacks.isEmpty())
       {
          return;
@@ -212,6 +317,7 @@ public class QBackendTransaction implements AutoCloseable
    protected void discardAfterCommitCallbacks()
    {
       afterCommitCallbacks.clear();
+      afterRollbackCallbacks.clear();
    }
 
 

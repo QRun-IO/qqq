@@ -1012,6 +1012,7 @@ public class MemoryRecordStore
          for(QRecord record : input.getRecords())
          {
             Serializable primaryKeyValue = ValueUtils.getValueAsFieldType(table, primaryKeyField, record.getValue(primaryKeyField.getName()));
+            com.kingsrook.qqq.backend.core.actions.tables.helpers.RecordVersionCheck.checkAtWrite(input, record, tableData.get(primaryKeyValue));
 
             if(CollectionUtils.nullSafeHasContents(record.getErrors()))
             {

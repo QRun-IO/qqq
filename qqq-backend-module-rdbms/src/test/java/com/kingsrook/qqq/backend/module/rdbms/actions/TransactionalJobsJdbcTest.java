@@ -1000,6 +1000,7 @@ class TransactionalJobsJdbcTest
     ** Every claimed verifier boundary is exercised inside the real native worker.
     ** Restore injected fixture corruption so normal failure bookkeeping can finish.
     ** Expiry explicitly completes native recovery, which may also run concurrently.
+    ** Keep the file database open until the worker stops; other cases test cold reopen.
     *******************************************************************************/
    @Test
    void runtimeVerifierRefusesAuthorityRevisionAndLeaseChangesAndClearsAfterFailure() throws Exception
@@ -1007,49 +1008,52 @@ class TransactionalJobsJdbcTest
       instance.getAuthentication().withModuleCodeReference(new QCodeReference(WorkerAuthentication.class));
       settings.withWorkerThreads(1).withPollIntervalMillis(25);
       verifyExecution = true;
-      com.kingsrook.qqq.backend.core.jobs.runtime.DurableJobsRuntime.start(instance);
-      try
+      try(Connection fixtureConnection = openConnection())
       {
-         for(String mutation : List.of("actor", "scope", "revision", "token", "expiry", "throw"))
+         com.kingsrook.qqq.backend.core.jobs.runtime.DurableJobsRuntime.start(instance);
+         try
          {
-            verifierMutation = mutation;
-            observedVerifierRefusal = null;
-            verifiedExecution = null;
-            verifierMutationFinished = new java.util.concurrent.CountDownLatch(1);
-            new InsertAction().execute(new InsertInput("source_record").withRecord(new QRecord().withValue("value", mutation)));
-            Integer id = enlistedId;
-            assertTrue(verifierMutationFinished.await(10, java.util.concurrent.TimeUnit.SECONDS), "Mutation must finish: " + mutation);
-            awaitTerminal(id);
-            String status = store.getJob(id).getValueString("status");
-            if("expiry".equals(mutation))
+            for(String mutation : List.of("actor", "scope", "revision", "token", "expiry", "throw"))
             {
-               assertEquals("NEEDS_REVIEW", status, mutation);
-               QRecord chunk = store.getChunks(id).get(0);
-               assertEquals("NEEDS_REVIEW", chunk.getValueString("status"));
-               assertEquals("The pod running this chunk stopped mid-chunk; it may have partly run. Review it, then retry or skip.", chunk.getValueString("errorMessage"));
-               assertNull(chunk.getValue("leaseToken"));
-               assertNull(chunk.getValue("leaseOwner"));
-               assertNull(chunk.getValue("leaseExpiresAt"));
+               verifierMutation = mutation;
+               observedVerifierRefusal = null;
+               verifiedExecution = null;
+               verifierMutationFinished = new java.util.concurrent.CountDownLatch(1);
+               new InsertAction().execute(new InsertInput("source_record").withRecord(new QRecord().withValue("value", mutation)));
+               Integer id = enlistedId;
+               assertTrue(verifierMutationFinished.await(10, java.util.concurrent.TimeUnit.SECONDS), "Mutation must finish: " + mutation);
+               awaitTerminal(id);
+               String status = store.getJob(id).getValueString("status");
+               if("expiry".equals(mutation))
+               {
+                  assertEquals("NEEDS_REVIEW", status, mutation);
+                  QRecord chunk = store.getChunks(id).get(0);
+                  assertEquals("NEEDS_REVIEW", chunk.getValueString("status"));
+                  assertEquals("The pod running this chunk stopped mid-chunk; it may have partly run. Review it, then retry or skip.", chunk.getValueString("errorMessage"));
+                  assertNull(chunk.getValue("leaseToken"));
+                  assertNull(chunk.getValue("leaseOwner"));
+                  assertNull(chunk.getValue("leaseExpiresAt"));
+               }
+               else
+               {
+                  assertEquals("FAILED", status, mutation);
+               }
+               org.junit.jupiter.api.Assertions.assertNull(verifiedExecution, mutation);
+               if(!"throw".equals(mutation))
+               {
+                  assertEquals(mutation, observedVerifierRefusal, "Verifier branch must be reached: " + mutation);
+               }
             }
-            else
-            {
-               assertEquals("FAILED", status, mutation);
-            }
-            org.junit.jupiter.api.Assertions.assertNull(verifiedExecution, mutation);
-            if(!"throw".equals(mutation))
-            {
-               assertEquals(mutation, observedVerifierRefusal, "Verifier branch must be reached: " + mutation);
-            }
+            verifierMutation = null;
+            Integer ordinary = DurableJobs.launch(new com.kingsrook.qqq.backend.core.jobs.model.LaunchRequest("dispatch"));
+            awaitTerminal(ordinary);
+            assertEquals("FAILED", store.getJob(ordinary).getValueString("status"));
+            org.junit.jupiter.api.Assertions.assertNull(verifiedExecution);
          }
-         verifierMutation = null;
-         Integer ordinary = DurableJobs.launch(new com.kingsrook.qqq.backend.core.jobs.model.LaunchRequest("dispatch"));
-         awaitTerminal(ordinary);
-         assertEquals("FAILED", store.getJob(ordinary).getValueString("status"));
-         org.junit.jupiter.api.Assertions.assertNull(verifiedExecution);
-      }
-      finally
-      {
-         com.kingsrook.qqq.backend.core.jobs.runtime.DurableJobsRuntime.stop(instance, java.time.Duration.ofSeconds(5));
+         finally
+         {
+            com.kingsrook.qqq.backend.core.jobs.runtime.DurableJobsRuntime.stop(instance, java.time.Duration.ofSeconds(5));
+         }
       }
    }
 

@@ -25,6 +25,8 @@ import java.time.Duration;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import com.kingsrook.qqq.backend.core.BaseTest;
+import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -208,6 +210,52 @@ class QSessionStoreHelperTest extends BaseTest
       QSessionStoreRegistry.getInstance().register(provider2);
 
       assertThat(QSessionStoreRegistry.getInstance().getProvider()).contains(provider2);
+      assertThat(QSessionStoreRegistry.getInstance().clearIfSame(provider1)).isFalse();
+      assertThat(QSessionStoreRegistry.getInstance().getProvider()).contains(provider2);
+      assertThat(QSessionStoreRegistry.getInstance().clearIfSame(provider2)).isTrue();
+      assertThat(QSessionStoreRegistry.getInstance().getProvider()).isEmpty();
+   }
+
+
+
+   /*******************************************************************************
+    ** The same session identifier in two applications must never cross providers.
+    *******************************************************************************/
+   @Test
+   void applicationRegistrationsRemainIsolated()
+   {
+      QInstance original = QContext.getQInstance();
+      QInstance first = new QInstance();
+      QInstance second = new QInstance();
+      try
+      {
+         QContext.setQInstance(first);
+         QSessionStoreRegistry.getInstance().register(new TestSessionStoreProvider());
+         QSessionStoreHelper.storeSession("shared-id", new QSession().withValue("owner", "first"), Duration.ofMinutes(1));
+         QContext.setQInstance(second);
+         assertThat(QSessionStoreHelper.loadSession("shared-id")).isEmpty();
+         assertThat(new com.kingsrook.qqq.backend.core.health.HealthSessionStoreCheck().run(
+            new com.kingsrook.qqq.backend.core.health.HealthCheckInput().withQInstance(first)).getStatus())
+            .isEqualTo(com.kingsrook.qqq.backend.core.health.HealthStatus.UP);
+         assertThat(new com.kingsrook.qqq.backend.core.health.HealthSessionStoreCheck().run(
+            new com.kingsrook.qqq.backend.core.health.HealthCheckInput().withQInstance(second)).getStatus())
+            .isEqualTo(com.kingsrook.qqq.backend.core.health.HealthStatus.UNKNOWN);
+         QSessionStoreRegistry.getInstance().register(new TestSessionStoreProvider());
+         QSessionStoreHelper.storeSession("shared-id", new QSession().withValue("owner", "second"), Duration.ofMinutes(1));
+         QContext.setQInstance(first);
+         assertThat(QSessionStoreHelper.loadSession("shared-id").orElseThrow().getValue("owner")).isEqualTo("first");
+         QSessionStoreRegistry.getInstance().clear();
+         QContext.setQInstance(second);
+         assertThat(QSessionStoreHelper.loadSession("shared-id").orElseThrow().getValue("owner")).isEqualTo("second");
+      }
+      finally
+      {
+         QContext.setQInstance(first);
+         QSessionStoreRegistry.getInstance().clear();
+         QContext.setQInstance(second);
+         QSessionStoreRegistry.getInstance().clear();
+         QContext.setQInstance(original);
+      }
    }
 
 

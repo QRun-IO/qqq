@@ -24,13 +24,19 @@ package com.kingsrook.qqq.backend.core.actions.collaboration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.actions.ai.AiDataClassifications;
 import com.kingsrook.qqq.backend.core.actions.ai.AiFieldMetaData;
 import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
+import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
+import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
+import com.kingsrook.qqq.backend.core.actions.tables.query.VirtualFieldValueProviderInterface;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
+import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
+import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.collaboration.RecordFeature;
@@ -166,6 +172,52 @@ public class RuntimeFieldOverlayTest extends BaseTest
       Provider.contribution.withTables(Map.of());
       RuntimeMetaDataOverlay.refresh(instance);
       assertNull(instance.getTable("runtimeTest").getVirtualField("computed"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Invalid provider updates preserve the last accepted executable metadata.
+    *******************************************************************************/
+   @Test
+   void validatesAndRetainsRuntimeValueProvider() throws Exception
+   {
+      QVirtualFieldMetaData field = new QVirtualFieldMetaData("provided", QFieldType.STRING)
+         .withIsQuerySelectable(true).withValueProvider(new QCodeReference(RuntimeValueProvider.class));
+      Provider.contribution.withTables(Map.of("runtimeTest", new RuntimeTableMetaDataContribution().withVirtualFields(List.of(field))));
+      RuntimeMetaDataOverlay.refresh(instance);
+      QTableMetaData accepted = instance.getTable("runtimeTest");
+      assertNotSame(field, accepted.getVirtualField("provided"));
+      assertNull(original.getVirtualField("provided"));
+      new InsertAction().execute(new InsertInput("runtimeTest").withRecords(List.of(new QRecord().withValue("id", 7))));
+      QueryInput input = new QueryInput("runtimeTest").withFieldNamesToInclude(Set.of("provided"));
+      assertEquals(Map.of("provided", "record-7"), new QueryAction().execute(input).getRecords().get(0).getValues());
+
+      field.setValueProvider(new QCodeReference(String.class));
+      RuntimeMetaDataOverlay.refresh(instance);
+      assertSame(accepted, instance.getTable("runtimeTest"));
+      assertEquals(Map.of("provided", "record-7"), new QueryAction().execute(input).getRecords().get(0).getValues());
+
+      Provider.contribution.withTables(Map.of());
+      RuntimeMetaDataOverlay.refresh(instance);
+      assertNull(instance.getTable("runtimeTest").getVirtualField("provided"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Supply values using the internally selected identity.
+    *******************************************************************************/
+   public static class RuntimeValueProvider implements VirtualFieldValueProviderInterface
+   {
+      @Override
+      public void fill(QTableMetaData table, String fieldName, List<QRecord> records, QueryInput input)
+      {
+         for(QRecord record : records)
+         {
+            record.setValue(fieldName, "record-" + record.getValue(table.getPrimaryKeyField()));
+         }
+      }
    }
 
 

@@ -171,6 +171,42 @@ class ClusterBusTest extends BaseTest
 
 
    /*******************************************************************************
+    ** Wire UUIDs are translated in the receiving application's context.
+    *******************************************************************************/
+   @Test
+   void testSessionKeyTranslationUsesReceivingApplication() throws Exception
+   {
+      QInstance instance = QContext.getQInstance();
+      QInstance other = TestUtils.defineInstance();
+      instance.withSupplementalMetaData(new ClusterBusMetaData().withBus(new QCodeReference(WireBus.class)));
+      asNode("node-a");
+      ClusterBus.connect(instance);
+      Memoization<String, String> tokens = ClusterCaches.sessionKeyed("test.scopedTokens", new Memoization<>(),
+         uuid -> (QContext.getQInstance() == instance ? "a:" : "b:") + uuid);
+      tokens.storeResult("a:shared-session", "token-a");
+      tokens.storeResult("b:shared-session", "token-b");
+      try
+      {
+         QContext.setQInstance(other);
+         ClusterEvent ended = new ClusterEvent(ClusterEvent.TYPE_SESSION_ENDED, null, "shared-session");
+         ended.setOriginNodeId("remote-node");
+         WIRE.forEach(listener -> listener.accept(ended));
+         assertTrue(tokens.getMemoizedResult("a:shared-session").isEmpty());
+         assertTrue(tokens.getMemoizedResult("b:shared-session").isPresent());
+         assertEquals(other, QContext.getQInstance());
+         ClusterCaches.sessionEnded("shared-session");
+         assertTrue(tokens.getMemoizedResult("b:shared-session").isEmpty());
+      }
+      finally
+      {
+         ClusterBus.close(other);
+         QContext.setQInstance(instance);
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Every static Memoization in QQQ core is registered (shared or node-local):
     ** a new static cache must say how it behaves on several nodes.
     *******************************************************************************/

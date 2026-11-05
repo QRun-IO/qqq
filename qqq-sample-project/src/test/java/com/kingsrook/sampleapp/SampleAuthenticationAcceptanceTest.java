@@ -97,6 +97,7 @@ class SampleAuthenticationAcceptanceTest
    private HttpClient client;
    private URI base;
    private SampleAuthenticationProvider provider;
+   private QSessionStoreRegistry previousRegistry;
    private QSessionStoreProviderInterface previousStore;
    private final String username = "owned-" + UUID.randomUUID();
 
@@ -109,8 +110,9 @@ class SampleAuthenticationAcceptanceTest
    void setUp() throws Exception
    {
       previousContext = QContext.capture();
-      previousStore = QSessionStoreRegistry.getInstance().getProvider().orElse(null);
-      QSessionStoreRegistry.getInstance().clear();
+      previousRegistry = QSessionStoreRegistry.getInstance();
+      previousStore = previousRegistry.getProvider().orElse(null);
+      previousRegistry.clear();
       previousObjects = QContext.getObjects();
       QContext.setObjects(new LinkedHashMap<>());
       ConnectionManager.resetConnectionProviders();
@@ -158,10 +160,14 @@ class SampleAuthenticationAcceptanceTest
       finally
       {
          ConnectionManager.resetConnectionProviders();
-         QSessionStoreRegistry.getInstance().clear();
+         if(instance != null)
+         {
+            QSessionStoreRegistry.getInstance(instance).clear();
+         }
+         previousRegistry.clear();
          if(previousStore != null)
          {
-            QSessionStoreRegistry.getInstance().register(previousStore);
+            previousRegistry.register(previousStore);
          }
          MemoryRecordStore.getInstance().reset();
          QContext.clear();
@@ -350,13 +356,13 @@ class SampleAuthenticationAcceptanceTest
       OwnedSessionStore store = new OwnedSessionStore();
       if(useStore)
       {
-         QSessionStoreRegistry.getInstance().register(store);
+         QSessionStoreRegistry.getInstance(instance).register(store);
          ((OAuth2AuthenticationMetaData) instance.getAuthentication()).setSessionStoreEnabled(true);
       }
       else
       {
          store.rejectRemoval = true;
-         QSessionStoreRegistry.getInstance().register(store);
+         QSessionStoreRegistry.getInstance(instance).register(store);
       }
       start();
       String uuid = sessionCookie(request("POST", "/manageSession", grant(provider.code(username), SampleAuthenticationProvider.CALLBACK, SampleAuthenticationProvider.VERIFIER), null));

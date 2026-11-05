@@ -778,7 +778,11 @@ class QPicoCliImplementationTest
    {
       String     filename   = "/no-such/directory/" + UUID.randomUUID() + "report.csv";
       TestOutput testOutput = testCli("person", "export", "--filename=" + filename);
-      assertTestErrorContains(testOutput, "No such file or directory");
+      //////////////////////////////////////////////////////////////////////////////////////
+      // message text is OS-specific: POSIX says "No such file or directory", Windows says //
+      // "The system cannot find the path specified"                                       //
+      //////////////////////////////////////////////////////////////////////////////////////
+      assertTestErrorContains(testOutput, "(No such file or directory|The system cannot find the path specified)");
    }
 
 

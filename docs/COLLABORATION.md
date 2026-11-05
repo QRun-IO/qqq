@@ -380,8 +380,9 @@ assistant.
     `QCriteriaOperator.CONTAINS_ALL`, defined for virtual fields only).
   - Its `VirtualFieldCriteriaExpander` (§6.5) rewrites `collaborationTags IN (a, b)` to
     `id IN (SELECT recordId FROM collaboration_record_tag WHERE tableName = 'order' AND tagId IN (a, b))`.
-- **Column.** As a selectable virtual field, Tags can be added as a grid column. A POST_QUERY
-  hook fills it with one batched query per page.
+- **Column.** As a selectable virtual field, Tags can be added as a grid column. Its
+  `VirtualFieldValueProviderInterface` fills labels with batched assignment and vocabulary
+  lookups, without occupying the host table's `POST_QUERY_RECORD` customizer slot.
 - **Quick search.**
   - The table's search fields gain `collaborationTags`. Through the same expander, a default
     search for `urgent` also matches records tagged with a tag whose label contains `urgent`.
@@ -982,12 +983,16 @@ Where the build differs from the text above, this section wins:
   receive it; they see only the resulting `presence.changed` events on `record:` and `table:`
   channels. The pagehide beacon cannot send DELETE, so a closed tab's presence simply expires
   after 45 s.
-- **Custom fields on other backends.** EAV-fallback fields are read-only and filterable for now.
-  Writes and projection are a follow-up. MULTI_SELECT is stored as a JSON array, without native
-  array operators.
-- **Tags as a grid column.** The `collaborationTags` virtual field is filterable and searchable,
-  but not selectable as a column yet: the runtime overlay has no post-query hook for contributed
-  virtual fields.
+- **Contributed values (2026-10-22 implementation).** Core now supports selectable virtual
+  fields through `QVirtualFieldMetaData.withValueProvider(QCodeReference)`. The coordinated
+  collaboration consumer adds tag labels and read-only EAV values. These source changes require
+  a matching core/consumer release; they do not change already-published snapshot artifacts.
+  EAV writes remain a follow-up. MULTI_SELECT remains a JSON-array STRING without native array
+  operators.
+- **Tags as a grid column.** The coordinated consumer returns approved, in-scope tag labels in
+  deterministic order, joined by comma-space; no tags produces null. The possible-value source
+  remains available for ID-based filters. `withShouldTranslatePossibleValues(false)` prevents
+  treating these already-rendered labels as IDs and prevents an extra export label column.
 - **Contingent fields.** `parentCommentId` (by `threadId`), feature settings' `scopeName` (by
   `scopeType`) and a comment's `fieldName` (by `tableName`) use `${input.x}` filters and CUSTOM
   providers' `otherValues`. They switch to core `dependsOn` when it ships.
@@ -1000,3 +1005,35 @@ Where the build differs from the text above, this section wins:
 - **Secured data (qqq#1172).** Timeline audit values are masked by core when read as the viewer.
   Cached favorite and recent labels are stored only when `FieldAccessHelper.isRecordLabelFullAccess`
   is true.
+
+
+### Contributed virtual-field value contract
+
+A provider implements `VirtualFieldValueProviderInterface.fill(table, fieldName, records, input)`.
+The field must be query-selectable and reference a loadable implementation. Runtime overlay
+validation rejects invalid references while retaining the last accepted table generation.
+
+Core invokes providers after the host post-query customizer and before read behaviors, display
+formatting, and final field masking. Only selected fields run; a null selection means all eligible
+fields. When hidden-field omission is enabled, metadata-hidden fields do not invoke providers; fields
+hidden by enforced session policy never invoke them. Empty result
+batches do not invoke them. Providers must preserve record identity, ordering, and unrelated fields.
+They should use bounded bulk lookups and the originating input's transaction.
+
+Provider-only query projections privately fetch required primary keys, then remove keys that the
+caller did not request. Joined providers receive child records with unprefixed field names and the
+child primary key; the originating `QueryInput` still describes the outer request. Unmatched left
+joins return null without invoking a provider for the absent child. Streaming uses the existing
+record buffers, including a caller-supplied buffer; an exception prevents delivery of the failing
+batch but does not retract previously delivered batches.
+
+Native GET, query-backed GET, API queries, and exports use this pipeline. Native GET backends must
+supply the identity needed by their provider. A provider reference alone does not add SQL filtering,
+sorting, or aggregation support: criteria still need their existing expander or field expression.
+`SELECT DISTINCT` with post-query providers is explicitly rejected because backend deduplication
+would happen before computed values exist. A joined primary key marked heavy requires the request
+to fetch heavy fields. These are explicit query limitations, not silently approximated results.
+
+Possible-value output translation defaults to enabled. A virtual field that supplies labels may
+set `shouldTranslatePossibleValues` to false while keeping its picker source for filtering. This
+setting applies to base fields, joined aliases, and export column planning.

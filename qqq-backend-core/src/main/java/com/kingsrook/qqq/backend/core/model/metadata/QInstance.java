@@ -183,7 +183,7 @@ public class QInstance
    //////////////////////////////////////////////////////////////////////////////////////
 
    @JsonIgnore
-   private QInstanceValidationState validationState = QInstanceValidationState.PENDING;
+   private volatile QInstanceValidationState validationState = QInstanceValidationState.PENDING;
 
    private Map<String, String> memoizedTablePaths   = new HashMap<>();
    private Map<String, String> memoizedProcessPaths = new HashMap<>();

@@ -118,7 +118,7 @@ public class ManageSessionExecutor extends AbstractMiddlewareExecutor<ManageSess
     ** application installs profiles (UI API 1.8.0).  The session's own values
     ** are not changed.
     ***************************************************************************/
-   static void addProfileValues(LinkedHashMap<String, Serializable> valuesForFrontend, QSession session)
+   private static void addProfileValues(LinkedHashMap<String, Serializable> valuesForFrontend, QSession session)
    {
       Map<String, Serializable> profile = UserProfiles.frontendUserValues(QContext.getQInstance(), session);
       if(profile.isEmpty() && session.getUser() == null)

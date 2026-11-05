@@ -27,10 +27,16 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
+import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.session.QUser;
+import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.OAuth2AuthenticationModule;
+import com.kingsrook.qqq.middleware.javalin.executors.io.ManageSessionInput;
+import com.kingsrook.qqq.middleware.javalin.executors.io.ManageSessionOutputInterface;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -62,33 +68,86 @@ class ManageSessionExecutorTest
 
 
    /*******************************************************************************
-    ** The authenticated session user is always reported as values.user.id (native
-    ** CLI/TUI/scanner logins), even with no profile and no frontend values, and it
-    ** overwrites a provider-supplied id.
+    ** execute() always reports the authenticated session user as values.user.id
+    ** (native CLI/TUI/scanner logins), even with no profile and null frontend
+    ** values, and it overwrites a provider-supplied id.
     *******************************************************************************/
    @Test
-   void testAuthenticatedIdentityIsAuthoritative()
+   void testExecuteReportsAuthenticatedIdentity() throws Exception
    {
-      QContext.init(new QInstance(), null);
+      QInstance qInstance = new QInstance();
+      qInstance.withInstanceDefaultAuthentication(new QAuthenticationMetaData().withName("fixture").withType(QAuthenticationType.CUSTOM)
+         .withModuleCodeReference(new QCodeReference(FixtureAuthenticationModule.class)));
+      QContext.init(qInstance, null);
       try
       {
-         QSession session = new QSession();
-         session.setUser(new QUser().withIdReference("real-user"));
+         FixtureAuthenticationModule.frontendValues = null;
+         assertEquals("real-user", executeAndGetUser().get("id"));
 
-         LinkedHashMap<String, Serializable> noFrontendValues = new LinkedHashMap<>();
-         ManageSessionExecutor.addProfileValues(noFrontendValues, session);
-         assertEquals("real-user", ((Map<?, ?>) noFrontendValues.get("user")).get("id"));
-
-         LinkedHashMap<String, Serializable> spoofed = new LinkedHashMap<>();
-         spoofed.put("user", new LinkedHashMap<>(Map.of("id", "spoofed", "fullName", "Kept")));
-         ManageSessionExecutor.addProfileValues(spoofed, session);
-         Map<?, ?> user = (Map<?, ?>) spoofed.get("user");
+         FixtureAuthenticationModule.frontendValues = new LinkedHashMap<>(Map.of("user", new LinkedHashMap<>(Map.of("id", "spoofed", "fullName", "Kept"))));
+         Map<?, ?> user = executeAndGetUser();
          assertEquals("real-user", user.get("id"));
          assertEquals("Kept", user.get("fullName"));
       }
       finally
       {
+         FixtureAuthenticationModule.frontendValues = null;
          QContext.clear();
+      }
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   private static Map<?, ?> executeAndGetUser() throws Exception
+   {
+      Map<String, Serializable> captured = new LinkedHashMap<>();
+      new ManageSessionExecutor().execute(new ManageSessionInput(), new ManageSessionOutputInterface()
+      {
+         @Override
+         public void setUuid(String uuid)
+         {
+         }
+
+
+
+         @Override
+         public void setValues(Map<String, Serializable> values)
+         {
+            captured.putAll(values);
+         }
+      });
+      return (Map<?, ?>) captured.get("user");
+   }
+
+
+
+   /***************************************************************************
+    ** Minimal custom authentication module: returns a session for "real-user".
+    ***************************************************************************/
+   public static class FixtureAuthenticationModule implements QAuthenticationModuleInterface
+   {
+      static Map<String, Serializable> frontendValues;
+
+
+
+      @Override
+      public QSession createSession(QInstance qInstance, Map<String, String> context)
+      {
+         QSession session = new QSession();
+         session.setUser(new QUser().withIdReference("real-user"));
+         session.setValuesForFrontend(frontendValues);
+         return (session);
+      }
+
+
+
+      @Override
+      public boolean isSessionValid(QInstance instance, QSession session)
+      {
+         return (true);
       }
    }
 

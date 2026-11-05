@@ -29,12 +29,12 @@ import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSBackendMetaDat
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 /*******************************************************************************
- ** A cached connection for a different database must never receive sample resets.
+ ** A different database with the same backend name must never receive sample resets.
  *******************************************************************************/
 class SampleBootstrapTest
 {
@@ -42,7 +42,7 @@ class SampleBootstrapTest
     **
     *******************************************************************************/
    @Test
-   void testResetRefusesAnotherDatabaseWithTheSameBackendName() throws Exception
+   void testResetPreservesAnotherDatabaseWithTheSameBackendName() throws Exception
    {
       ConnectionManager.resetConnectionProviders();
       RDBMSBackendMetaData other = SampleMetaDataProvider.defineRdbmsBackend().withDatabaseName("other_sample_bootstrap_test");
@@ -51,13 +51,23 @@ class SampleBootstrapTest
       {
          statement.execute("CREATE TABLE person (id INTEGER)");
          statement.execute("INSERT INTO person (id) VALUES (123)");
-         IllegalStateException error = assertThrows(IllegalStateException.class,
-            () -> SampleMetaDataProvider.primeTestDatabase("prime-test-database.sql"));
-         assertTrue(error.getMessage().contains("owned in-memory H2"));
+         SampleMetaDataProvider.primeTestDatabase("prime-test-database.sql");
+
+         try(Connection sampleConnection = ConnectionManager.getConnection(SampleMetaDataProvider.defineRdbmsBackend());
+            Statement sampleStatement = sampleConnection.createStatement();
+            ResultSet sampleResult = sampleStatement.executeQuery("SELECT first_name FROM person WHERE id = 1"))
+         {
+            assertEquals("jdbc:h2:mem:test_database", sampleConnection.getMetaData().getURL());
+            assertTrue(sampleResult.next());
+            assertEquals("Avery", sampleResult.getString(1));
+            assertFalse(sampleResult.next());
+         }
+
          try(ResultSet result = statement.executeQuery("SELECT id FROM person"))
          {
             assertTrue(result.next());
             assertEquals(123, result.getInt(1));
+            assertFalse(result.next());
          }
       }
       finally

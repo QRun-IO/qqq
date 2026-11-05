@@ -2,6 +2,8 @@
 
 Updated: 2026-11-04. The user resumed work on Core, Collaboration and Next UI in that order.
 
+Core PR #1341 is merged into `develop` at `ab7d4b5d62079febee78fd9d9c9ef33deb56b06d`. Release run 4273 failed in sample bootstrap verification; publication is not complete. The failing test assumed that same-named backends still shared a connection provider, but providers now include database connection settings in their cache identity. The follow-up regression verifies that the sample database is seeded while the other database retains exactly its original row. The runtime reset guard is unchanged. All eight targeted sample/bootstrap Java tests and 38 bootstrap/feature-evidence Python tests pass locally; the release pipeline must still pass on the follow-up commit.
+
 ## Implemented contracts
 
 This branch integrates server-controlled script isolation, early record hooks, transactional durable-job enlistment, source guards, atomic expected-version checks and confirmed JDBC rollback callbacks. It preserves the existing standard QQQ action and UI API boundaries. Core does not execute untrusted TypeScript itself.

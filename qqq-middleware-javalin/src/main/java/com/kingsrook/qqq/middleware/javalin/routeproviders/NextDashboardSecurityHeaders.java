@@ -104,7 +104,8 @@ public final class NextDashboardSecurityHeaders
       withDirective("style-src", "'self'", "'unsafe-inline'");
       withDirective("img-src", "'self'", "data:", "blob:", "https:");
       withDirective("font-src", "'self'", "data:");
-      withDirective("connect-src", "'self'");
+      // Receipt-verified file previews read local blobs before canvas rendering.
+      withDirective("connect-src", "'self'", "blob:");
       withDirective("frame-src", "'self'");
       withDirective("worker-src", "'self'", "blob:");
       withDirective("manifest-src", "'self'");

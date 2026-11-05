@@ -49,6 +49,7 @@ class SystemSessionAllowListArchitectureTest
    // a system session                                                        //
    /////////////////////////////////////////////////////////////////////////////
    static final Map<String, String> ALLOWED = Map.ofEntries(
+      Map.entry("com.kingsrook.qqq.backend.core.actions.scripts.ScriptExecutionIsolation", "read-only script isolation/ownership guard; caller visibility must never hide a sandbox restriction, no business work or engine execution"),
       Map.entry("com.kingsrook.qqq.backend.core.cluster.ClusterBus", "cluster cache/control event handlers (no business data)"),
       Map.entry("com.kingsrook.qqq.backend.core.health.HealthRunner", "health check bookkeeping (qqq#1220); checks that need authority use their own principal"),
       Map.entry("com.kingsrook.qqq.backend.core.instances.QInstanceHelpContentManager", "help content reload"),

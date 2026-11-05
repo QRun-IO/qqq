@@ -29,6 +29,7 @@ import com.google.gson.reflect.TypeToken;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
+import com.kingsrook.qqq.backend.core.actions.scripts.ScriptExecutionIsolation;
 import com.kingsrook.qqq.backend.core.actions.scripts.TestScriptActionInterface;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -72,6 +73,12 @@ public class TestScriptProcessStep implements BackendStep
          // build a script revision based on the input params & file contents //
          ///////////////////////////////////////////////////////////////////////
          Integer scriptId = input.getValueInteger("scriptId");
+
+         ///////////////////////////////////////////////////////////////////////////////////////////////
+         // this legacy, in-process test never runs source for a script that is marked as isolated    //
+         // (ExecuteCodeAction would refuse as well - this just refuses before anything is built)    //
+         ///////////////////////////////////////////////////////////////////////////////////////////////
+         ScriptExecutionIsolation.requireLegacyExecutionAllowed(scriptId);
 
          ScriptRevision scriptRevision = new ScriptRevision();
          scriptRevision.setScriptId(scriptId);

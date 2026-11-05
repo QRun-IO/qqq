@@ -100,6 +100,7 @@ public class StepsJobPlan implements JobPlan
          throw (new QException("Process " + job.getValueString("processName") + " is not defined in this instance."));
       }
 
+      com.kingsrook.qqq.backend.core.jobs.DurableJobs.requireEnlistedProcessRevision(job, process);
       boolean                   atomic         = isAtomic(job);
       Map<String, Serializable> values         = readValues(job.getValueString("paramsJson"));
       String                    startAfterStep = readSource(job).get(SOURCE_START_AFTER_STEP) instanceof String s ? s : null;

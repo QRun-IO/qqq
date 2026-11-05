@@ -24,7 +24,6 @@ package com.kingsrook.qqq.backend.core.actions.permissions;
 import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
-import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.MetaDataWithPermissionRules;
 
 
@@ -50,14 +49,11 @@ public class BulkTableActionProcessPermissionChecker implements CustomPermission
          String   tableName      = parts[0];
          String   bulkActionName = parts[1];
 
-         AbstractTableActionInput tableActionInput = new AbstractTableActionInput();
-         tableActionInput.setTableName(tableName);
-
          switch(bulkActionName)
          {
-            case "bulkInsert" -> PermissionsHelper.checkTablePermissionThrowing(tableActionInput, TablePermissionSubType.INSERT);
-            case "bulkEdit", "bulkEditWithFile" -> PermissionsHelper.checkTablePermissionThrowing(tableActionInput, TablePermissionSubType.EDIT);
-            case "bulkDelete" -> PermissionsHelper.checkTablePermissionThrowing(tableActionInput, TablePermissionSubType.DELETE);
+            case "bulkInsert" -> PermissionsHelper.checkTablePermissionThrowing(PermissionsHelper.tableActionInputFor(tableName, TablePermissionSubType.INSERT), TablePermissionSubType.INSERT);
+            case "bulkEdit", "bulkEditWithFile" -> PermissionsHelper.checkTablePermissionThrowing(PermissionsHelper.tableActionInputFor(tableName, TablePermissionSubType.EDIT), TablePermissionSubType.EDIT);
+            case "bulkDelete" -> PermissionsHelper.checkTablePermissionThrowing(PermissionsHelper.tableActionInputFor(tableName, TablePermissionSubType.DELETE), TablePermissionSubType.DELETE);
             default -> LOG.warn("Unexpected bulk action name when checking permissions for process: " + processName);
          }
       }

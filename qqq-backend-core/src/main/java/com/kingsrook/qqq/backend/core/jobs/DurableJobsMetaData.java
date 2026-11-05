@@ -83,6 +83,51 @@ public class DurableJobsMetaData implements QSupplementalInstanceMetaData
    private Integer effectBatchSize = 20;
    private Integer effectDispatcherThreads = 1;
    private Boolean useSkipLockedClaims = true;
+   private boolean transactionalAdmissionEnabled;
+   private String transactionalNamespace;
+
+
+
+   /*******************************************************************************
+    ** Stable host application identity in a shared Jobs database.
+    *******************************************************************************/
+   public String getTransactionalNamespace()
+   {
+      return (transactionalNamespace);
+   }
+
+
+
+   /*******************************************************************************
+    ** Declare the namespace before accepting transactional event enlistments.
+    *******************************************************************************/
+   public DurableJobsMetaData withTransactionalNamespace(String namespace)
+   {
+      transactionalNamespace = namespace;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether all job insertions participate in qualified transactional admission.
+    ** Existing hosts remain unchanged until explicitly migrated and opted in.
+    *******************************************************************************/
+   public boolean isTransactionalAdmissionEnabled()
+   {
+      return (transactionalAdmissionEnabled);
+   }
+
+
+
+   /*******************************************************************************
+    ** Enable the shared admission guard and fixed-process enlistment boundary.
+    *******************************************************************************/
+   public DurableJobsMetaData withTransactionalAdmissionEnabled(boolean enabled)
+   {
+      transactionalAdmissionEnabled = enabled;
+      return (this);
+   }
 
 
 

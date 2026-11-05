@@ -24,8 +24,10 @@ package com.kingsrook.qqq.backend.core.model.scripts;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
+import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.ChildRecordListRenderer;
 import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.DefaultWidgetRenderer;
+import com.kingsrook.qqq.backend.core.actions.scripts.ScriptTableCustomizer;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
@@ -45,6 +47,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinOn;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinType;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.QJoinMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.DenyBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.PVSValueFormatAndFields;
@@ -133,6 +136,7 @@ public class ScriptsMetaDataProvider
          .withName(STORE_SCRIPT_REVISION_PROCESS_NAME)
          .withTableName(Script.TABLE_NAME)
          .withIsHidden(true)
+         .withPermissionRules(defineLegacyScriptProcessPermissionRules())
          .withStepList(List.of(
             new QBackendStepMetaData()
                .withName("main")
@@ -151,11 +155,29 @@ public class ScriptsMetaDataProvider
          .withName(TEST_SCRIPT_PROCESS_NAME)
          .withTableName(Script.TABLE_NAME)
          .withIsHidden(true)
+         .withPermissionRules(defineLegacyScriptProcessPermissionRules())
          .withStepList(List.of(
             new QBackendStepMetaData()
                .withName("main")
                .withCode(new QCodeReference(TestScriptProcessStep.class))
          )));
+   }
+
+
+
+   /*******************************************************************************
+    ** The testScript and storeScriptRevision processes run (or store, to later be
+    ** run) caller-supplied source in-process - the legacy, trusted way.  So they
+    ** are never left to the host's default (NOT_PROTECTED) - the user needs the
+    ** process's own hasAccess permission (e.g., "testScript.hasAccess"), which an
+    ** app should grant only to users that it trusts with in-process code.  (Neither
+    ** process will touch a script that is marked ISOLATED, whatever the permission.)
+    *******************************************************************************/
+   private QPermissionRules defineLegacyScriptProcessPermissionRules()
+   {
+      return (new QPermissionRules()
+         .withLevel(PermissionLevel.HAS_ACCESS_PERMISSION)
+         .withDenyBehavior(DenyBehavior.HIDDEN));
    }
 
 
@@ -412,7 +434,10 @@ public class ScriptsMetaDataProvider
    private QTableMetaData defineScriptTable(String backendName) throws QException
    {
       QTableMetaData tableMetaData = defineStandardTable(backendName, Script.TABLE_NAME, Script.class)
-         .withSection(new QFieldSection("identity", new QIcon().withName("badge"), Tier.T1, List.of("id", "name", "scriptTypeId", "currentScriptRevisionId")))
+         .withCustomizer(TableCustomizers.PRE_INSERT_RECORD, new QCodeReference(ScriptTableCustomizer.class))
+         .withCustomizer(TableCustomizers.PRE_UPDATE_RECORD, new QCodeReference(ScriptTableCustomizer.class))
+         .withCustomizer(TableCustomizers.PRE_DELETE_RECORD, new QCodeReference(ScriptTableCustomizer.class))
+         .withSection(new QFieldSection("identity", new QIcon().withName("badge"), Tier.T1, List.of("id", "name", "scriptTypeId", "currentScriptRevisionId", "executionMode")))
          .withSection(new QFieldSection("recordScriptSettings", new QIcon().withName("table_rows"), Tier.T2, List.of("tableName", "maxBatchSize")))
          .withSection(new QFieldSection("contents", new QIcon().withName("data_object"), Tier.T2).withWidgetName("scriptViewer"))
          .withSection(new QFieldSection("dates", new QIcon().withName("calendar_month"), Tier.T3, List.of("createDate", "modifyDate")))

@@ -111,7 +111,7 @@ public class InlineJobTracker
     *******************************************************************************/
    public synchronized Integer track(String processName, String processUUID, String jobUUID) throws QException
    {
-      return (trackRun(processName, processUUID, jobUUID, true, null));
+      return (trackRun(processName, processUUID, jobUUID, true, null, null));
    }
 
 
@@ -125,20 +125,43 @@ public class InlineJobTracker
       String processName = parent.getValueString("processName");
       String processUUID = UUID.randomUUID().toString();
       Map<String, Serializable> values = StepsJobPlan.readValues(parent.getValueString("paramsJson"));
-      String uuid = new AsyncJobManager().withProcessUUID(processUUID).startJob(processName, callback ->
+      Integer reservedId = store.getSettings().isTransactionalAdmissionEnabled()
+         ? reserveRun(processName, processUUID, null, values) : null;
+      String uuid;
+      try
       {
-         var input = new RunProcessInput()
-            .withProcessName(processName).withProcessUUID(processUUID).withValues(new LinkedHashMap<>(values))
-            .withFrontendStepBehavior(RunProcessInput.FrontendStepBehavior.SKIP)
-            .withAsyncJobCallback(callback);
-         var output = new RunProcessAction().execute(input);
-         if(output.getException().isPresent())
+         uuid = new AsyncJobManager().withProcessUUID(processUUID).startJob(processName, callback ->
          {
-            throw (output.getException().get());
+            var input = new RunProcessInput()
+               .withProcessName(processName).withProcessUUID(processUUID).withValues(new LinkedHashMap<>(values))
+               .withFrontendStepBehavior(RunProcessInput.FrontendStepBehavior.SKIP)
+               .withAsyncJobCallback(callback);
+            var output = new RunProcessAction().execute(input);
+            if(output.getException().isPresent())
+            {
+               throw (output.getException().get());
+            }
+            return (Boolean.TRUE);
+         });
+      }
+      catch(QException | RuntimeException error)
+      {
+         if(reservedId != null)
+         {
+            try
+            {
+               store.setJobStatusWithEvent(reservedId, java.util.Set.of(com.kingsrook.qqq.backend.core.jobs.model.JobStatus.RUNNING),
+                  com.kingsrook.qqq.backend.core.jobs.model.JobStatus.FAILED, Map.of("statusReason", "Inline launch failed"),
+                  com.kingsrook.qqq.backend.core.jobs.model.JobEventType.FAILED, "Inline process could not start");
+            }
+            catch(QException historyError)
+            {
+               error.addSuppressed(historyError);
+            }
          }
-         return (Boolean.TRUE);
-      });
-      Integer id = trackRun(processName, processUUID, uuid, false, values);
+         throw (error);
+      }
+      Integer id = trackRun(processName, processUUID, uuid, false, values, reservedId);
       store.updateJob(id, Map.of("parentJobId", parent.getValueInteger("id"), "paramsJson", JsonUtils.toJson(values)));
       return (id);
    }
@@ -148,7 +171,7 @@ public class InlineJobTracker
    /*******************************************************************************
     ** Attach one authorized run, optionally after a very fast rerun completed.
     *******************************************************************************/
-   private synchronized Integer trackRun(String processName, String processUUID, String jobUUID, boolean requireRunning, Map<String, Serializable> capturedValues) throws QException
+   private synchronized Integer trackRun(String processName, String processUUID, String jobUUID, boolean requireRunning, Map<String, Serializable> capturedValues, Integer reservedId) throws QException
    {
       AsyncJobStatus status = new AsyncJobManager().getJobStatusForUser(jobUUID, processName, processUUID)
          .orElseThrow(() -> new QNotFoundException("Running process was not found."));
@@ -185,18 +208,47 @@ public class InlineJobTracker
             });
          }
       }
-      Instant now = store.now();
       Tracking entry = new Tracking();
-      entry.jobId = store.insertJob(new QRecord().withValue("processName", processName)
+      entry.jobId = reservedId == null ? reserveRun(processName, processUUID, jobUUID, values) : reservedId;
+      if(reservedId != null)
+      {
+         store.updateJob(reservedId, Map.of("sourceJson", JsonUtils.toJson(Map.of("processName", processName, "processUUID", processUUID, "jobUUID", jobUUID))));
+      }
+      tracking.put(jobUUID, entry);
+      mirror(jobUUID, entry, status);
+      return (entry.jobId);
+   }
+
+
+
+   /*******************************************************************************
+    ** Reserve tracked capacity before an opt-in rerun starts any asynchronous work.
+    ** A crash before attachment leaves a normal pod-owned row for the existing reaper.
+    *******************************************************************************/
+   private Integer reserveRun(String processName, String processUUID, String jobUUID, Map<String, Serializable> values) throws QException
+   {
+      String owner = DurableJobsSecurity.userId(QContext.getQSession());
+      if(owner == null)
+      {
+         throw (new QUserFacingException("A tracking job needs an owner."));
+      }
+      var process = QContext.getQInstance().getProcess(processName);
+      Instant now = store.now();
+      Map<String, Serializable> source = new LinkedHashMap<>();
+      source.put("processName", processName);
+      source.put("processUUID", processUUID);
+      if(jobUUID != null)
+      {
+         source.put("jobUUID", jobUUID);
+      }
+      return (store.insertJob(new QRecord().withValue("processName", processName)
          .withValue("label", process == null || process.getLabel() == null ? processName : process.getLabel())
+         .withValue("clientChannel", QContext.getQSession().getClientChannel())
          .withValue("sourceType", "INLINE").withValue("status", "RUNNING").withValue("userId", owner)
          .withValue("leaseOwner", podId).withValue("startedAt", now).withValue("queuedAt", now)
          .withValue("createDate", now).withValue("lastProgressAt", now).withValue("mode", "EXECUTE")
          .withValue("paramsJson", JsonUtils.toJson(values))
-         .withValue("sourceJson", JsonUtils.toJson(Map.of("processName", processName, "processUUID", processUUID, "jobUUID", jobUUID))), null);
-      tracking.put(jobUUID, entry);
-      mirror(jobUUID, entry, status);
-      return (entry.jobId);
+         .withValue("sourceJson", JsonUtils.toJson(source)), null));
    }
 
 

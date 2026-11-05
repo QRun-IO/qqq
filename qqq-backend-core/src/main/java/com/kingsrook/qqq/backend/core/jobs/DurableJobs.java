@@ -201,6 +201,41 @@ public final class DurableJobs
 
 
    /*******************************************************************************
+    ** Enlist one fixed host process on the exact active required record event.
+    ** The returned identity is provisional until its caller commits the source.
+    *******************************************************************************/
+   public static Integer enlistFixedProcess(com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeEvent event, FixedProcessRequest request) throws QException
+   {
+      return (FixedProcessEnlistment.enlist(event, request));
+   }
+
+
+
+   /*******************************************************************************
+    ** Verified immutable data for a fixed enlisted process running in this worker.
+    *******************************************************************************/
+   public static com.kingsrook.qqq.backend.core.jobs.runtime.EnlistedExecution.Verified requireEnlistedExecution(String processName, String revision) throws QException
+   {
+      return (com.kingsrook.qqq.backend.core.jobs.runtime.EnlistedExecution.require(processName, revision));
+   }
+
+
+
+   /*******************************************************************************
+    ** Verify a pinned transactional process immediately before worker execution.
+    *******************************************************************************/
+   public static void requireEnlistedProcessRevision(QRecord job, QProcessMetaData process) throws QException
+   {
+      if(job.getValueString("enlistmentKey") != null
+         && !Objects.equals(job.getValueString("processRevision"), FixedProcessEnlistment.requireProcess(process)))
+      {
+         throw (new QException("The enlisted process revision is no longer available"));
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Launch a process as a durable job, as the current session's user. Returns
     ** the job id. A launch from the assistant channel waits for confirmation.
     *******************************************************************************/
@@ -405,6 +440,32 @@ public final class DurableJobs
    {
       DurableJobsMetaData settings = settings();
       DurableJobStore     store    = new DurableJobStore(settings);
+      if(settings.isTransactionalAdmissionEnabled() && action != JobAction.RUN_AGAIN && action != JobAction.RETRY_FAILED_ROWS
+         && action != JobAction.DOWNLOAD_FAILED_ROWS)
+      {
+         String result = JobAdmission.transaction(settings, null, transaction ->
+         {
+            ((TransactionalJobAdmission) transaction).lockJobControlRows(jobId);
+            return (control(new DurableJobStore(settings, transaction), jobId, action));
+         });
+         JobStatus after = new JobFinalizer(store).evaluate(jobId);
+         QRecord current = store.getJob(jobId);
+         if(after != null && current != null)
+         {
+            JobSignals.status(jobId, current.getValueString("userId"), after);
+         }
+         return (result);
+      }
+      return (control(store, jobId, action));
+   }
+
+
+
+   /*******************************************************************************
+    ** Recheck current control authority against the row read inside admission.
+    *******************************************************************************/
+   private static String control(DurableJobStore store, Integer jobId, JobAction action) throws QException
+   {
       QSession            session  = QContext.getQSession();
       QRecord             job      = store.getJob(jobId);
       if(job == null)
@@ -415,7 +476,8 @@ public final class DurableJobs
       String actor = DurableJobsSecurity.userId(session);
       if(!(session.hasPermission(PERMISSION_ADMIN) || (actor != null && actor.equals(job.getValueString("userId")))))
       {
-         throw (new QPermissionDeniedException("You can only control your own jobs."));
+         // the jobs table hides other owners' rows from this caller, so the job is not found (as status() reports it)
+         throw (new QNotFoundException("Job " + jobId + " was not found."));
       }
       if(isAssistant(session) && !action.isAllowedFromAssistant())
       {
@@ -467,7 +529,8 @@ public final class DurableJobs
       String actor = DurableJobsSecurity.userId(session);
       if(!(session.hasPermission(PERMISSION_ADMIN) || (actor != null && actor.equals(job.getValueString("userId")))))
       {
-         throw (new QPermissionDeniedException("You can only control your own jobs."));
+         // the jobs table hides other owners' rows from this caller, so the job is not found (as status() reports it)
+         throw (new QNotFoundException("Job " + jobId + " was not found."));
       }
       if(isAssistant(session) && !action.isAllowedFromAssistant())
       {

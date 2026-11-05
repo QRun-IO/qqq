@@ -26,6 +26,9 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -54,8 +57,19 @@ public class C3P0PooledConnectionProvider implements ConnectionProviderInterface
 
    public static final int DEFAULT_CHECKOUT_TIMEOUT_SECONDS = 30;
 
+   ///////////////////////////////////////////////////////////////////////////////////////
+   // the identity tokens of the pools that are open, so that two pools in a JVM (e.g.,   //
+   // for two QInstances that use the same backend name) never share one - which they   //
+   // did, along with the customizer's per-token state.  The first pool for a name keeps //
+   // the name as its token (as ever); a later one gets a numbered suffix.               //
+   ///////////////////////////////////////////////////////////////////////////////////////
+   private static final Set<String> openIdentityTokens = ConcurrentHashMap.newKeySet();
+
    private RDBMSBackendMetaData  backend;
    private ComboPooledDataSource connectionPool;
+   private volatile String       identityToken;
+
+   private final AtomicBoolean closed = new AtomicBoolean(false);
 
    private final AtomicLong usageCount         = new AtomicLong();
    private final AtomicLong checkoutTimeouts   = new AtomicLong();
@@ -71,9 +85,18 @@ public class C3P0PooledConnectionProvider implements ConnectionProviderInterface
    {
       this.backend = backend;
 
+      String token  = backend.getName();
+      int    suffix = 1;
+      while(!openIdentityTokens.add(token))
+      {
+         token = backend.getName() + "#" + (++suffix);
+      }
+      this.identityToken = token;
+
+      ComboPooledDataSource pool = null;
       try
       {
-         ComboPooledDataSource pool = new ComboPooledDataSource();
+         pool = new ComboPooledDataSource();
          pool.setDriverClass(ConnectionManager.getJdbcDriverClassName(backend));
          pool.setJdbcUrl(getJdbcUrl(backend));
          pool.setUser(backend.getUsername());
@@ -146,18 +169,19 @@ public class C3P0PooledConnectionProvider implements ConnectionProviderInterface
             pool.setDebugUnreturnedConnectionStackTraces(true);
          }
 
-         pool.setIdentityToken(backend.getName());
+         pool.setIdentityToken(identityToken);
 
          ///////////////////////////////////////////////////////////////////////////
          // the customizer runs queries for new connections and tracks checkouts  //
          // for leak detection (detect-and-log only; nothing is reclaimed)        //
+         // use C3P0's unique pool identity; backend names repeat across apps     //
          ///////////////////////////////////////////////////////////////////////////
          if(CollectionUtils.nullSafeHasContents(backend.getQueriesForNewConnections()))
          {
-            BaseC3P0ConnectionCustomizer.setQueriesForNewConnections(backend.getName(), backend.getQueriesForNewConnections());
+            BaseC3P0ConnectionCustomizer.setQueriesForNewConnections(identityToken, backend.getQueriesForNewConnections());
          }
          Integer leakSeconds = poolSettings == null ? null : poolSettings.getLeakDetectionThresholdSeconds();
-         BaseC3P0ConnectionCustomizer.setLeakDetectionThreshold(backend.getName(), leakSeconds == null ? null : Duration.ofSeconds(leakSeconds));
+         BaseC3P0ConnectionCustomizer.setLeakDetectionThreshold(identityToken, leakSeconds == null ? null : Duration.ofSeconds(leakSeconds));
          pool.setConnectionCustomizerClassName(BaseC3P0ConnectionCustomizer.class.getName());
 
          customizePool(pool);
@@ -166,6 +190,26 @@ public class C3P0PooledConnectionProvider implements ConnectionProviderInterface
       }
       catch(Exception e)
       {
+         ///////////////////////////////////////////////////////////////////////////////
+         // a partly-initialized provider owns nothing: close what was made, release   //
+         // the token - and forget it, so a later close() can't release it again (by    //
+         // then it may be some other pool's)                                          //
+         ///////////////////////////////////////////////////////////////////////////////
+         if(pool != null)
+         {
+            try
+            {
+               pool.close();
+            }
+            catch(Exception closeException)
+            {
+               LOG.debug("Error closing connection pool after failed initialization", closeException, logPair("backendName", backend.getName()));
+            }
+         }
+         BaseC3P0ConnectionCustomizer.forget(token);
+         openIdentityTokens.remove(token);
+         this.identityToken = null;
+         this.connectionPool = null;
          throw (new QException("Error Initializing C3P0PooledConnectionProvider for backend [" + backend.getName() + "]", e));
       }
    }
@@ -259,7 +303,7 @@ public class C3P0PooledConnectionProvider implements ConnectionProviderInterface
       if(now - lastLeakScanMillis >= 1000)
       {
          lastLeakScanMillis = now;
-         BaseC3P0ConnectionCustomizer.findLeaks(backend.getName());
+         BaseC3P0ConnectionCustomizer.findLeaks(identityToken);
       }
    }
 
@@ -286,21 +330,53 @@ public class C3P0PooledConnectionProvider implements ConnectionProviderInterface
       }
       metrics.put("maxPoolSize", connectionPool.getMaxPoolSize());
       metrics.put("checkoutTimeouts", checkoutTimeouts.get());
-      metrics.put("suspectedLeaks", BaseC3P0ConnectionCustomizer.findLeaks(backend.getName()).size());
+      metrics.put("suspectedLeaks", BaseC3P0ConnectionCustomizer.findLeaks(identityToken).size());
       return (metrics);
    }
 
 
 
    /*******************************************************************************
-    ** Close the pool and its connections.
+    ** Close the pool and its connections.  Idempotent: only the first call does
+    ** anything - a later one (e.g., the Cleaner after an explicit close) must not
+    ** release an identity token that, by then, a newer pool may hold.  Safe on a
+    ** provider that never (or only partly) initialized.
     *******************************************************************************/
    @Override
    public void close()
    {
-      LOG.info("Closing connection pool", logPair("backendName", backend.getName()), logPair("state", describeState()));
-      connectionPool.close();
-      BaseC3P0ConnectionCustomizer.forget(backend.getName());
+      if(!closed.compareAndSet(false, true))
+      {
+         return;
+      }
+
+      String                token = identityToken;
+      ComboPooledDataSource pool  = connectionPool;
+      if(pool == null || token == null)
+      {
+         return;
+      }
+
+      try
+      {
+         LOG.info("Closing connection pool", logPair("backendName", backend.getName()), logPair("state", describeState()));
+         pool.close();
+      }
+      finally
+      {
+         BaseC3P0ConnectionCustomizer.forget(token);
+         openIdentityTokens.remove(token);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** The identity token of this pool (null if not open) - for tests.
+    *******************************************************************************/
+   String getIdentityToken()
+   {
+      return (identityToken);
    }
 
 
@@ -312,6 +388,7 @@ public class C3P0PooledConnectionProvider implements ConnectionProviderInterface
    public JSONObject dumpDebug() throws SQLException
    {
       JSONObject rs = new JSONObject(new LinkedHashMap<>());
+      rs.put("poolIdentityToken", connectionPool.getIdentityToken());
 
       JSONObject settings = new JSONObject(new LinkedHashMap<>());
       rs.put("settings", settings);

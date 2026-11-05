@@ -27,7 +27,9 @@ import java.time.Duration;
 import java.time.Instant;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.jobs.TransactionalJobAdmission;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
@@ -36,14 +38,41 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  **
  ** Stores a jdbc connection, which is set to autoCommit(false).
  *******************************************************************************/
-public class RDBMSTransaction extends QBackendTransaction
+public class RDBMSTransaction extends QBackendTransaction implements TransactionalJobAdmission
 {
    private static final QLogger LOG = QLogger.getLogger(RDBMSTransaction.class);
 
    private Connection connection;
+   private String atomicBackendName;
+   private String jobAdmissionIdentity;
 
    private Instant openedAt                  = Instant.now();
+   private boolean rolledBackSinceCommit     = false;
    private Integer logSlowTransactionSeconds = null;
+
+
+
+   /*******************************************************************************
+    ** JDBC rollback provides a confirmed boundary for external resource compensation.
+    *******************************************************************************/
+   @Override
+   public boolean supportsRollbackCallbacks()
+   {
+      return (true);
+   }
+
+
+
+   /*******************************************************************************
+    ** New compensation means the next close must still roll back, even if an earlier
+    ** rollback already happened.
+    *******************************************************************************/
+   @Override
+   public void addAfterRollbackCallback(Runnable callback)
+   {
+      super.addAfterRollbackCallback(callback);
+      rolledBackSinceCommit = false;
+   }
 
 
 
@@ -81,11 +110,101 @@ public class RDBMSTransaction extends QBackendTransaction
 
 
    /*******************************************************************************
+    ** Verify atomic participation on this connection before required native work.
+    *******************************************************************************/
+   @Override
+   public void requireAtomicWrites(QTableMetaData table) throws QException
+   {
+      try
+      {
+         requireCommitAllowed();
+         if(this instanceof RDBMSConsistentReadTransaction)
+         {
+            throw (new QException("A consistent-read transaction cannot own required record mutations"));
+         }
+         String backend = RDBMSAtomicWrites.require(connection, table);
+         if(atomicBackendName != null && !atomicBackendName.equals(backend))
+         {
+            throw (new QException("Required record mutations must share one native backend"));
+         }
+         atomicBackendName = backend;
+      }
+      catch(QException error)
+      {
+         markRollbackOnly();
+         throw (error);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Admit durable Jobs on this exact source transaction, never another checkout.
+    *******************************************************************************/
+   @Override
+   public String lockJobAdmission(QTableMetaData sourceTable) throws QException
+   {
+      try
+      {
+         requireAtomicWrites(sourceTable);
+         if(jobAdmissionIdentity == null)
+         {
+            jobAdmissionIdentity = RDBMSJobAdmission.lock(connection, sourceTable);
+         }
+         return (jobAdmissionIdentity);
+      }
+      catch(QException | RuntimeException error)
+      {
+         markRollbackOnly();
+         throw (error);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Read the database clock on the current transaction.
+    *******************************************************************************/
+   @Override
+   public Instant jobDatabaseNow() throws QException
+   {
+      requireCommitAllowed();
+      return (RDBMSJobAdmission.now(connection));
+   }
+
+
+
+   /*******************************************************************************
+    ** Lock existing chunks before their job row for atomic control operations.
+    *******************************************************************************/
+   @Override
+   public void lockJobControlRows(Integer jobId) throws QException
+   {
+      try
+      {
+         requireCommitAllowed();
+         if(jobAdmissionIdentity == null)
+         {
+            throw (new QException("Jobs control locks require prior admission"));
+         }
+         RDBMSJobAdmission.lockControlRows(connection, jobId);
+      }
+      catch(QException error)
+      {
+         markRollbackOnly();
+         throw (error);
+      }
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    @Override
    public void commit() throws QException
    {
+      requireCommitAllowed();
       try
       {
          Instant commitAt = Instant.now();
@@ -101,6 +220,8 @@ public class RDBMSTransaction extends QBackendTransaction
          }
 
          connection.commit();
+         rolledBackSinceCommit = false;
+         jobAdmissionIdentity = null;
          LOG.debug("Commit complete");
       }
       catch(Exception e)
@@ -136,10 +257,24 @@ public class RDBMSTransaction extends QBackendTransaction
    @Override
    public void rollback() throws QException
    {
+      rollbackConnection();
+   }
+
+
+
+   /*******************************************************************************
+    ** Release pending JDBC work and compensate resources. Close uses this directly
+    ** so cleanup does not invoke an application's explicit rollback override after
+    ** a successful commit.
+    *******************************************************************************/
+   private void rollbackConnection() throws QException
+   {
       try
       {
          LOG.info("Rolling back transaction");
          connection.rollback();
+         rolledBackSinceCommit = true;
+         runAfterRollbackCallbacks();
          LOG.info("Rollback complete");
       }
       catch(Exception e)
@@ -153,6 +288,7 @@ public class RDBMSTransaction extends QBackendTransaction
          // base class discards after-commit callbacks - even if the rollback //
          // failed, their work was never committed                            //
          ///////////////////////////////////////////////////////////////////////
+         jobAdmissionIdentity = null;
          super.rollback();
       }
    }
@@ -172,7 +308,21 @@ public class RDBMSTransaction extends QBackendTransaction
             return;
          }
 
-         connection.close();
+         try
+         {
+            /////////////////////////////////////////////////////////////////////////////
+            // release pending work and run compensation - unless a rollback (e.g., by //
+            // a subclass's close) already did, which must not be repeated             //
+            /////////////////////////////////////////////////////////////////////////////
+            if(!rolledBackSinceCommit)
+            {
+               rollbackConnection();
+            }
+         }
+         finally
+         {
+            connection.close();
+         }
       }
       catch(Exception e)
       {

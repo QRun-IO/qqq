@@ -51,6 +51,8 @@ import com.kingsrook.qqq.backend.core.actions.metadata.MetaDataActionCustomizerI
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.actions.processes.listeners.ProcessLifecycleListenerInterface;
 import com.kingsrook.qqq.backend.core.actions.reporting.customizers.ReportCustomRecordSourceInterface;
+import com.kingsrook.qqq.backend.core.actions.scripts.ScriptExecutionIsolation;
+import com.kingsrook.qqq.backend.core.actions.scripts.ScriptTableCustomizer;
 import com.kingsrook.qqq.backend.core.actions.scripts.TestScriptActionInterface;
 import com.kingsrook.qqq.backend.core.actions.tables.RecordSearchProviderInterface;
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeListenerInterface;
@@ -175,18 +177,37 @@ public class QInstanceValidator
 
 
    /*******************************************************************************
-    **
+    ** Serialize enrichment per application while allowing same-thread recursion.
     *******************************************************************************/
    public void validate(QInstance qInstance) throws QInstanceValidationException
    {
-      if(qInstance.getHasBeenValidated() || qInstance.getValidationIsRunning())
+      synchronized(qInstance)
       {
-         ///////////////////////////////////////////////////////////////////////////////////////////////////////////
-         // don't re-validate if previously complete or currently running (avoids recursive re-validation chaos!) //
-         ///////////////////////////////////////////////////////////////////////////////////////////////////////////
-         return;
+         if(qInstance.getHasBeenValidated() || qInstance.getValidationIsRunning())
+         {
+            return;
+         }
+         try
+         {
+            validateUnderLock(qInstance);
+         }
+         finally
+         {
+            if(!qInstance.getHasBeenValidated() && qInstance.getValidationIsRunning())
+            {
+               qInstance.setHasBeenValidated(null);
+            }
+         }
       }
+   }
 
+
+
+   /*******************************************************************************
+    ** Enrich and validate while the caller owns the instance monitor.
+    *******************************************************************************/
+   private void validateUnderLock(QInstance qInstance) throws QInstanceValidationException
+   {
       ////////////////////////////////////
       // mark validation as running now //
       ////////////////////////////////////
@@ -1123,6 +1144,8 @@ public class QInstanceValidator
       {
          validateTableCustomizer(tableName, entry.getKey(), entry.getValue());
       }
+
+      validateScriptTableCustomizer(qInstance, table);
 
       if(table.getBackendDetails() != null)
       {
@@ -2151,6 +2174,56 @@ public class QInstanceValidator
          });
       }
    }
+
+
+
+   /*******************************************************************************
+    ** A table that carries the server-controlled script execution marker must have
+    ** ScriptTableCustomizer (or a subclass) registered for pre-insert, pre-update
+    ** and pre-delete, on the table or the instance; without it generic writes could
+    ** move the marker. Checked once at initialization - no cost on the write path.
+    *******************************************************************************/
+   private void validateScriptTableCustomizer(QInstance qInstance, QTableMetaData table)
+   {
+      if(table.getFields() == null || !"script".equals(table.getName()) || !table.getFields().containsKey(ScriptExecutionIsolation.EXECUTION_MODE_FIELD_NAME))
+      {
+         return;
+      }
+
+      for(TableCustomizers role : List.of(TableCustomizers.PRE_INSERT_RECORD, TableCustomizers.PRE_UPDATE_RECORD, TableCustomizers.PRE_DELETE_RECORD))
+      {
+         boolean registered = isScriptTableCustomizer(CollectionUtils.nonNullMap(table.getCustomizers()).get(role.getRole()));
+         for(QCodeReference instanceLevel : CollectionUtils.nonNullList(qInstance.getTableCustomizers(role)))
+         {
+            registered |= isScriptTableCustomizer(instanceLevel);
+         }
+         assertCondition(registered, "Table " + table.getName() + " has the field " + ScriptExecutionIsolation.EXECUTION_MODE_FIELD_NAME + " but no " + ScriptTableCustomizer.class.getSimpleName()
+            + " (or subclass) registered for " + role.getRole() + ". Add it with withCustomizer(TableCustomizers." + role.name() + ", new QCodeReference(ScriptTableCustomizer.class)), or use ScriptsMetaDataProvider.");
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private boolean isScriptTableCustomizer(QCodeReference codeReference)
+   {
+      if(codeReference == null || codeReference.getName() == null)
+      {
+         return (false);
+      }
+
+      try
+      {
+         return (ScriptTableCustomizer.class.isAssignableFrom(Class.forName(codeReference.getName())));
+      }
+      catch(ClassNotFoundException | LinkageError e)
+      {
+         return (false);
+      }
+   }
+
 
 
 

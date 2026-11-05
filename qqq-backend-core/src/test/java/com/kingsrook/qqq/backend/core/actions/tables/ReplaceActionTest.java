@@ -474,7 +474,11 @@ class ReplaceActionTest extends BaseTest
       {
          actual.put(record.getValue("id"), record.getValues());
       }
-      assertThat((Instant) actual.get(ownerKey).get("modifyDate")).isAfterOrEqualTo((Instant) expected.get(ownerKey).get("modifyDate")).isBeforeOrEqualTo(Instant.now());
+      Instant previousVersion = (Instant) expected.get(ownerKey).get("modifyDate");
+      Instant nextVersion = previousVersion.truncatedTo(java.time.temporal.ChronoUnit.MILLIS).plusMillis(1);
+      Instant now = Instant.now();
+      assertThat((Instant) actual.get(ownerKey).get("modifyDate")).isAfter(previousVersion)
+         .isBeforeOrEqualTo(nextVersion.isAfter(now) ? nextVersion : now);
       expected.get(ownerKey).put("modifyDate", actual.get(ownerKey).get("modifyDate"));
       assertEquals(expected, actual);
    }

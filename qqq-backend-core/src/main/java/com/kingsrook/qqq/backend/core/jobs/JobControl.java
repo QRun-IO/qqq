@@ -24,6 +24,7 @@ package com.kingsrook.qqq.backend.core.jobs;
 
 import java.io.Serializable;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -102,23 +103,34 @@ class JobControl
          }
          case RESUME ->
          {
-            require(store.setJobStatus(jobId, EnumSet.of(JobStatus.PAUSED, JobStatus.PAUSING), JobStatus.QUEUED, reason(null)), action, status);
+            require(store.setJobStatus(jobId, EnumSet.of(JobStatus.PAUSED, JobStatus.PAUSING), requeueStatus(jobId), reason(null)), action, status);
             event(jobId, JobEventType.RESUMED, "Resumed");
          }
          case CANCEL ->
          {
+            if(store.getTransaction() != null && !hasRunningChunks(jobId))
+            {
+               int cancelled = store.setChunkStatuses(jobId, EnumSet.of(ChunkStatus.PENDING, ChunkStatus.RETRY, ChunkStatus.NEEDS_REVIEW), ChunkStatus.CANCELLED, null);
+               require(store.setJobStatus(jobId, ACTIVE, JobStatus.CANCELLED,
+                  Map.of("statusReason", "Cancelled", "finishedAt", store.now())), action, status);
+               store.refreshCounters(jobId);
+               event(jobId, JobEventType.CANCELLED, "Cancelled; " + cancelled + " chunks will not run. Finished chunks stay applied.");
+               break;
+            }
             require(store.setJobStatus(jobId, ACTIVE, JobStatus.CANCELLING, reason("Cancelling")), action, status);
             int cancelled = store.setChunkStatuses(jobId, EnumSet.of(ChunkStatus.PENDING, ChunkStatus.RETRY, ChunkStatus.NEEDS_REVIEW), ChunkStatus.CANCELLED, null);
             event(jobId, JobEventType.CANCELLED, "Cancelled; " + cancelled + " chunks will not run. Finished chunks stay applied.");
          }
          case RETRY_FAILED ->
          {
-            int retried = store.setChunkStatuses(jobId, EnumSet.of(ChunkStatus.FAILED, ChunkStatus.NEEDS_REVIEW), ChunkStatus.PENDING, Map.of("attempt", 0));
-            if(retried == 0)
+            EnumSet<JobStatus> retryable = EnumSet.of(JobStatus.FAILED, JobStatus.NEEDS_REVIEW, JobStatus.COMPLETED_WITH_ERRORS, JobStatus.PAUSED, JobStatus.QUEUED, JobStatus.RUNNING);
+            if(store.getChunks(jobId).stream().noneMatch(chunk -> ChunkStatus.FAILED.name().equals(chunk.getValueString("status")) || ChunkStatus.NEEDS_REVIEW.name().equals(chunk.getValueString("status"))))
             {
                throw (new QUserFacingException(label + " has no failed chunks to retry."));
             }
-            require(store.setJobStatus(jobId, EnumSet.of(JobStatus.FAILED, JobStatus.NEEDS_REVIEW, JobStatus.COMPLETED_WITH_ERRORS, JobStatus.PAUSED, JobStatus.QUEUED, JobStatus.RUNNING), JobStatus.QUEUED, requeue(job)), action, status);
+            fence(job, retryable, action, status);
+            int retried = store.setChunkStatuses(jobId, EnumSet.of(ChunkStatus.FAILED, ChunkStatus.NEEDS_REVIEW), ChunkStatus.PENDING, Map.of("attempt", 0));
+            require(store.setJobStatus(jobId, retryable, requeueStatus(jobId), requeue(job)), action, status);
             event(jobId, JobEventType.RETRIED, "Retrying " + retried + " failed chunks");
          }
          case RESTART ->
@@ -131,9 +143,10 @@ class JobControl
             {
                throw (new QUserFacingException(label + " is " + status.getPossibleValueLabel().toLowerCase() + "; pause or cancel it before restarting."));
             }
+            fence(job, EnumSet.of(status), action, status);
             int reset = store.setChunkStatuses(jobId, EnumSet.of(ChunkStatus.PENDING, ChunkStatus.RETRY, ChunkStatus.FAILED, ChunkStatus.NEEDS_REVIEW, ChunkStatus.CANCELLED), ChunkStatus.PENDING,
                new LinkedHashMap<>(Map.of("attempt", 0)));
-            require(store.setJobStatus(jobId, EnumSet.of(status), JobStatus.QUEUED, requeue(job)), action, status);
+            require(store.setJobStatus(jobId, EnumSet.of(status), requeueStatus(jobId), requeue(job)), action, status);
             event(jobId, JobEventType.RESTARTED, "Restarted; " + reset + " unfinished chunks will run again");
          }
          case RETRY_FAILED_ROWS ->
@@ -152,12 +165,49 @@ class JobControl
          default -> throw (new QUserFacingException("Unknown job action " + action));
       }
 
+      if(store.getTransaction() != null)
+      {
+         return (label + ": " + action.getPastTense() + ".");
+      }
       JobStatus after = new JobFinalizer(store).evaluate(jobId);
       if(after != null)
       {
          JobSignals.status(jobId, job.getValueString("userId"), after);
       }
       return (label + ": " + action.getPastTense() + ".");
+   }
+
+
+
+   /*******************************************************************************
+    ** Claim the right to reset this job's chunks, before touching any of them: the
+    ** job must still be in a status the action applies to and unchanged since this
+    ** controller read it (its version), so a refused or stale control never revives
+    ** failed chunks, and two controllers cannot both reset them.
+    *******************************************************************************/
+   private void fence(QRecord job, Collection<JobStatus> from, JobAction action, JobStatus status) throws QException
+   {
+      require(store.fenceJob(job.getValueInteger("id"), from, job.getValueInteger("leaseVersion")), action, status);
+   }
+
+
+
+   /*******************************************************************************
+    ** Resuming/retrying existing execution retains its active reservation.
+    *******************************************************************************/
+   private JobStatus requeueStatus(Integer jobId) throws QException
+   {
+      return (store.getTransaction() != null && hasRunningChunks(jobId) ? JobStatus.RUNNING : JobStatus.QUEUED);
+   }
+
+
+
+   /*******************************************************************************
+    ** Strict controls already hold the affected chunks before the job row.
+    *******************************************************************************/
+   private boolean hasRunningChunks(Integer jobId) throws QException
+   {
+      return (store.getChunks(jobId).stream().anyMatch(chunk -> ChunkStatus.RUNNING.name().equals(chunk.getValueString("status"))));
    }
 
 

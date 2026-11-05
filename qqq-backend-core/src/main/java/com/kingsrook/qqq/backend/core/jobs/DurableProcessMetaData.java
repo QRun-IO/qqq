@@ -55,6 +55,29 @@ public class DurableProcessMetaData extends QSupplementalProcessMetaData
    private Boolean chunkParallelSafe = false;
    private Integer maxConcurrentJobs;
    private List<JobEffectDeclaration> effects = new ArrayList<>();
+   private String transactionalRevision;
+
+
+
+   /*******************************************************************************
+    ** Host release identity for the fixed process accepted by transactional enlist.
+    ** Hosts must change this identity when its trusted process implementation changes.
+    *******************************************************************************/
+   public String getTransactionalRevision()
+   {
+      return (transactionalRevision);
+   }
+
+
+
+   /*******************************************************************************
+    ** Explicit opt-in to fixed-process enlistment with a pinned host revision.
+    *******************************************************************************/
+   public DurableProcessMetaData withTransactionalRevision(String revision)
+   {
+      transactionalRevision = revision;
+      return (this);
+   }
 
 
 

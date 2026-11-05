@@ -26,6 +26,7 @@ import java.util.List;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
+import com.kingsrook.qqq.backend.core.actions.scripts.ScriptExecutionIsolation;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
@@ -86,6 +87,12 @@ public class StoreScriptRevisionProcessStep implements BackendStep
          //////////////////////////////////////////////////////////////////
          Integer scriptId       = input.getValueInteger("scriptId");
          Integer nextSequenceNo = 1;
+
+         //////////////////////////////////////////////////////////////////////////////////////////////////
+         // this legacy process stores (and activates!) a revision that the legacy engine will run - so //
+         // it never touches a script that is marked as isolated.  (read in our transaction)            //
+         //////////////////////////////////////////////////////////////////////////////////////////////////
+         ScriptExecutionIsolation.requireLegacyExecutionAllowed(scriptId, transaction);
 
          ////////////////////////////////////////
          // get the existing script, to update //

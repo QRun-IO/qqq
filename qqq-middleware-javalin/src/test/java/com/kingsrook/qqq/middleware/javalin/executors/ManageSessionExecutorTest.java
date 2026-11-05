@@ -35,6 +35,7 @@ import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.session.QUser;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.OAuth2AuthenticationModule;
+import com.kingsrook.qqq.middleware.javalin.TestUtils;
 import com.kingsrook.qqq.middleware.javalin.executors.io.ManageSessionInput;
 import com.kingsrook.qqq.middleware.javalin.executors.io.ManageSessionOutputInterface;
 import org.junit.jupiter.api.Test;
@@ -75,7 +76,7 @@ class ManageSessionExecutorTest
    @Test
    void testExecuteReportsAuthenticatedIdentity() throws Exception
    {
-      QInstance qInstance = new QInstance();
+      QInstance qInstance = TestUtils.defineInstance();
       qInstance.withInstanceDefaultAuthentication(new QAuthenticationMetaData().withName("fixture").withType(QAuthenticationType.CUSTOM)
          .withModuleCodeReference(new QCodeReference(FixtureAuthenticationModule.class)));
       QContext.init(qInstance, null);

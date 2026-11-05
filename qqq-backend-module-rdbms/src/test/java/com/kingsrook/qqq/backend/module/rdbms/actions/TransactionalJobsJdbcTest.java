@@ -79,6 +79,7 @@ import org.junit.jupiter.api.io.TempDir;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -105,6 +106,7 @@ class TransactionalJobsJdbcTest
    private static volatile boolean verifyExecution;
    private static volatile String verifierMutation;
    private static volatile String observedVerifierRefusal;
+   private static volatile java.util.concurrent.CountDownLatch verifierMutationFinished;
    private static volatile com.kingsrook.qqq.backend.core.jobs.runtime.EnlistedExecution.Verified verifiedExecution;
 
 
@@ -997,6 +999,7 @@ class TransactionalJobsJdbcTest
    /*******************************************************************************
     ** Every claimed verifier boundary is exercised inside the real native worker.
     ** Restore injected fixture corruption so normal failure bookkeeping can finish.
+    ** Expiry explicitly completes native recovery, which may also run concurrently.
     *******************************************************************************/
    @Test
    void runtimeVerifierRefusesAuthorityRevisionAndLeaseChangesAndClearsAfterFailure() throws Exception
@@ -1012,10 +1015,26 @@ class TransactionalJobsJdbcTest
             verifierMutation = mutation;
             observedVerifierRefusal = null;
             verifiedExecution = null;
+            verifierMutationFinished = new java.util.concurrent.CountDownLatch(1);
             new InsertAction().execute(new InsertInput("source_record").withRecord(new QRecord().withValue("value", mutation)));
             Integer id = enlistedId;
+            assertTrue(verifierMutationFinished.await(10, java.util.concurrent.TimeUnit.SECONDS), "Mutation must finish: " + mutation);
             awaitTerminal(id);
-            assertEquals("FAILED", store.getJob(id).getValueString("status"), mutation);
+            String status = store.getJob(id).getValueString("status");
+            if("expiry".equals(mutation))
+            {
+               assertEquals("NEEDS_REVIEW", status, mutation);
+               QRecord chunk = store.getChunks(id).get(0);
+               assertEquals("NEEDS_REVIEW", chunk.getValueString("status"));
+               assertEquals("The pod running this chunk stopped mid-chunk; it may have partly run. Review it, then retry or skip.", chunk.getValueString("errorMessage"));
+               assertNull(chunk.getValue("leaseToken"));
+               assertNull(chunk.getValue("leaseOwner"));
+               assertNull(chunk.getValue("leaseExpiresAt"));
+            }
+            else
+            {
+               assertEquals("FAILED", status, mutation);
+            }
             org.junit.jupiter.api.Assertions.assertNull(verifiedExecution, mutation);
             if(!"throw".equals(mutation))
             {
@@ -1162,7 +1181,14 @@ class TransactionalJobsJdbcTest
          {
             if(verifierMutation != null)
             {
-               refuseMutation(verifierMutation);
+               try
+               {
+                  refuseMutation(verifierMutation);
+               }
+               finally
+               {
+                  verifierMutationFinished.countDown();
+               }
                return;
             }
             input.addValue("source", "forged-process-input");
@@ -1209,6 +1235,11 @@ class TransactionalJobsJdbcTest
                {
                   observedVerifierRefusal = mutation;
                }
+               if("expiry".equals(mutation))
+               {
+                  // Finish recovery deterministically after verifier refusal; the live reaper may have won already.
+                  store.reapExpired("verifier-fixture");
+               }
                throw (refused);
             }
          }
@@ -1220,10 +1251,6 @@ class TransactionalJobsJdbcTest
             if("token".equals(mutation))
             {
                writeChunk(identity.chunkId(), "leaseToken", chunk.getValue("leaseToken"));
-            }
-            if("expiry".equals(mutation))
-            {
-               writeChunk(identity.chunkId(), "leaseExpiresAt", chunk.getValue("leaseExpiresAt"));
             }
          }
       }

@@ -5530,7 +5530,7 @@
       ],
       "gap": "Source-installed candidate bootstrap is verified by a fresh-cache runner and packaged sample tests. Public release-candidate consumption remains a separate pending row.",
       "verified_tests": [
-        "com.kingsrook.sampleapp.SampleBootstrapTest#testResetRefusesAnotherDatabaseWithTheSameBackendName",
+        "com.kingsrook.sampleapp.SampleBootstrapTest#testResetPreservesAnotherDatabaseWithTheSameBackendName",
         "com.kingsrook.sampleapp.SamplePackagedConfigurationIT#testBundledApplicationAndJsonAdditions",
         "com.kingsrook.sampleapp.SamplePackagedConfigurationIT#testRepeatStartupReseedsInSeparateOwnedFixtures",
         "com.kingsrook.sampleapp.SamplePackagedConfigurationIT#testInvalidConfigurationHasNonzeroExit",

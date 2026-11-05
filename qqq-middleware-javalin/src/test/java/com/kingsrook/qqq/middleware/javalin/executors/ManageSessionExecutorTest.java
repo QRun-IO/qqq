@@ -21,12 +21,19 @@
 package com.kingsrook.qqq.middleware.javalin.executors;
 
 
+import java.io.Serializable;
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
+import com.kingsrook.qqq.backend.core.model.session.QUser;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.OAuth2AuthenticationModule;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 
@@ -51,4 +58,38 @@ class ManageSessionExecutorTest
       assertDoesNotThrow(() -> ManageSessionExecutor.refuseBearerSession(new QSession()));
       assertDoesNotThrow(() -> ManageSessionExecutor.refuseBearerSession(null));
    }
+
+
+
+   /*******************************************************************************
+    ** The authenticated session user is always reported as values.user.id (native
+    ** CLI/TUI/scanner logins), even with no profile and no frontend values, and it
+    ** overwrites a provider-supplied id.
+    *******************************************************************************/
+   @Test
+   void testAuthenticatedIdentityIsAuthoritative()
+   {
+      QContext.init(new QInstance(), null);
+      try
+      {
+         QSession session = new QSession();
+         session.setUser(new QUser().withIdReference("real-user"));
+
+         LinkedHashMap<String, Serializable> noFrontendValues = new LinkedHashMap<>();
+         ManageSessionExecutor.addProfileValues(noFrontendValues, session);
+         assertEquals("real-user", ((Map<?, ?>) noFrontendValues.get("user")).get("id"));
+
+         LinkedHashMap<String, Serializable> spoofed = new LinkedHashMap<>();
+         spoofed.put("user", new LinkedHashMap<>(Map.of("id", "spoofed", "fullName", "Kept")));
+         ManageSessionExecutor.addProfileValues(spoofed, session);
+         Map<?, ?> user = (Map<?, ?>) spoofed.get("user");
+         assertEquals("real-user", user.get("id"));
+         assertEquals("Kept", user.get("fullName"));
+      }
+      finally
+      {
+         QContext.clear();
+      }
+   }
+
 }

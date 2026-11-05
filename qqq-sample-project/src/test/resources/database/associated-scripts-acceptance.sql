@@ -48,6 +48,7 @@ CREATE TABLE script
    modify_date TIMESTAMP,
    name VARCHAR(250),
    script_type_id INTEGER,
+   execution_mode VARCHAR(32),
    table_name VARCHAR(100),
    max_batch_size INTEGER,
    current_script_revision_id INTEGER

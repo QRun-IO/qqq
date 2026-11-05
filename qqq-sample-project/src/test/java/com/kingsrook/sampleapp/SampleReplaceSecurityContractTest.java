@@ -100,6 +100,8 @@ class SampleReplaceSecurityContractTest
       canonical = instance.getTable(TABLE);
       canonicalJson = JsonUtils.toJson(canonical);
       active = canonical.clone();
+      // Frozen snapshot fixtures also disable the version field inferred during enrichment.
+      active.setRecordVersionField(null);
       for(String field : List.of("createDate", "modifyDate", "createdDay", "modifiedDay", "userIdValue"))
       {
          active.getField(field).withBehaviors(new HashSet<>(active.getField(field).getBehaviors()))

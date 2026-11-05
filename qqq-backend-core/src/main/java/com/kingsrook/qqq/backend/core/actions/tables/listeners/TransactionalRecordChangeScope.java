@@ -94,6 +94,10 @@ public final class TransactionalRecordChangeScope implements AutoCloseable
       TransactionalRecordChangeScope scope = new TransactionalRecordChangeScope(input, type, dryRun);
       try
       {
+         if(scope.instance == null || scope.session == null)
+         {
+            com.kingsrook.qqq.backend.core.actions.ActionHelper.validateSession(input);
+         }
          TransactionalRecordChangeMetaData metadata = TransactionalRecordChangeMetaData.of(scope.instance.getTable(input.getTableName()));
          boolean required = metadata != null && metadata.requires(type);
          if(scope.parent == null && !required)
@@ -235,7 +239,8 @@ public final class TransactionalRecordChangeScope implements AutoCloseable
    public static void failed(AbstractTableActionInput input, RecordChangeType type, boolean preview)
    {
       TransactionalRecordChangeScope parent = CURRENT.get();
-      QTableMetaData table = QContext.getQInstance().getTable(input.getTableName());
+      QInstance currentInstance = QContext.getQInstance();
+      QTableMetaData table = currentInstance == null || input == null ? null : currentInstance.getTable(input.getTableName());
       boolean required = table != null && table.getSupplementalMetaData(TransactionalRecordChangeMetaData.TYPE) != null;
       if(required && table.getSupplementalMetaData(TransactionalRecordChangeMetaData.TYPE) instanceof TransactionalRecordChangeMetaData metadata)
       {

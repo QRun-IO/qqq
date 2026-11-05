@@ -128,6 +128,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.statusmessages.BadInputStatusMessage;
+import com.kingsrook.qqq.backend.core.model.statusmessages.NotFoundStatusMessage;
 import com.kingsrook.qqq.backend.core.model.statusmessages.QStatusMessage;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
@@ -829,6 +830,10 @@ public class QJavalinImplementation
             if(outputRecord.getErrors().stream().allMatch(error -> error instanceof BadInputStatusMessage))
             {
                throw new QBadRequestException(message);
+            }
+            if(outputRecord.getErrors().stream().allMatch(error -> error instanceof NotFoundStatusMessage))
+            {
+               throw new QNotFoundException(message);
             }
             throw new QUserFacingException(message);
          }

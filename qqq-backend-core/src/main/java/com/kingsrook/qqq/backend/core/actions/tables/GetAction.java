@@ -42,6 +42,7 @@ import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType
 import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.GetActionCacheHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
+import com.kingsrook.qqq.backend.core.actions.tables.query.VirtualFieldValueProviders;
 import com.kingsrook.qqq.backend.core.actions.values.QPossibleValueTranslator;
 import com.kingsrook.qqq.backend.core.actions.values.QValueFormatter;
 import com.kingsrook.qqq.backend.core.actions.values.ValueBehaviorApplier;
@@ -163,7 +164,7 @@ public class GetAction
       boolean   usingDefaultGetInterface = false;
       if(getInterface == null)
       {
-         getInterface = new DefaultGetInterface(false);
+         getInterface = new DefaultGetInterface(false, enforce);
          usingDefaultGetInterface = true;
       }
 
@@ -335,7 +336,7 @@ public class GetAction
     *******************************************************************************/
    public GetOutput executeViaQuery(GetInput getInput) throws QException
    {
-      return (new DefaultGetInterface(true).execute(getInput));
+      return (new DefaultGetInterface(true, false).execute(getInput));
    }
 
 
@@ -346,15 +347,17 @@ public class GetAction
    private static class DefaultGetInterface implements GetInterface
    {
       private final boolean enforceQuery;
+      private final boolean enforceProviders;
 
 
 
       /*******************************************************************************
        ** The owning get enforces once; a direct executeViaQuery must enforce itself.
        *******************************************************************************/
-      private DefaultGetInterface(boolean enforceQuery)
+      private DefaultGetInterface(boolean enforceQuery, boolean enforceProviders)
       {
          this.enforceQuery = enforceQuery;
+         this.enforceProviders = enforceProviders;
       }
 
 
@@ -375,7 +378,8 @@ public class GetAction
             queryInput.setPermissionEnforcement(PermissionEnforcement.ENFORCE);
          }
 
-         QueryOutput queryOutput = new QueryAction().execute(queryInput);
+         QueryOutput queryOutput = enforceQuery ? new QueryAction().execute(queryInput)
+            : new QueryAction().executeForGet(queryInput, enforceProviders);
 
          GetOutput getOutput = new GetOutput();
          if(!queryOutput.getRecords().isEmpty())
@@ -442,6 +446,10 @@ public class GetAction
       {
          returnRecord = postGetRecordCustomizer.get().postQuery(getInput, List.of(record)).get(0);
       }
+
+      QueryInput providerInput = convertGetInputToQueryInput(getInput);
+      providerInput.setTableMetaData(getInput.getTable());
+      VirtualFieldValueProviders.fill(providerInput, List.of(returnRecord), enforceFieldAccess);
 
       ValueBehaviorApplier.applyFieldBehaviors(ValueBehaviorApplier.Action.READ, QContext.getQInstance(), getInput.getTable(), List.of(returnRecord), null);
 

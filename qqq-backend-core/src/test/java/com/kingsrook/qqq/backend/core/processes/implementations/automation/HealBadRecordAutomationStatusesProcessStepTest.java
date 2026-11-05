@@ -154,6 +154,10 @@ class HealBadRecordAutomationStatusesProcessStepTest extends BaseTest
       // temporarily remove the modify-date behavior //
       /////////////////////////////////////////////////
       QContext.getQInstance().getTable(tableName).getField("modifyDate").withBehavior(DynamicDefaultValueBehavior.NONE);
+      // This fixture deliberately writes historical timestamps, including the status update.
+      // Suspend the configured version clock as well, then restore it before healing.
+      String recordVersionField = QContext.getQInstance().getTable(tableName).getRecordVersionField();
+      QContext.getQInstance().getTable(tableName).withRecordVersionField("");
 
       //////////////////////////////////////////////////////////////////////////
       // insert 2 records, one with an old modifyDate, one with 6 minutes ago //
@@ -176,6 +180,7 @@ class HealBadRecordAutomationStatusesProcessStepTest extends BaseTest
       // restore the modifyDate behavior //
       /////////////////////////////////////
       QContext.getQInstance().getTable(tableName).getField("modifyDate").withBehavior(DynamicDefaultValueBehavior.MODIFY_DATE);
+      QContext.getQInstance().getTable(tableName).withRecordVersionField(recordVersionField);
 
       QContext.getQInstance().getTable(tableName).setRecordVersionField(versionField);
 

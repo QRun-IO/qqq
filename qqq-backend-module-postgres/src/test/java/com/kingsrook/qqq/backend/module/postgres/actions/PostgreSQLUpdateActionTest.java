@@ -54,6 +54,53 @@ public class PostgreSQLUpdateActionTest extends BaseTest
 {
 
    /*******************************************************************************
+    ** Two writers sharing an expected version cannot both succeed at the SQL boundary.
+    *******************************************************************************/
+   @Test
+   void concurrentVersionedWritesHaveOneWinner() throws Exception
+   {
+      var instance = com.kingsrook.qqq.backend.core.context.QContext.getQInstance();
+      var session = com.kingsrook.qqq.backend.core.context.QContext.getQSession();
+      instance.getTable(TestUtils.TABLE_NAME_PERSON).withRecordVersionField("firstName");
+      String expected = new GetAction().execute(new GetInput(TestUtils.TABLE_NAME_PERSON).withPrimaryKey(2)).getRecord().getValueString("firstName");
+      var ready = new java.util.concurrent.CountDownLatch(2);
+      var start = new java.util.concurrent.CountDownLatch(1);
+      try(var executor = java.util.concurrent.Executors.newFixedThreadPool(2))
+      {
+         List<java.util.concurrent.Future<QRecord>> results = new java.util.ArrayList<>();
+         for(String name : List.of("writer-a", "writer-b"))
+         {
+            results.add(executor.submit(() ->
+            {
+               com.kingsrook.qqq.backend.core.context.QContext.init(instance, session);
+               try
+               {
+                  var input = new UpdateInput(TestUtils.TABLE_NAME_PERSON)
+                     .withRecord(new QRecord().withValue("id", 2).withValue("firstName", name))
+                     .withExpectedVersions(Map.of(2, expected));
+                  ready.countDown();
+                  assertTrue(start.await(10, java.util.concurrent.TimeUnit.SECONDS));
+                  return (new com.kingsrook.qqq.backend.module.rdbms.actions.RDBMSUpdateAction().execute(input).getRecords().getFirst());
+               }
+               finally
+               {
+                  com.kingsrook.qqq.backend.core.context.QContext.clear();
+               }
+            }));
+         }
+         assertTrue(ready.await(10, java.util.concurrent.TimeUnit.SECONDS));
+         start.countDown();
+         QRecord first = results.get(0).get(15, java.util.concurrent.TimeUnit.SECONDS);
+         QRecord second = results.get(1).get(15, java.util.concurrent.TimeUnit.SECONDS);
+         assertEquals(1, java.util.stream.Stream.of(first, second).filter(row -> row.getErrors().isEmpty()).count());
+         QRecord winner = first.getErrors().isEmpty() ? first : second;
+         QRecord loser = first.getErrors().isEmpty() ? second : first;
+         assertTrue(loser.getErrors().getFirst() instanceof com.kingsrook.qqq.backend.core.model.statusmessages.RecordVersionConflictError);
+         assertEquals(winner.getValueString("firstName"), new GetAction().execute(new GetInput(TestUtils.TABLE_NAME_PERSON).withPrimaryKey(2)).getRecord().getValueString("firstName"));
+      }
+   }
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    @BeforeEach
@@ -282,6 +329,18 @@ public class PostgreSQLUpdateActionTest extends BaseTest
    public void testUpdateManyWithSameColumnsSameValues() throws Exception
    {
       UpdateInput   updateInput = initUpdateRequest();
+
+      /////////////////////////////////////////////////////////////////////////////////////////////
+      // this test is about the "all records have the same values" optimization (one grouped     //
+      // UPDATE ... WHERE id IN (...)).  person's modifyDate is its record-version field, and    //
+      // RecordVersionCheck.advance stamps a new version per record with its own Instant.now(); //
+      // if that crosses a millisecond boundary the values differ and the update correctly goes  //
+      // through the batch path (counted as a batch, not a query).  so take the automatic        //
+      // modify-date/version advance out of this scenario (it is covered by                      //
+      // testModifyDateGetsUpdated and concurrentVersionedWritesHaveOneWinner).                  //
+      /////////////////////////////////////////////////////////////////////////////////////////////
+      updateInput.setOmitModifyDateUpdate(true);
+
       List<QRecord> records     = new ArrayList<>();
       for(int i = 1; i <= 5; i++)
       {

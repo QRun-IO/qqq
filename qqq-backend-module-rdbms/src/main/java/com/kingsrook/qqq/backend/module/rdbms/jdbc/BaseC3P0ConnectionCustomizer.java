@@ -189,9 +189,9 @@ public class BaseC3P0ConnectionCustomizer implements ConnectionCustomizer
    /***************************************************************************
     *
     ***************************************************************************/
-   public static void setQueriesForNewConnections(String backendName, List<String> queriesForNewConnections)
+   public static void setQueriesForNewConnections(String poolIdentityToken, List<String> queriesForNewConnections)
    {
-      BaseC3P0ConnectionCustomizer.queriesForNewConnections.put(backendName, queriesForNewConnections);
+      BaseC3P0ConnectionCustomizer.queriesForNewConnections.put(poolIdentityToken, queriesForNewConnections);
    }
 
 
@@ -199,16 +199,16 @@ public class BaseC3P0ConnectionCustomizer implements ConnectionCustomizer
    /***************************************************************************
     * Turn leak detection on (a positive threshold) or off (null) for a pool.
     ***************************************************************************/
-   public static void setLeakDetectionThreshold(String backendName, Duration threshold)
+   public static void setLeakDetectionThreshold(String poolIdentityToken, Duration threshold)
    {
       if(threshold == null || threshold.isZero() || threshold.isNegative())
       {
-         leakThresholds.remove(backendName);
-         checkouts.remove(backendName);
+         leakThresholds.remove(poolIdentityToken);
+         checkouts.remove(poolIdentityToken);
       }
       else
       {
-         leakThresholds.put(backendName, threshold);
+         leakThresholds.put(poolIdentityToken, threshold);
       }
    }
 
@@ -219,10 +219,10 @@ public class BaseC3P0ConnectionCustomizer implements ConnectionCustomizer
     * logged as a warning (with its checkout stack trace) the first time it is
     * found, and stays in the result until it is returned.
     ***************************************************************************/
-   public static List<Checkout> findLeaks(String backendName)
+   public static List<Checkout> findLeaks(String poolIdentityToken)
    {
-      Duration                  threshold = leakThresholds.get(backendName);
-      Map<Connection, Checkout> map       = checkouts.get(backendName);
+      Duration                  threshold = leakThresholds.get(poolIdentityToken);
+      Map<Connection, Checkout> map       = checkouts.get(poolIdentityToken);
       if(threshold == null || map == null)
       {
          return (List.of());
@@ -247,7 +247,7 @@ public class BaseC3P0ConnectionCustomizer implements ConnectionCustomizer
          {
             leak.reported = true;
             LOG.warn("Possible connection leak: a pooled connection has been checked out longer than the leak detection threshold", leak.checkoutSite,
-               logPair("backendName", backendName), logPair("thread", leak.threadName), logPair("checkedOutAt", leak.checkedOutAt), logPair("thresholdSeconds", threshold.toSeconds()));
+               logPair("poolIdentityToken", poolIdentityToken), logPair("thread", leak.threadName), logPair("checkedOutAt", leak.checkedOutAt), logPair("thresholdSeconds", threshold.toSeconds()));
          }
       }
       return (leaks);
@@ -258,11 +258,11 @@ public class BaseC3P0ConnectionCustomizer implements ConnectionCustomizer
    /***************************************************************************
     * Forget a pool's settings and checkouts (when the pool is closed).
     ***************************************************************************/
-   static void forget(String backendName)
+   static void forget(String poolIdentityToken)
    {
-      queriesForNewConnections.remove(backendName);
-      leakThresholds.remove(backendName);
-      checkouts.remove(backendName);
+      queriesForNewConnections.remove(poolIdentityToken);
+      leakThresholds.remove(poolIdentityToken);
+      checkouts.remove(poolIdentityToken);
    }
 
 }

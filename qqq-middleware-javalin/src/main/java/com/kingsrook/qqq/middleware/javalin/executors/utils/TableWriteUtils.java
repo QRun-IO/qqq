@@ -26,10 +26,12 @@ import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
+import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.statusmessages.BadInputStatusMessage;
+import com.kingsrook.qqq.backend.core.model.statusmessages.NotFoundStatusMessage;
 import com.kingsrook.qqq.backend.core.model.statusmessages.QStatusMessage;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
@@ -61,8 +63,9 @@ public class TableWriteUtils
 
    /*******************************************************************************
     ** Refuse a write whose record came back with errors: a bad request when every
-    ** error is bad input (for example a missing required value), otherwise a
-    ** user-facing error - with the legacy message ("Error inserting Person: ...").
+    ** error is bad input (for example a missing required value), a not-found error
+    ** when every error is a typed not-found record error, otherwise a user-facing
+    ** error - with the legacy message ("Error inserting Person: ...").
     *******************************************************************************/
    public static void throwIfRecordErrors(String verb, String tableName, QRecord outputRecord) throws QUserFacingException
    {
@@ -78,6 +81,11 @@ public class TableWriteUtils
       if(errors.stream().allMatch(error -> error instanceof BadInputStatusMessage))
       {
          throw (new QBadRequestException(message));
+      }
+      if(errors.stream().allMatch(error -> error instanceof NotFoundStatusMessage))
+      {
+         // the update action reports an absent record and one hidden by record security identically
+         throw (new QNotFoundException(message));
       }
       throw (new QUserFacingException(message));
    }

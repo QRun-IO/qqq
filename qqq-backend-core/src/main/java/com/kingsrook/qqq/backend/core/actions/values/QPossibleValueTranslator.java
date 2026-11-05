@@ -203,7 +203,7 @@ public class QPossibleValueTranslator
       List<QFieldMetaData> fields = new ArrayList<>(table.getFields().values());
       if(table.getVirtualFields() != null)
       {
-         fields.addAll(table.getVirtualFields().values());
+         fields.addAll(table.getVirtualFields().values().stream().filter(field -> field.getShouldTranslatePossibleValues()).toList());
       }
       return fields;
    }

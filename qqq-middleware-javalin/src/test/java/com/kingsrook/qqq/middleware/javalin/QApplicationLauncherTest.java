@@ -21,8 +21,13 @@
 package com.kingsrook.qqq.middleware.javalin;
 
 
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -54,8 +59,13 @@ import com.kingsrook.qqq.backend.core.model.metadata.scheduleing.simple.SimpleSc
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.automation.QTableAutomationDetails;
 import com.kingsrook.qqq.backend.core.model.scheduledjobs.ScheduledJob;
+import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryBackendModule;
 import com.kingsrook.qqq.backend.core.scheduler.QScheduleManager;
+import com.kingsrook.qqq.backend.module.rdbms.jdbc.C3P0PooledConnectionProvider;
+import com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager;
+import com.kingsrook.qqq.backend.module.rdbms.model.metadata.ConnectionPoolSettings;
+import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSBackendMetaData;
 import com.kingsrook.qqq.middleware.javalin.launcherproducers.TestFailingMetaDataProducer;
 import kong.unirest.Unirest;
 import kong.unirest.UnirestException;
@@ -80,6 +90,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *******************************************************************************/
 class QApplicationLauncherTest
 {
+   private static final Map<QInstance, TrackedJdbcPool> jdbcPools = new IdentityHashMap<>();
    private static final int    PORT           = 6281;
    private static final String METADATA_URL   = "http://localhost:" + PORT + "/metaData";
    private static final String SCHEDULER_NAME = "simpleScheduler";
@@ -99,11 +110,309 @@ class QApplicationLauncherTest
 
 
    /*******************************************************************************
+    ** Backend cleanup runs once per type, after finalizers, even if another hook fails.
+    *******************************************************************************/
+   @Test
+   void testBackendCleanupFailureIsolation() throws Exception
+   {
+      QBackendModuleDispatcher.registerBackendModule(new FailingCleanupBackend());
+      QBackendModuleDispatcher.registerBackendModule(new HealthyCleanupBackend());
+      launcher = QApplicationLauncher.run(new TestApplication(instance ->
+      {
+         instance.addBackend(new QBackendMetaData().withName("cleanupFailureOne").withBackendType(FailingCleanupBackend.class));
+         instance.addBackend(new QBackendMetaData().withName("cleanupFailureTwo").withBackendType(FailingCleanupBackend.class));
+         instance.addBackend(new QBackendMetaData().withName("cleanupHealthy").withBackendType(HealthyCleanupBackend.class));
+         instance.withRuntimeService(new QCodeReference(FinalServiceA.class));
+      }), finalCleanupConfig());
+      QContext.clear();
+      launcher.stop();
+      assertEquals(1, events.stream().filter("backend:failure"::equals).count());
+      assertEquals(1, events.stream().filter("backend:healthy"::equals).count());
+      assertTrue(events.indexOf("final:finalA") < events.indexOf("backend:failure"));
+      assertTrue(events.indexOf("final:finalA") < events.indexOf("backend:healthy"));
+      int eventCount = events.size();
+      launcher.stop();
+      assertEquals(eventCount, events.size());
+      assertNull(QContext.getQInstance());
+   }
+
+
+
+   /*******************************************************************************
+    ** Deliberately failing cleanup must not block other backend types.
+    *******************************************************************************/
+   public static class FailingCleanupBackend extends MemoryBackendModule
+   {
+      /*******************************************************************************
+       ** Use a fixture-specific dispatcher key without replacing the memory backend.
+       *******************************************************************************/
+      @Override
+      public String getBackendType()
+      {
+         return "owned-failing-cleanup";
+      }
+
+
+
+      /*******************************************************************************
+       ** Record correct context before failing deliberately.
+       *******************************************************************************/
+      @Override
+      public void afterApplicationStop(QInstance instance)
+      {
+         assertSame(instance, QContext.getQInstance());
+         events.add("backend:failure");
+         throw new IllegalStateException("Owned backend cleanup failure");
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Observe successful cleanup independently of another backend's failure.
+    *******************************************************************************/
+   public static class HealthyCleanupBackend extends MemoryBackendModule
+   {
+      /*******************************************************************************
+       ** Use an independent fixture dispatcher key.
+       *******************************************************************************/
+      @Override
+      public String getBackendType()
+      {
+         return "owned-healthy-cleanup";
+      }
+
+
+
+      /*******************************************************************************
+       ** Record invocation under the owning application.
+       *******************************************************************************/
+      @Override
+      public void afterApplicationStop(QInstance instance)
+      {
+         assertSame(instance, QContext.getQInstance());
+         events.add("backend:healthy");
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** JDBC remains available through finalizers, then only the stopped owner's pool closes.
+    *******************************************************************************/
+   @Test
+   void testOwnedJdbcPoolsCloseAfterFinalizers() throws Exception
+   {
+      QInstance other = jdbcApplication(false).defineValidatedQInstance();
+      try
+      {
+         launcher = QApplicationLauncher.run(jdbcApplication(false), finalCleanupConfig());
+         QInstance owner = launcher.getQInstance();
+         probeJdbc(other);
+         TrackedJdbcPool ownerPool = jdbcPools.get(owner);
+         TrackedJdbcPool otherPool = jdbcPools.get(other);
+         QContext.setQInstance(other);
+         launcher.stop();
+         assertTrue(stoppedHttpServer.isStopped());
+         assertTrue(events.contains("final:jdbc"));
+         assertEquals(1, ownerPool.closes);
+         assertEquals(0, otherPool.closes);
+         assertThrows(SQLException.class, ownerPool::getConnection);
+         assertTrue(ConnectionManager.getPoolMetrics(owner, (RDBMSBackendMetaData) owner.getBackend("ownedJdbc")).isEmpty());
+         probeJdbc(other);
+         launcher.stop();
+         assertEquals(1, ownerPool.closes);
+      }
+      finally
+      {
+         ConnectionManager.closeConnectionProviders(other);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A later service failure closes pools allocated by a successfully started service.
+    *******************************************************************************/
+   @Test
+   void testJdbcPoolsCloseAfterServiceStartupFailure()
+   {
+      assertThrows(QException.class, () -> QApplicationLauncher.run(jdbcApplication(true), finalCleanupConfig()));
+      assertTrue(stoppedHttpServer.isStopped());
+      assertTrue(events.contains("final:jdbc"));
+      assertEquals(1, jdbcPools.size());
+      TrackedJdbcPool pool = jdbcPools.values().iterator().next();
+      assertEquals(1, pool.closes);
+      assertThrows(SQLException.class, pool::getConnection);
+   }
+
+
+
+   /*******************************************************************************
+    ** Recover the instance from the server when HTTP startup fails before returning.
+    *******************************************************************************/
+   @Test
+   void testJdbcPoolsCloseAfterHttpStartupFailure()
+   {
+      QApplicationLauncherConfig config = finalCleanupConfig();
+      Consumer<QApplicationJavalinServer> configure = config.getServerCustomizer();
+      config.withServerCustomizer(server ->
+      {
+         configure.accept(server);
+         server.withJavalinConfigurationCustomizer(javalin ->
+         {
+            probeJdbc(server.getQInstance());
+            throw new IllegalStateException("Owned HTTP startup failure after JDBC initialization");
+         });
+      });
+      assertThrows(QException.class, () -> QApplicationLauncher.run(jdbcApplication(false), config));
+      assertEquals(1, jdbcPools.size());
+      TrackedJdbcPool pool = jdbcPools.values().iterator().next();
+      assertEquals(1, pool.closes);
+      assertThrows(SQLException.class, pool::getConnection);
+   }
+
+
+
+   /*******************************************************************************
+    ** Use real bounded pools and disposable in-memory databases on the native launcher.
+    *******************************************************************************/
+   private static TestApplication jdbcApplication(boolean fail)
+   {
+      return new TestApplication(instance ->
+      {
+         RDBMSBackendMetaData backend = new RDBMSBackendMetaData();
+         backend.setName("ownedJdbc");
+         backend.setVendor(RDBMSBackendMetaData.VENDOR_H2);
+         backend.setJdbcUrl("jdbc:h2:mem:launcher_" + UUID.randomUUID() + ";DB_CLOSE_DELAY=0");
+         backend.setUsername("sa");
+         backend.setConnectionProvider(new QCodeReference(TrackedJdbcPool.class));
+         backend.setConnectionPoolSettings(new ConnectionPoolSettings().withInitialPoolSize(1).withMinPoolSize(1).withMaxPoolSize(2).withCheckoutTimeoutSeconds(1));
+         instance.addBackend(backend);
+         instance.withRuntimeService(new QCodeReference(JdbcFinalizer.class));
+         if(fail)
+         {
+            instance.withRuntimeService(new QCodeReference(FailingService.class));
+         }
+      });
+   }
+
+
+
+   /*******************************************************************************
+    ** Borrow and return a real pooled connection with explicit application ownership.
+    *******************************************************************************/
+   private static void probeJdbc(QInstance owner)
+   {
+      try(Connection connection = ConnectionManager.getConnection(owner, (RDBMSBackendMetaData) owner.getBackend("ownedJdbc")))
+      {
+         assertTrue(connection.isValid(1));
+      }
+      catch(SQLException e)
+      {
+         throw new IllegalStateException("Owned JDBC probe failed", e);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Observe actual C3P0 shutdown, including pools created before failed HTTP startup.
+    *******************************************************************************/
+   public static class TrackedJdbcPool extends C3P0PooledConnectionProvider
+   {
+      private int closes;
+
+
+
+      /*******************************************************************************
+       ** Preserve the provider for direct post-shutdown checks.
+       *******************************************************************************/
+      @Override
+      public void init(RDBMSBackendMetaData backend) throws QException
+      {
+         super.init(backend);
+         jdbcPools.put(QContext.getQInstance(), this);
+      }
+
+
+
+      /*******************************************************************************
+       ** Count calls while closing real pool resources.
+       *******************************************************************************/
+      @Override
+      public void close()
+      {
+         closes++;
+         super.close();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A runtime service still needs database access in final application cleanup.
+    *******************************************************************************/
+   public static class JdbcFinalizer implements QRuntimeServiceInterface
+   {
+      private QInstance owner;
+
+
+
+      /*******************************************************************************
+       ** Stable runtime registration name for this fixture.
+       *******************************************************************************/
+      @Override
+      public String getName()
+      {
+         return "jdbcFinalizer";
+      }
+
+
+
+      /*******************************************************************************
+       ** Allocate the real pool during runtime startup.
+       *******************************************************************************/
+      @Override
+      public void start(QInstance instance)
+      {
+         owner = instance;
+         probeJdbc(owner);
+      }
+
+
+
+      /*******************************************************************************
+       ** No independent worker is needed for this fixture.
+       *******************************************************************************/
+      @Override
+      public void stop()
+      {
+      }
+
+
+
+      /*******************************************************************************
+       ** Prove backend shutdown occurs after service finalizers and HTTP shutdown.
+       *******************************************************************************/
+      @Override
+      public void afterApplicationStop()
+      {
+         assertTrue(stoppedHttpServer.isStopped());
+         probeJdbc(owner);
+         events.add("final:jdbc");
+      }
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    @BeforeEach
    void beforeEach()
    {
+      jdbcPools.clear();
       events.clear();
       serviceStartedWithInstance = null;
       stoppedHttpServer = null;
@@ -139,6 +448,8 @@ class QApplicationLauncherTest
       }
 
       Unirest.config().reset();
+      jdbcPools.keySet().forEach(ConnectionManager::closeConnectionProviders);
+      jdbcPools.clear();
    }
 
 

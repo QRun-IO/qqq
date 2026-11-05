@@ -344,10 +344,10 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
       try(Connection connection = ConnectionManager.getConnection(defineRdbmsBackend());
          InputStream primeTestDatabaseSqlStream = SampleMetaDataProvider.class.getResourceAsStream("/" + sqlFileName))
       {
-         //////////////////////////////////////////////////////////////////////////////////////
-         // Connection providers are cached by backend name; refuse a reused external provider //
-         // before any fixture SQL can reset data outside the sample's in-memory database.     //
-         //////////////////////////////////////////////////////////////////////////////////////
+         ///////////////////////////////////////////////////////////////////////////////////
+         // Verify the actual connection before fixture SQL can reset data outside the     //
+         // sample's owned database, independently of connection-provider cache isolation. //
+         ///////////////////////////////////////////////////////////////////////////////////
          String sharedJdbcUrl = SampleClusterMode.getSharedJdbcUrl();
          String url           = connection.getMetaData().getURL();
          boolean ownedDatabase = "jdbc:h2:mem:test_database".equals(url)

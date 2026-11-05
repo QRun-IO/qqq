@@ -33,6 +33,7 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -240,6 +241,32 @@ public final class JobGrants
    private static String associatedData(Integer jobId, String userId)
    {
       return ("qqq.jobGrant|" + jobId + "|" + userId);
+   }
+
+
+
+   /*******************************************************************************
+    ** Hide source-derived intent hashes from offline guessing by a Jobs reader.
+    ** Package-private: this is not a signing oracle for application/script input.
+    ** Rotation invalidates old fingerprints just as it invalidates old grants.
+    *******************************************************************************/
+   static String intentFingerprint(QInstance instance, String canonicalHash) throws QException
+   {
+      byte[] material = key(instance);
+      if(material == null || canonicalHash == null || !canonicalHash.matches("[0-9a-f]{64}"))
+      {
+         throw (new QException("A durable intent fingerprint requires its configured grant key and canonical digest"));
+      }
+      try
+      {
+         Mac mac = Mac.getInstance(MAC_ALGORITHM);
+         mac.init(new SecretKeySpec(derive(material, "qqq.transactionalJobs.intent.v1"), MAC_ALGORITHM));
+         return (HexFormat.of().formatHex(mac.doFinal(canonicalHash.getBytes(StandardCharsets.UTF_8))));
+      }
+      catch(java.security.GeneralSecurityException error)
+      {
+         throw (new QException("Could not protect the durable Jobs intent fingerprint", error));
+      }
    }
 
 

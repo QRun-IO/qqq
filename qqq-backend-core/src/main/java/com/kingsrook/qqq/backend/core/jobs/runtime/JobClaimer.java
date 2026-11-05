@@ -178,6 +178,16 @@ public class JobClaimer
             // on Postgres: lock-and-claim the next chunk no other pod holds; //
             // else the fenced conditional update on this candidate           //
             ////////////////////////////////////////////////////////////////////
+            if(settings.isTransactionalAdmissionEnabled())
+            {
+               Optional<JobLease> admitted = claimAdmitted(jobId, chunk);
+               if(admitted.isPresent())
+               {
+                  JobSignals.status(jobId, userId, JobStatus.RUNNING);
+                  return (admitted);
+               }
+               continue;
+            }
             Optional<JobLease> lease = skipLocked
                ? store.claimNextChunkSkipLocked(jobId, podId, settings.getLeaseTtlSeconds())
                : store.claimChunk(chunk, podId, settings.getLeaseTtlSeconds());
@@ -210,6 +220,77 @@ public class JobClaimer
          }
       }
       return (Optional.empty());
+   }
+
+
+
+   /*******************************************************************************
+    ** Commit the chunk lease and starting transition together; a refusal leaves
+    ** no lease that a worker could execute after failed capacity qualification.
+    *******************************************************************************/
+   private Optional<JobLease> claimAdmitted(Integer jobId, QRecord chunk) throws QException
+   {
+      return (com.kingsrook.qqq.backend.core.jobs.JobAdmission.transaction(settings, null, transaction ->
+      {
+         ((com.kingsrook.qqq.backend.core.jobs.TransactionalJobAdmission) transaction).lockJobControlRows(jobId);
+         DurableJobStore admitted = new DurableJobStore(settings, transaction);
+         QRecord current = admitted.getJob(jobId);
+         if(current == null || !(JobStatus.QUEUED.name().equals(current.getValueString("status")) || JobStatus.RUNNING.name().equals(current.getValueString("status"))))
+         {
+            return (Optional.empty());
+         }
+         int runningChunks = countAdmitted(transaction, TABLE_CHUNK, new QQueryFilter(
+            new QFilterCriteria("jobId", QCriteriaOperator.EQUALS, jobId),
+            new QFilterCriteria("status", QCriteriaOperator.EQUALS, ChunkStatus.RUNNING.name())));
+         if(runningChunks >= Math.max(1, intValue(current, "maxParallelChunks")))
+         {
+            return (Optional.empty());
+         }
+         if(JobStatus.QUEUED.name().equals(current.getValueString("status")))
+         {
+            List<String> active = ACTIVE.stream().map(Enum::name).toList();
+            if(countAdmitted(transaction, TABLE_JOB, new QQueryFilter(
+               new QFilterCriteria("status", QCriteriaOperator.IN, active),
+               new QFilterCriteria("processName", QCriteriaOperator.EQUALS, current.getValueString("processName")))) >= processCap(current.getValueString("processName"))
+               || countAdmitted(transaction, TABLE_JOB, new QQueryFilter(
+                  new QFilterCriteria("status", QCriteriaOperator.IN, active),
+                  new QFilterCriteria("userId", QCriteriaOperator.EQUALS, current.getValueString("userId")))) >= settings.getMaxActiveJobsPerUser())
+            {
+               return (Optional.empty());
+            }
+         }
+         Optional<JobLease> lease = admitted.claimChunk(chunk, podId, settings.getLeaseTtlSeconds());
+         if(lease.isPresent() && JobStatus.QUEUED.name().equals(current.getValueString("status")))
+         {
+            Map<String, Serializable> values = new LinkedHashMap<>();
+            values.put("statusReason", null);
+            if(current.getValue("startedAt") == null)
+            {
+               values.put("startedAt", admitted.now());
+            }
+            if(!admitted.setJobStatusWithEvent(jobId, EnumSet.of(JobStatus.QUEUED), JobStatus.RUNNING, values, JobEventType.STARTED, "Started on " + podId))
+            {
+               throw (new QException("Job changed while its chunk was being admitted"));
+            }
+         }
+         return (lease);
+      }));
+   }
+
+
+
+   /*******************************************************************************
+    ** Count the complete current budget under the same admission transaction.
+    *******************************************************************************/
+   private int countAdmitted(com.kingsrook.qqq.backend.core.actions.QBackendTransaction transaction, String table, QQueryFilter filter) throws QException
+   {
+      Integer count = com.kingsrook.qqq.backend.core.jobs.SystemScope.call(() -> new com.kingsrook.qqq.backend.core.actions.tables.CountAction()
+         .execute(new com.kingsrook.qqq.backend.core.model.actions.tables.count.CountInput(table).withFilter(filter).withTransaction(transaction)).getCount());
+      if(count == null)
+      {
+         throw (new QException("Could not determine the current Jobs execution budget"));
+      }
+      return (count);
    }
 
 

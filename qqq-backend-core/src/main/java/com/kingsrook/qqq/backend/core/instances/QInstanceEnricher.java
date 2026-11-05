@@ -477,6 +477,7 @@ public class QInstanceEnricher
       if(table.getRecordVersionField() == null && table.getFields() != null)
       {
          table.getFields().values().stream()
+            .filter(field -> QFieldType.DATE_TIME.equals(field.getType()))
             .filter(field -> DynamicDefaultValueBehavior.MODIFY_DATE.equals(field.getBehaviorOnlyIfSet(DynamicDefaultValueBehavior.class)))
             .findFirst().ifPresent(field -> table.setRecordVersionField(field.getName()));
       }

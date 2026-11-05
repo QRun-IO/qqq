@@ -123,6 +123,10 @@ public final class JobSessions
       QSession session;
       boolean  granted   = grant != null && !grant.isEmpty();
       String   principal = ServiceIdentities.principalNameFromId(userId);
+      if(job.getValueString("enlistmentKey") != null && (!granted || !StringUtils.hasContent(String.valueOf(grant.get(0)))))
+      {
+         throw (new QPermissionDeniedException("An enlisted job requires its signed initiating-user grant."));
+      }
       if(principal != null && granted)
       {
          //////////////////////////////////////////////////////////////////

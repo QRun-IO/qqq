@@ -80,6 +80,13 @@ public class ExecuteCodeAction
    {
       QCodeReference codeReference = input.getCodeReference();
 
+      ///////////////////////////////////////////////////////////////////////////////////////////////////
+      // this is the one door to every in-process (legacy) executor - so refuse here, before anything //
+      // else (logging, loading an executor, the engine) happens, if the code is from an isolated     //
+      // script.  the script is resolved from stored data - not from any caller-supplied flag.        //
+      ///////////////////////////////////////////////////////////////////////////////////////////////////
+      ScriptExecutionIsolation.requireLegacyExecutionAllowed(codeReference, input.getScriptId(), input.getScriptRevisionId());
+
       QCodeExecutionLoggerInterface executionLogger = input.getExecutionLogger();
       if(executionLogger == null)
       {
@@ -128,7 +135,11 @@ public class ExecuteCodeAction
             }
          }
 
-         Serializable codeOutput = qCodeExecutor.execute(codeReference, context, executionLogger);
+         Serializable codeOutput;
+         try(ScriptExecutionIsolation.ScriptOriginScope ignored = ScriptExecutionIsolation.openScriptOriginScope())
+         {
+            codeOutput = qCodeExecutor.execute(codeReference, context, executionLogger);
+         }
          output.setOutput(codeOutput);
          executionLogger.acceptExecutionEnd(codeOutput);
       }
@@ -161,7 +172,14 @@ public class ExecuteCodeAction
     *******************************************************************************/
    public static ExecuteCodeInput setupExecuteCodeInput(AbstractRunScriptInput<?> input, ScriptRevision scriptRevision, String fileName) throws QException
    {
+      /////////////////////////////////////////////////////////////////////////////////////
+      // refuse early, before any source is loaded (run() refuses again, as the one door) //
+      /////////////////////////////////////////////////////////////////////////////////////
+      ScriptExecutionIsolation.requireLegacyExecutionAllowed(null, scriptRevision.getScriptId(), scriptRevision.getId());
+
       ExecuteCodeInput executeCodeInput = new ExecuteCodeInput();
+      executeCodeInput.setScriptId(scriptRevision.getScriptId());
+      executeCodeInput.setScriptRevisionId(scriptRevision.getId());
       executeCodeInput.setInput(new HashMap<>(Objects.requireNonNullElseGet(input.getInputValues(), HashMap::new)));
       executeCodeInput.setContext(new HashMap<>());
 

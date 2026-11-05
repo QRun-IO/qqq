@@ -60,6 +60,13 @@ public class Script extends QRecordEntity
    @QField(possibleValueSourceName = "scriptRevision")
    private Integer currentScriptRevisionId;
 
+   //////////////////////////////////////////////////////////////////////////////////////////
+   // server-controlled, monotonic marker - see ScriptExecutionMode & ScriptExecutionIsolation. //
+   // null (every pre-existing row) means LEGACY; ISOLATED can never be cleared.            //
+   //////////////////////////////////////////////////////////////////////////////////////////
+   @QField(isEditable = false, maxLength = 32)
+   private String executionMode;
+
 
 
    /*******************************************************************************
@@ -344,6 +351,37 @@ public class Script extends QRecordEntity
    public Script withMaxBatchSize(Integer maxBatchSize)
    {
       this.maxBatchSize = maxBatchSize;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for executionMode
+    *******************************************************************************/
+   public String getExecutionMode()
+   {
+      return (this.executionMode);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for executionMode
+    *******************************************************************************/
+   public void setExecutionMode(String executionMode)
+   {
+      this.executionMode = executionMode;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for executionMode
+    *******************************************************************************/
+   public Script withExecutionMode(String executionMode)
+   {
+      this.executionMode = executionMode;
       return (this);
    }
 

@@ -258,6 +258,23 @@ public final class JobEffectReviewProcesses
             Integer effectId = record.getValueInteger("id");
             try
             {
+               if(DurableJobs.settings().isTransactionalAdmissionEnabled())
+               {
+                  String note = label(name) + " by " + user + " on " + Instant.now();
+                  Integer changedJob = reviewAtomically(effectId, name, note, actor, session);
+                  if(changedJob == null)
+                  {
+                     skipped.incrementCountAndAddPrimaryKey(effectId);
+                     skipped.setMessage("Effect no longer exists or changed while being reviewed.");
+                  }
+                  else
+                  {
+                     JobSignals.effectResolved(effectId, note);
+                     new JobFinalizer(store).evaluate(changedJob);
+                     done.incrementCountAndAddPrimaryKey(effectId);
+                  }
+                  continue;
+               }
                QRecord effect = effects.get(effectId);
                if(effect == null)
                {
@@ -289,6 +306,40 @@ public final class JobEffectReviewProcesses
                failed.setMessage(e.getMessage());
             }
          }
+      }
+
+
+
+      /*******************************************************************************
+       ** Admit recovery before changing the effect, preserving both on refusal.
+       *******************************************************************************/
+      private Integer reviewAtomically(Integer effectId, String name, String note, String actor, QSession session) throws QException
+      {
+         return (com.kingsrook.qqq.backend.core.jobs.JobAdmission.transaction(DurableJobs.settings(), null, transaction ->
+         {
+            EffectStore effects = new EffectStore(DurableJobs.settings(), transaction);
+            DurableJobStore store = new DurableJobStore(DurableJobs.settings(), transaction);
+            QRecord effect = effects.get(effectId);
+            if(effect == null)
+            {
+               return (null);
+            }
+            Integer jobId = effect.getValueInteger("jobId");
+            ((com.kingsrook.qqq.backend.core.jobs.TransactionalJobAdmission) transaction).lockJobControlRows(jobId);
+            QRecord job = store.getJob(jobId);
+            if(job == null || session != QContext.getQSession()
+               || !(session.hasPermission(DurableJobsTables.PERMISSION_ADMIN) || (actor != null && actor.equals(job.getValueString("userId")))))
+            {
+               throw (new QPermissionDeniedException("You can only review effects for your own jobs."));
+            }
+            if(!effects.resolve(effectId, destination(name), note))
+            {
+               return (null);
+            }
+            store.setJobStatusWithEvent(jobId, EnumSet.of(JobStatus.NEEDS_REVIEW), JobStatus.RUNNING, Map.of("statusReason", "Effects reviewed"),
+               com.kingsrook.qqq.backend.core.jobs.model.JobEventType.RESUMED, "Effects reviewed");
+            return (jobId);
+         }));
       }
 
 

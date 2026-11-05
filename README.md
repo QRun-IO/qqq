@@ -1,5 +1,8 @@
 # qqq
 
+> **QBit integration branch (2026-11-04).** Implementation resumed at the user's request. See [verification status](docs/QBIT-RELEASE-STATUS.md), [upgrade requirements](docs/QBIT-INTEGRATION-UPGRADE.md), and [remaining limitations](docs/QBIT-KNOWN-ISSUES.md). A local snapshot is not a published release.
+
+
 Metadata-driven application framework for building business software in Java.
 
 **For:** Engineers building internal tools, admin panels, data management apps, or CRUD-heavy systems

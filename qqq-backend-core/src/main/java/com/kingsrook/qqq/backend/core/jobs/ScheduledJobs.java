@@ -179,6 +179,25 @@ public final class ScheduledJobs
             {
                updates.add(new QRecord().withValue("id", job.getValue("id")).withValue("userId", ServiceIdentities.PRINCIPAL_ID_PREFIX + principal));
             }
+            if(DurableJobsMetaData.of(instance).isTransactionalAdmissionEnabled())
+            {
+               return (JobAdmission.transaction(DurableJobsMetaData.of(instance), null, transaction ->
+               {
+                  var store = new com.kingsrook.qqq.backend.core.jobs.store.DurableJobStore(DurableJobsMetaData.of(instance), transaction);
+                  int count = 0;
+                  for(QRecord update : updates)
+                  {
+                     QRecord current = store.getJob(update.getValueInteger("id"));
+                     if(current != null && legacyUserId.equals(current.getValueString("userId"))
+                        && CHANNEL_SCHEDULER.equals(current.getValueString("clientChannel")) && UNFINISHED_STATUSES.contains(current.getValueString("status")))
+                     {
+                        store.updateJob(update.getValueInteger("id"), Map.of("userId", ServiceIdentities.PRINCIPAL_ID_PREFIX + principal));
+                        count++;
+                     }
+                  }
+                  return (count);
+               }));
+            }
             new UpdateAction().execute(new UpdateInput(DurableJobsTables.TABLE_JOB).withRecords(updates));
             return (updates.size());
          });

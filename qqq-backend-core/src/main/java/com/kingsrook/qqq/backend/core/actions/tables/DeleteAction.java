@@ -52,6 +52,7 @@ import com.kingsrook.qqq.backend.core.actions.tables.helpers.ValidateRecordSecur
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeEvent;
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeListenerHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeType;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.TransactionalRecordChangeScope;
 import com.kingsrook.qqq.backend.core.actions.values.ValueBehaviorApplier;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -120,6 +121,25 @@ public class DeleteAction
     *******************************************************************************/
    private DeleteOutput execute(DeleteInput deleteInput, Set<Target> ancestors) throws QException
    {
+      boolean preview = deleteInput.getDryRun();
+      try
+      {
+         return (executeWithPermissionChecks(deleteInput, ancestors));
+      }
+      catch(QException | RuntimeException | LinkageError error)
+      {
+         TransactionalRecordChangeScope.failed(deleteInput, RecordChangeType.DELETE, preview);
+         throw (error);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Native permission checks and the complete required transaction scope.
+    *******************************************************************************/
+   private DeleteOutput executeWithPermissionChecks(DeleteInput deleteInput, Set<Target> ancestors) throws QException
+   {
       if(deleteInput.getTableName() != null && deleteInput.getTable() != null)
       {
          if(CorePermissionEnforcer.checkTablePermissions(deleteInput, TablePermissionSubType.DELETE))
@@ -135,9 +155,12 @@ public class DeleteAction
       List<Serializable> primaryKeys = deleteInput.getPrimaryKeys() == null ? null : new ArrayList<>(deleteInput.getPrimaryKeys());
       QQueryFilter filter = deleteInput.getQueryFilter();
       QContext.pushAction(deleteInput);
-      try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope())
+      try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope();
+         TransactionalRecordChangeScope transactionScope = TransactionalRecordChangeScope.open(deleteInput, RecordChangeType.DELETE, deleteInput.getDryRun()))
       {
-         return executeInternal(deleteInput, ancestors);
+         DeleteOutput output = executeInternal(deleteInput, ancestors);
+         transactionScope.success();
+         return (output);
       }
       finally
       {
@@ -168,6 +191,7 @@ public class DeleteAction
       }
       table = TableMetaDataPersonalizerAction.execute(deleteInput);
       deleteInput.setTableMetaData(table);
+      TransactionalRecordChangeScope.verifyTarget(deleteInput);
       String         primaryKeyFieldName = table.getPrimaryKeyField();
       QFieldMetaData primaryKeyField     = table.getField(primaryKeyFieldName);
 
@@ -305,6 +329,7 @@ public class DeleteAction
          return (dryRunOutput);
       }
 
+      TransactionalRecordChangeScope.beforeMutation(deleteInput);
       List<QRecord> associationResults = deleteAssociations(deleteInput, ancestors);
       Set<Object> failedKeys = new HashSet<>();
       for(QRecord record : associationResults)
@@ -828,6 +853,7 @@ public class DeleteAction
       }
       catch(Exception e)
       {
+         RecordChangeListenerHelper.preparationFailed(deleteInput.getTableName(), RecordChangeType.DELETE, e);
          LOG.warn("Error fetching old records for record change listeners", e, new LogPair("tableName", deleteInput.getTableName()));
          return (null);
       }
@@ -864,6 +890,7 @@ public class DeleteAction
          {
             throw (required);
          }
+         RecordChangeListenerHelper.preparationFailed(deleteInput.getTableName(), RecordChangeType.DELETE, e);
          LOG.warn("Error preparing record change event", e, new LogPair("tableName", deleteInput.getTableName()));
       }
    }

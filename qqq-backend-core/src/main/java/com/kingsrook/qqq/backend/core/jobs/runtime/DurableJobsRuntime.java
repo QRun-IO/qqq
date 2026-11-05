@@ -361,7 +361,20 @@ public class DurableJobsRuntime
          session.setValue(DMLAuditAction.AUDIT_CONTEXT_FIELD_NAME, "job:" + lease.jobId() + "/chunk:" + lease.seq());
 
          ChunkOutcome[] outcome = new ChunkOutcome[1];
-         QContext.withTemporaryContext(new CapturedContext(instance, session), () -> outcome[0] = JobPlans.forJob(job).runChunk(context));
+         QContext.withTemporaryContext(new CapturedContext(instance, session), () ->
+         {
+            if(job.getValueString("enlistmentKey") == null)
+            {
+               outcome[0] = JobPlans.forJob(job).runChunk(context);
+            }
+            else
+            {
+               try(EnlistedExecution execution = EnlistedExecution.open(context, store))
+               {
+                  outcome[0] = JobPlans.forJob(job).runChunk(context);
+               }
+            }
+         });
 
          if(!context.isCompletedByPlan())
          {

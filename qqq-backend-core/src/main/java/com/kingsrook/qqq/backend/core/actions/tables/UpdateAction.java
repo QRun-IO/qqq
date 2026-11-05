@@ -41,13 +41,16 @@ import com.kingsrook.qqq.backend.core.actions.automation.RecordAutomationStatusU
 import com.kingsrook.qqq.backend.core.actions.collaboration.RecordReferenceSecurityHelper;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
+import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface.PreUpdatePhase;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.actions.interfaces.UpdateInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
 import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.ClassifiedValues;
 import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
+import com.kingsrook.qqq.backend.core.actions.scripts.ScriptExecutionIsolation;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordDiscovery;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociationJoin;
@@ -60,6 +63,7 @@ import com.kingsrook.qqq.backend.core.actions.tables.helpers.ValidateRecordSecur
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeEvent;
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeListenerHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeType;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.TransactionalRecordChangeScope;
 import com.kingsrook.qqq.backend.core.actions.values.ValueBehaviorApplier;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -149,6 +153,25 @@ public class UpdateAction
     *******************************************************************************/
    UpdateOutput execute(UpdateInput updateInput, boolean failOnRecordErrors) throws QException
    {
+      boolean preview = updateInput.getDryRun();
+      try
+      {
+         return (executeWithPermissionChecks(updateInput, failOnRecordErrors));
+      }
+      catch(QException | RuntimeException | LinkageError error)
+      {
+         TransactionalRecordChangeScope.failed(updateInput, RecordChangeType.UPDATE, preview);
+         throw (error);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Native permission checks and the complete required transaction scope.
+    *******************************************************************************/
+   private UpdateOutput executeWithPermissionChecks(UpdateInput updateInput, boolean failOnRecordErrors) throws QException
+   {
       CorePermissionEnforcer.checkRestoreWriteFlag(updateInput, updateInput.getFlags());
 
       boolean enforce = false;
@@ -167,13 +190,15 @@ public class UpdateAction
       }
 
       QContext.pushAction(updateInput);
-      try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope())
+      try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope();
+         TransactionalRecordChangeScope transactionScope = TransactionalRecordChangeScope.open(updateInput, RecordChangeType.UPDATE, updateInput.getDryRun()))
       {
          UpdateOutput updateOutput = executeInternal(updateInput, failOnRecordErrors);
          if(enforce)
          {
             FieldAccessHelper.applyToRecords(updateInput.getTableName(), null, updateOutput.getRecords(), "update");
          }
+         transactionScope.success();
          return (updateOutput);
       }
       finally
@@ -203,6 +228,7 @@ public class UpdateAction
       }
       table = TableMetaDataPersonalizerAction.execute(updateInput);
       updateInput.setTableMetaData(table);
+      TransactionalRecordChangeScope.verifyTarget(updateInput);
 
       //////////////////////////////////////////////////////
       // load the backend module and its update interface //
@@ -216,7 +242,7 @@ public class UpdateAction
       // for "not-found detection", and for the pre-action to use (if there is one) //
       ////////////////////////////////////////////////////////////////////////////////
       Optional<List<QRecord>> oldRecordList      = fetchOldRecords(updateInput, updateInterface);
-      if(updateInput.getExpectedVersions() != null && !updateInput.getExpectedVersions().isEmpty() && oldRecordList.isEmpty())
+      if(StringUtils.hasContent(table.getRecordVersionField()) && oldRecordList.isEmpty())
       {
          oldRecordList = Optional.of(queryOldRecords(updateInput));
       }
@@ -235,20 +261,32 @@ public class UpdateAction
          setAutomationStatusField(updateInput, oldRecordList);
       }
 
-      performValidations(updateInput, oldRecordList, updateInput.getDryRun());
+      performValidations(updateInput, oldRecordList, updateInput.getDryRun(), true, false);
+      if(restoreWriteFlag == null)
+      {
+         RecordVersionCheck.advance(updateInput, oldRecordList.orElse(List.of()));
+      }
       if(updateInput.getDryRun())
       {
          return (buildDryRunOutput(updateInput, table, oldRecordList));
       }
 
+      TransactionalRecordChangeScope.beforeMutation(updateInput);
       Map<QRecord, AssociatedRecordUpdate.Values> associationValues = AssociatedRecordUpdate.prepare(table, updateInput.getRecords(), updateInput.getTransaction());
-      deleteOmittedAssociations(updateInput, associationValues);
+      if(CollectionUtils.nullSafeIsEmpty(updateInput.getExpectedVersions()))
+      {
+         deleteOmittedAssociations(updateInput, associationValues);
+      }
 
       ////////////////////////////////////
       // have the backend do the update //
       ////////////////////////////////////
       QueryStat    queryStat    = QueryStatManager.newQueryStat(updateInput.getBackend(), table, null, UpdateAction.class.getSimpleName());
       UpdateOutput updateOutput = runUpdateInBackend(updateInput, updateInterface);
+      if(CollectionUtils.nullSafeHasContents(updateInput.getExpectedVersions()))
+      {
+         deleteOmittedAssociations(updateInput, associationValues);
+      }
 
       if(queryStat != null)
       {
@@ -408,22 +446,153 @@ public class UpdateAction
    /***************************************************************************
     **
     ***************************************************************************/
-   private static void runPreUpdateCustomizers(UpdateInput updateInput, QTableMetaData table, Optional<List<QRecord>> oldRecordList, boolean isPreview) throws QException
+   private static List<ScheduledPreUpdate> preUpdateCustomizers(UpdateInput input, boolean preview, boolean skipTableCustomizer) throws QException
    {
-      Optional<TableCustomizerInterface> preUpdateCustomizer = QCodeLoader.getTableCustomizer(table, TableCustomizers.PRE_UPDATE_RECORD.getRole());
-      if(preUpdateCustomizer.isPresent())
+      List<TableCustomizerInterface> customizers = new ArrayList<>();
+      if(!skipTableCustomizer)
       {
-         updateInput.setRecords(preUpdateCustomizer.get().preUpdate(updateInput, updateInput.getRecords(), isPreview, oldRecordList));
+         QCodeLoader.getTableCustomizer(input.getTable(), TableCustomizers.PRE_UPDATE_RECORD.getRole()).ifPresent(customizers::add);
       }
-
-      ///////////////////////////////////////////////
-      // run all of the instance-level customizers //
-      ///////////////////////////////////////////////
-      List<QCodeReference> tableCustomizerCodes = QContext.getQInstance().getTableCustomizers(TableCustomizers.PRE_UPDATE_RECORD);
-      for(QCodeReference tableCustomizerCode : tableCustomizerCodes)
+      for(QCodeReference code : QContext.getQInstance().getTableCustomizers(TableCustomizers.PRE_UPDATE_RECORD))
       {
-         TableCustomizerInterface tableCustomizer = QCodeLoader.getAdHoc(TableCustomizerInterface.class, tableCustomizerCode);
-         updateInput.setRecords(tableCustomizer.preUpdate(updateInput, updateInput.getRecords(), isPreview, oldRecordList));
+         customizers.add(QCodeLoader.getAdHoc(TableCustomizerInterface.class, code));
+      }
+      List<ScheduledPreUpdate> scheduled = new ArrayList<>();
+      for(TableCustomizerInterface customizer : customizers)
+      {
+         // the defensive copy (every record and the table metadata) is only paid for by a customizer that actually chooses its phase
+         PreUpdatePhase phase = choosesPreUpdatePhase(customizer)
+            ? customizer.whenToRunPreUpdate(preUpdateCallbackInput(input, CollectionUtils.nonNullList(input.getRecords()).stream().map(QRecord::new).toList()), preview)
+            : PreUpdatePhase.AFTER_ALL_VALIDATIONS;
+         if(phase == null)
+         {
+            throw new QException("Update customizer phase is required");
+         }
+         scheduled.add(new ScheduledPreUpdate(customizer, phase));
+      }
+      return (scheduled);
+   }
+
+
+   /*******************************************************************************
+    ** Per customizer class: does it override the opt-in phase method?
+    *******************************************************************************/
+   private static final ClassValue<Boolean> PHASE_CHOOSERS = new ClassValue<>()
+   {
+      /***************************************************************************
+       ** Inspect the class once; any doubt means the customizer is asked.
+       ***************************************************************************/
+      @Override
+      protected Boolean computeValue(Class<?> type)
+      {
+         try
+         {
+            return (type.getMethod("whenToRunPreUpdate", UpdateInput.class, boolean.class).getDeclaringClass() != TableCustomizerInterface.class);
+         }
+         catch(NoSuchMethodException e)
+         {
+            return (true);
+         }
+      }
+   };
+
+
+
+
+   /*******************************************************************************
+    ** Does this customizer override the opt-in phase method (so it must be asked)?
+    ** The legacy default always answers AFTER_ALL_VALIDATIONS, so asking it would
+    ** only cost a copy of every record on every update.
+    *******************************************************************************/
+   private static boolean choosesPreUpdatePhase(TableCustomizerInterface customizer)
+   {
+      return (PHASE_CHOOSERS.get(customizer.getClass()));
+   }
+
+
+   /*******************************************************************************
+    ** Capture each phase once so stateful scheduling cannot run a callback twice.
+    *******************************************************************************/
+   private record ScheduledPreUpdate(TableCustomizerInterface customizer, PreUpdatePhase phase)
+   {
+   }
+
+
+
+   /*******************************************************************************
+    ** A defensive callback view cannot alter validation, audit, routing or flags
+    ** on the owning action. The transaction reference is trusted host context.
+    *******************************************************************************/
+   private static UpdateInput preUpdateCallbackInput(UpdateInput input, List<QRecord> records)
+   {
+      UpdateInput copy = new UpdateInput(input.getTableName()).withTransaction(input.getTransaction()).withInputSource(input.getInputSource())
+         .withDryRun(input.getDryRun()).withAuditContext(input.getAuditContext()).withRecords(records);
+      copy.setTableMetaData(input.getTable().clone());
+      return (copy);
+   }
+
+
+
+   /*******************************************************************************
+    ** Run an opted-in early callback only on authorized identities. Preserve the
+    ** denied records and prior snapshots for the existing validation pipeline.
+    *******************************************************************************/
+   private static void runEarlyPreUpdate(TableCustomizerInterface customizer, UpdateInput input, List<QRecord> prior, boolean preview) throws QException
+   {
+      QTableMetaData table = input.getTable();
+      List<QRecord> eligible = input.getRecords().stream().filter(record -> CollectionUtils.nullSafeIsEmpty(record.getErrors())).toList();
+      if(eligible.isEmpty())
+      {
+         return;
+      }
+      PermissionsHelper.checkTablePermissionThrowing(input, TablePermissionSubType.EDIT);
+      Map<QRecord, QRecord> originals = new IdentityHashMap<>();
+      Map<QRecord, Object> identities = new IdentityHashMap<>();
+      List<QRecord> candidates = new ArrayList<>();
+      for(QRecord original : eligible)
+      {
+         QRecord candidate = new QRecord(original);
+         candidate.setAssociatedRecords(null);
+         candidates.add(candidate);
+         originals.put(candidate, original);
+         identities.put(candidate, AssociatedRecordUpdate.primaryKey(table, original));
+      }
+      Set<Object> keys = new HashSet<>(identities.values());
+      List<QRecord> allowedPrior = new ArrayList<>();
+      for(QRecord record : prior)
+      {
+         if(keys.contains(AssociatedRecordUpdate.primaryKey(table, record)))
+         {
+            allowedPrior.add(new QRecord(record));
+         }
+      }
+      UpdateInput callback = preUpdateCallbackInput(input, candidates);
+      List<QRecord> result = customizer.preUpdate(callback, candidates, preview, Optional.of(allowedPrior));
+      Set<QRecord> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+      if(result == null || result.size() != eligible.size())
+      {
+         throw new QException("Early update customizers cannot change record identities");
+      }
+      for(QRecord record : result)
+      {
+         if(!identities.containsKey(record) || !seen.add(record) || !Objects.equals(identities.get(record), AssociatedRecordUpdate.primaryKey(table, record)))
+         {
+            throw new QException("Early update customizers cannot change record identities");
+         }
+         if(record.getAssociatedRecords() != null && !record.getAssociatedRecords().isEmpty())
+         {
+            throw new QException("Early update customizers cannot change associated records");
+         }
+      }
+      UpdateInput permissionInput = preUpdateCallbackInput(input, result);
+      PermissionsHelper.checkTablePermissionThrowing(permissionInput, TablePermissionSubType.EDIT);
+      FieldAccessHelper.assertWritesAllowed(table, result);
+      for(QRecord candidate : result)
+      {
+         QRecord original = originals.get(candidate);
+         original.setValues(new QRecord(candidate).getValues());
+         original.setErrors(new ArrayList<>(candidate.getErrors()));
+         original.setWarnings(new ArrayList<>(candidate.getWarnings()));
       }
    }
 
@@ -445,6 +614,11 @@ public class UpdateAction
          return (rs);
       }
 
+      if(CollectionUtils.nullSafeHasContents(updateInput.getExpectedVersions())
+         && StringUtils.hasContent(updateInput.getTable().getRecordVersionField()) && !updateInterface.supportsAtomicRecordVersions())
+      {
+         throw (new com.kingsrook.qqq.backend.core.exceptions.QBadRequestException("This backend does not support atomic record versions."));
+      }
       UpdateOutput updateOutput = updateInterface.execute(updateInput);
       return updateOutput;
    }
@@ -468,7 +642,58 @@ public class UpdateAction
     *******************************************************************************/
    public void performValidations(UpdateInput updateInput, Optional<List<QRecord>> oldRecordList, boolean isPreview) throws QException
    {
+      performValidations(updateInput, oldRecordList, isPreview, false, false);
+   }
+
+
+
+   /*******************************************************************************
+    ** Trusted bulk preview code may have already run its legacy table callback.
+    ** Skip only that callback; instance callbacks and native validations remain.
+    ** This is not an action-input flag and is never used by execute.
+    *******************************************************************************/
+   public void performValidations(UpdateInput input, Optional<List<QRecord>> prior, boolean preview, boolean didAlreadyRunTableCustomizer) throws QException
+   {
+      performValidations(input, prior, preview, false, didAlreadyRunTableCustomizer);
+   }
+
+
+
+   /*******************************************************************************
+    ** Preview callers cannot supply authoritative stored rows to early callbacks.
+    ** Only executeInternal passes snapshots it fetched inside the native action.
+    *******************************************************************************/
+   private void performValidations(UpdateInput updateInput, Optional<List<QRecord>> oldRecordList, boolean isPreview, boolean nativePrefetch, boolean skipTableCustomizer) throws QException
+   {
       QTableMetaData table = updateInput.getTable();
+      if(skipsCustomizers(updateInput))
+      {
+         ScriptExecutionIsolation.guardCustomizerSkippedUpdate(updateInput, oldRecordList);
+      }
+      List<ScheduledPreUpdate> scheduled = skipsCustomizers(updateInput) ? List.of() : preUpdateCustomizers(updateInput, isPreview, skipTableCustomizer);
+      boolean hasEarly = scheduled.stream().anyMatch(item -> item.phase() == PreUpdatePhase.BEFORE_FIELD_VALIDATIONS);
+      if(hasEarly)
+      {
+         PermissionsHelper.checkTablePermissionThrowing(updateInput, TablePermissionSubType.EDIT);
+         FieldAccessHelper.assertWritesAllowed(table, updateInput.getRecords());
+         if(!nativePrefetch)
+         {
+            oldRecordList = Optional.of(queryOldRecords(updateInput));
+         }
+         if(oldRecordList.isEmpty())
+         {
+            throw new QException("Early update customizers require authorized stored-record snapshots");
+         }
+         validatePrimaryKeysAreGiven(updateInput);
+         validateRecordsExistAndCanBeAccessed(updateInput, oldRecordList.get());
+         for(ScheduledPreUpdate item : scheduled)
+         {
+            if(item.phase() == PreUpdatePhase.BEFORE_FIELD_VALIDATIONS)
+            {
+               runEarlyPreUpdate(item.customizer(), updateInput, oldRecordList.get(), isPreview);
+            }
+         }
+      }
 
       /////////////////////////////
       // run standard validators //
@@ -487,15 +712,28 @@ public class UpdateAction
       {
          ValueBehaviorApplier.applyFieldBehaviors(ValueBehaviorApplier.Action.UPDATE, QContext.getQInstance(), table, updateInput.getRecords(), behaviorsToOmit);
       }
-      validatePrimaryKeysAreGiven(updateInput);
-
-      if(oldRecordList.isPresent())
+      List<QRecord> recordsBeforeValidation = updateInput.getRecords();
+      try
       {
-         validateRecordsExistAndCanBeAccessed(updateInput, oldRecordList.get());
+         if(hasEarly)
+         {
+            updateInput.setRecords(recordsBeforeValidation.stream().filter(record -> CollectionUtils.nullSafeIsEmpty(record.getErrors())).toList());
+         }
+         validatePrimaryKeysAreGiven(updateInput);
+   
+         if(oldRecordList.isPresent())
+         {
+            validateRecordsExistAndCanBeAccessed(updateInput, oldRecordList.get());
+         }
+         else
+         {
+            ValidateRecordSecurityLockHelper.validateSecurityFields(table, updateInput.getRecords(), ValidateRecordSecurityLockHelper.Action.UPDATE, updateInput.getTransaction());
+         }
+   
       }
-      else
+      finally
       {
-         ValidateRecordSecurityLockHelper.validateSecurityFields(table, updateInput.getRecords(), ValidateRecordSecurityLockHelper.Action.UPDATE, updateInput.getTransaction());
+         updateInput.setRecords(recordsBeforeValidation);
       }
 
       if(updateInput.getInputSource().shouldValidateRequiredFields())
@@ -510,9 +748,12 @@ public class UpdateAction
       ///////////////////////////////////////////////////////////////////////////
       // after all validations, run the pre-update customizer, if there is one //
       ///////////////////////////////////////////////////////////////////////////
-      if(!skipsCustomizers(updateInput))
+      for(ScheduledPreUpdate item : scheduled)
       {
-         runPreUpdateCustomizers(updateInput, table, oldRecordList, isPreview);
+         if(item.phase() == PreUpdatePhase.AFTER_ALL_VALIDATIONS)
+         {
+            updateInput.setRecords(item.customizer().preUpdate(updateInput, updateInput.getRecords(), isPreview, oldRecordList));
+         }
       }
       UniqueKeyHelper.validateUpdateUniqueKeys(updateInput);
       RecordReferenceSecurityHelper.validateWrites(table, updateInput.getRecords(), RecordChangeType.UPDATE, updateInput.getTransaction());
@@ -581,6 +822,7 @@ public class UpdateAction
       }
       catch(Exception e)
       {
+         RecordChangeListenerHelper.preparationFailed(updateInput.getTableName(), RecordChangeType.UPDATE, e);
          LOG.warn("Error fetching old records for record change listeners", e, logPair("tableName", updateInput.getTableName()));
          return (null);
       }
@@ -616,6 +858,7 @@ public class UpdateAction
             }
             catch(QException e)
             {
+               RecordChangeListenerHelper.preparationFailed(updateInput.getTableName(), RecordChangeType.UPDATE, e);
                LOG.warn("Could not read primary key of an old record for record change listeners; it will not be paired", e, logPair("tableName", updateInput.getTableName()));
             }
          }
@@ -633,11 +876,17 @@ public class UpdateAction
                }
                catch(QException e)
                {
+                  RecordChangeListenerHelper.preparationFailed(updateInput.getTableName(), RecordChangeType.UPDATE, e);
                   LOG.warn("Could not read primary key of an updated record; leaving it out of the record change event", e, logPair("tableName", updateInput.getTableName()));
                   continue;
                }
 
                successfulRecords.add(record);
+               if(!oldRecordsByPrimaryKey.containsKey(primaryKey))
+               {
+                  RecordChangeListenerHelper.preparationFailed(updateInput.getTableName(), RecordChangeType.UPDATE,
+                     new QException("Required update event is missing its stored record snapshot"));
+               }
                pairedOldRecords.add(oldRecordsByPrimaryKey.get(primaryKey));
             }
          }
@@ -656,6 +905,7 @@ public class UpdateAction
          {
             throw (required);
          }
+         RecordChangeListenerHelper.preparationFailed(updateInput.getTableName(), RecordChangeType.UPDATE, e);
          LOG.warn("Error preparing record change event", e, logPair("tableName", updateInput.getTableName()));
       }
    }

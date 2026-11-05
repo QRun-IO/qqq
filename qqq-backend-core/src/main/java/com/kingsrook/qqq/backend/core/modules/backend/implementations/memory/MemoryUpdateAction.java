@@ -33,6 +33,14 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateOutput;
  *******************************************************************************/
 public class MemoryUpdateAction extends AbstractMemoryAction implements UpdateInterface
 {
+   /*******************************************************************************
+    ** The store checks the expected version while holding its table write monitor.
+    *******************************************************************************/
+   @Override
+   public boolean supportsAtomicRecordVersions()
+   {
+      return (true);
+   }
 
    /*******************************************************************************
     **

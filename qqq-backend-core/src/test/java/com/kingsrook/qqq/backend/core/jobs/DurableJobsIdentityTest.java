@@ -28,7 +28,6 @@ import java.util.Map;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
-import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.jobs.model.JobAction;
 import com.kingsrook.qqq.backend.core.jobs.model.JobStatus;
 import com.kingsrook.qqq.backend.core.jobs.runtime.DurableJobsRuntime;
@@ -91,14 +90,14 @@ class DurableJobsIdentityTest extends DurableJobsTestBase
 
 
    /*******************************************************************************
-    ** A non-admin cannot control another owner's job.
+    ** A non-admin cannot control or discover another owner's job.
     *******************************************************************************/
    @Test
    void differentUserCannotControlJob() throws Exception
    {
       Integer jobId = launch();
       QContext.init(instance, newSession("B"));
-      assertThatThrownBy(() -> DurableJobs.control(jobId, JobAction.PAUSE)).isInstanceOf(QPermissionDeniedException.class);
+      assertThatThrownBy(() -> DurableJobs.control(jobId, JobAction.PAUSE)).isInstanceOf(QNotFoundException.class);
       assertThat(store.getJob(jobId).getValueString("status")).isEqualTo("QUEUED");
    }
 

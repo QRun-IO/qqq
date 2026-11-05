@@ -43,6 +43,7 @@ import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMeta
 import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
+import com.kingsrook.qqq.backend.core.actions.scripts.ScriptExecutionIsolation;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociationJoin;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.RestoreWriteHelper;
@@ -52,6 +53,7 @@ import com.kingsrook.qqq.backend.core.actions.tables.helpers.ValidateRecordSecur
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeEvent;
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeListenerHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeType;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.TransactionalRecordChangeScope;
 import com.kingsrook.qqq.backend.core.actions.values.ValueBehaviorApplier;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -158,6 +160,25 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
     *******************************************************************************/
    private InsertOutput execute(InsertInput insertInput, List<QRecord> nativeRecords, Set<Object> originalIdentities, boolean failOnRecordErrors) throws QException
    {
+      boolean preview = insertInput.getDryRun();
+      try
+      {
+         return (executeWithPermissionChecks(insertInput, nativeRecords, originalIdentities, failOnRecordErrors));
+      }
+      catch(QException | RuntimeException | LinkageError error)
+      {
+         TransactionalRecordChangeScope.failed(insertInput, RecordChangeType.INSERT, preview);
+         throw (error);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Native permission checks and the complete required transaction scope.
+    *******************************************************************************/
+   private InsertOutput executeWithPermissionChecks(InsertInput insertInput, List<QRecord> nativeRecords, Set<Object> originalIdentities, boolean failOnRecordErrors) throws QException
+   {
       CorePermissionEnforcer.checkRestoreWriteFlag(insertInput, insertInput.getFlags());
 
       boolean enforce = false;
@@ -175,13 +196,15 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
          }
       }
 
-      try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope())
+      try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope();
+         TransactionalRecordChangeScope transactionScope = TransactionalRecordChangeScope.open(insertInput, RecordChangeType.INSERT, insertInput.getDryRun()))
       {
          InsertOutput insertOutput = executeInAuthorizedScope(insertInput, nativeRecords, originalIdentities, failOnRecordErrors);
          if(enforce)
          {
             FieldAccessHelper.applyToRecords(insertInput.getTableName(), null, insertOutput.getRecords(), "insert");
          }
+         transactionScope.success();
          return (insertOutput);
       }
    }
@@ -207,6 +230,7 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
       }
       table = TableMetaDataPersonalizerAction.execute(insertInput);
       insertInput.setTableMetaData(table);
+      TransactionalRecordChangeScope.verifyTarget(insertInput);
 
       setAutomationStatusField(insertInput);
 
@@ -254,6 +278,7 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
       // use the backend module to actually do the insert //
       //////////////////////////////////////////////////////
       QueryStat    queryStat    = QueryStatManager.newQueryStat(insertInput.getBackend(), table, null, InsertAction.class.getSimpleName());
+      TransactionalRecordChangeScope.beforeMutation(insertInput);
       InsertOutput insertOutput = runInsertInBackend(insertInput);
 
       if(queryStat != null)
@@ -487,6 +512,11 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
       // then we'll run it based on its WhenToRun value                //
       // note - if we already ran it, then don't re-run it!            //
       ///////////////////////////////////////////////////////////////////
+      if(skipsCustomizers(insertInput))
+      {
+         ScriptExecutionIsolation.guardCustomizerSkippedInsert(insertInput);
+      }
+
       Optional<TableCustomizerInterface> preInsertCustomizer = didAlreadyRunCustomizer || skipsCustomizers(insertInput) ? Optional.empty() : QCodeLoader.getTableCustomizer(table, TableCustomizers.PRE_INSERT_RECORD.getRole());
       runPreInsertCustomizerIfItIsTime(insertInput, isPreview, preInsertCustomizer, AbstractPreInsertCustomizer.WhenToRun.BEFORE_ALL_VALIDATIONS);
 

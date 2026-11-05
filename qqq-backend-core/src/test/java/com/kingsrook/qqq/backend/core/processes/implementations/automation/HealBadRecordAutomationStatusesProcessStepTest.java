@@ -148,6 +148,8 @@ class HealBadRecordAutomationStatusesProcessStepTest extends BaseTest
    @Test
    void testOldRunningUpdates() throws QException
    {
+      String versionField = QContext.getQInstance().getTable(tableName).getRecordVersionField();
+      QContext.getQInstance().getTable(tableName).setRecordVersionField("");
       /////////////////////////////////////////////////
       // temporarily remove the modify-date behavior //
       /////////////////////////////////////////////////
@@ -174,6 +176,8 @@ class HealBadRecordAutomationStatusesProcessStepTest extends BaseTest
       // restore the modifyDate behavior //
       /////////////////////////////////////
       QContext.getQInstance().getTable(tableName).getField("modifyDate").withBehavior(DynamicDefaultValueBehavior.MODIFY_DATE);
+
+      QContext.getQInstance().getTable(tableName).setRecordVersionField(versionField);
 
       /////////////////////////
       // run code under test //

@@ -26,7 +26,6 @@ import java.util.Map;
 import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
-import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
 import com.kingsrook.qqq.backend.core.model.metadata.code.InitializableViaCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReferenceWithProperties;
@@ -114,10 +113,7 @@ public class UseTablePermissionCustomPermissionChecker implements CustomPermissi
          LOG.warn("Missing tablePermissionSubType in a custom permission checker");
       }
 
-      AbstractTableActionInput tableActionInput = new AbstractTableActionInput();
-      tableActionInput.setTableName(tableName);
-
-      PermissionsHelper.checkTablePermissionThrowing(tableActionInput, tablePermissionSubType);
+      PermissionsHelper.checkTablePermissionThrowing(PermissionsHelper.tableActionInputFor(tableName, tablePermissionSubType), tablePermissionSubType);
    }
 
 

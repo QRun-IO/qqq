@@ -1,2 +1,5 @@
 # Append-only changelog: keep both sides of concurrent additions instead of conflicting.
 docs/UI-API-CHANGELOG.md merge=union
+
+# Static HTTP fixtures have byte-exact response assertions on every platform.
+qqq-middleware-javalin/src/test/resources/**/*.html text eol=lf

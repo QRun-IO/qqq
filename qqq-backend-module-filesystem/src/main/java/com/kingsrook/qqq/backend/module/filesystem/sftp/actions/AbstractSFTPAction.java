@@ -80,35 +80,72 @@ public class AbstractSFTPAction extends AbstractBaseFilesystemAction<SFTPDirEntr
 
 
    /***************************************************************************
-    ** singleton implementing Initialization-on-Demand Holder idiom
-    ** to help ensure only a single SshClient object exists in a server.
+    ** Manager for the single shared SshClient in a server.
+    **
+    ** The client is started lazily on first use and may be stopped and started
+    ** again, so an application that has been stopped (e.g., a test fixture, an
+    ** embedded host, or a hot restart) can open SFTP sessions once more. The
+    ** former Initialization-on-Demand Holder started the client in a static
+    ** initializer, so a stopped client could never be started again within
+    ** the same JVM.
     ***************************************************************************/
    private static class SshClientManager
    {
+      private static SshClient instance;
+
+
 
       /***************************************************************************
-       **
+       ** Lazily start the shared client; a stopped client is replaced by a new,
+       ** started one.
        ***************************************************************************/
-      private static class Holder
+      public static synchronized SshClient getInstance()
       {
-         private static final SshClient INSTANCE = SshClient.setUpDefaultClient();
-
-         static
+         if(instance == null || !instance.isStarted())
          {
-            INSTANCE.start();
+            instance = SshClient.setUpDefaultClient();
+            instance.start();
+         }
+         return (instance);
+      }
+
+
+
+      /***************************************************************************
+       ** Stop only an existing client; shutdown must not initialize one.
+       ***************************************************************************/
+      public static synchronized void stop()
+      {
+         if(instance != null)
+         {
+            instance.stop();
+            instance = null;
          }
       }
-
-
-
-      /***************************************************************************
-       **
-       ***************************************************************************/
-      public static SshClient getInstance()
-      {
-         return Holder.INSTANCE;
-      }
    }
+
+
+
+   /*******************************************************************************
+    ** Get the shared SSH client, starting it if it is not currently running.
+    *******************************************************************************/
+   static SshClient getSharedSshClient()
+   {
+      return (SshClientManager.getInstance());
+   }
+
+
+
+   /*******************************************************************************
+    ** Release the shared SSH client after the host has stopped scheduling work.
+    ** A later SFTP action starts a fresh client.
+    *******************************************************************************/
+   public static void shutdownSharedClient()
+   {
+      SshClientManager.stop();
+   }
+
+
 
    ////////////////////////////////////////////////////////////////
    // open clientSessionFirst, then sftpClient                   //
@@ -220,7 +257,7 @@ public class AbstractSFTPAction extends AbstractBaseFilesystemAction<SFTPDirEntr
     ***************************************************************************/
    protected SftpClient makeConnection(String username, String hostName, Integer port, String password, byte[] privateKeyBytes) throws Exception
    {
-      this.clientSession = SshClientManager.getInstance().connect(username, hostName, port).verify().getSession();
+      this.clientSession = getSharedSshClient().connect(username, hostName, port).verify().getSession();
 
       //////////////////////////////////////////////////////////////////////
       // if we have private key bytes, use them to add publicKey identity //

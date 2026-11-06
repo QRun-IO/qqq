@@ -139,7 +139,7 @@ class NativeSessionLoginSpecV1Test extends SpecTestBase
    void configuredPublicDescriptorAndFeature()
    {
       JSONObject version = new JSONObject(Unirest.get(getBaseUrlAndPath() + "/version").asString().getBody());
-      assertEquals("1.10.0", version.getString("apiVersion"));
+      assertEquals("1.11.0", version.getString("apiVersion"));
       assertTrue(version.getJSONArray("features").toList().contains("nativeSessionLogin"));
       String body = Unirest.get(getBaseUrlAndPath() + "/metaData/authentication").asString().getBody();
       JSONObject values = new JSONObject(body).getJSONObject("values");
@@ -287,6 +287,35 @@ class NativeSessionLoginSpecV1Test extends SpecTestBase
    {
       serverQInstance.withInstanceDefaultAuthentication(TestUtils.defineInstance().getAuthentication());
       assertRejected(nativeRequest());
+   }
+
+
+
+   /*******************************************************************************
+    ** Public callback overrides match enforced policy; old printer requests remain valid.
+    *******************************************************************************/
+   @Test
+   void explicitCallbackPolicyPreservesLegacyPrinterAndRequiresScannerNonce()
+   {
+      String printer = "io.example.printer:/oauth/callback";
+      var auth = (OAuth2AuthenticationMetaData) serverQInstance.getAuthentication();
+      auth.getNativeSessionLogin().withRequireNonceValidation(true).withRedirectUris(List.of(CALLBACK, printer))
+         .withNonceValidationOverrides(Map.of(printer, "OPTIONAL"));
+      JSONObject version = new JSONObject(Unirest.get(getBaseUrlAndPath() + "/version").asString().getBody());
+      assertTrue(version.getJSONArray("features").toList().contains("nativeSessionCallbackNoncePolicies"));
+      JSONObject descriptor = new JSONObject(Unirest.get(getBaseUrlAndPath() + "/metaData/authentication").asString().getBody())
+         .getJSONObject("values").getJSONObject("nativeSessionLogin");
+      assertEquals("REQUIRED", descriptor.getString("nonceValidation"));
+      assertEquals("OPTIONAL", descriptor.getJSONObject("nonceValidationOverrides").getString(printer));
+      assertRejected(nativeRequest());
+      JSONObject noMarker = nativeRequest();
+      noMarker.remove("authenticationFlow");
+      assertRejected(noMarker);
+      assertRejected(noMarker.put("expectedNonce", 123456789012345678L));
+      assertEquals(200, post(nativeRequest().put("redirectUri", printer)).getStatus());
+      assertFalse(lastContext.containsKey("expectedNonce"));
+      assertEquals(200, post(nativeRequest().put("expectedNonce", "original_scanner_nonce_123456")).getStatus());
+      assertEquals("original_scanner_nonce_123456", lastContext.get("expectedNonce"));
    }
 
 

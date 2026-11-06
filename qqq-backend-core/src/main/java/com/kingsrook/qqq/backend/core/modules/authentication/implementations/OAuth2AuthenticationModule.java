@@ -255,18 +255,26 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
             Secret               clientSecret = new Secret(oauth2MetaData.getClientSecret());
             ClientAuthentication clientAuth   = new ClientSecretBasic(clientID, clientSecret);
 
-            boolean nativeFlow = com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2NativeSessionLoginMetaData.FLOW.equals(context.get(NativeSessionLogoutSupport.NATIVE_FLOW_KEY));
-            boolean requireNonce = nativeFlow && oauth2MetaData.getNativeSessionLogin() != null && oauth2MetaData.getNativeSessionLogin().getRequireNonceValidation();
-            String expectedNonce = requireNonce ? context.get("expectedNonce") : null;
-            if(requireNonce && (expectedNonce == null || !expectedNonce.matches("[A-Za-z0-9_-]{16,512}")))
-            {
-               throw new QAuthenticationException("Native identity nonce is required");
-            }
-            if(requireNonce && (!oauth2MetaData.getNativeSessionLogin().isValid() || !oauth2MetaData.getNativeSessionLogin().getRedirectUris().contains(callback.toString())))
+            var nativePolicy = oauth2MetaData.getNativeSessionLogin();
+            boolean callbackPolicies = nativePolicy != null && !nativePolicy.getNonceValidationOverrides().isEmpty();
+            if(callbackPolicies && !nativePolicy.isValid())
             {
                throw new QAuthenticationException("Native identity policy is invalid");
             }
-            URI tokenEndpoint = requireNonce ? NativeSessionNonceSupport.tokenEndpoint(oauth2MetaData) : getOIDCProviderMetadata(oauth2MetaData).getTokenEndpointURI();
+            boolean nativeFlow = com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2NativeSessionLoginMetaData.FLOW.equals(context.get(NativeSessionLogoutSupport.NATIVE_FLOW_KEY));
+            // Opted-in callback policy cannot be bypassed by omitting the flow marker.
+            nativeFlow = nativeFlow || (callbackPolicies && nativePolicy.getRedirectUris().contains(callback.toString()));
+            if(nativeFlow && nativePolicy != null && (nativePolicy.getRequireNonceValidation() || callbackPolicies) && (!nativePolicy.isValid() || !nativePolicy.getRedirectUris().contains(callback.toString())))
+            {
+               throw new QAuthenticationException("Native identity policy is invalid");
+            }
+            boolean requireNonce = nativeFlow && nativePolicy != null && nativePolicy.getRequireNonceValidation() && nativePolicy.requiresNonceFor(callback.toString());
+            String expectedNonce = (requireNonce || (nativeFlow && callbackPolicies)) ? context.get("expectedNonce") : null;
+            if((requireNonce && expectedNonce == null) || (expectedNonce != null && !expectedNonce.matches("[A-Za-z0-9_-]{16,512}")))
+            {
+               throw new QAuthenticationException("Native identity nonce is required");
+            }
+            URI tokenEndpoint = requireNonce || (nativeFlow && callbackPolicies) ? NativeSessionNonceSupport.tokenEndpoint(oauth2MetaData) : getOIDCProviderMetadata(oauth2MetaData).getTokenEndpointURI();
             Scope scope = new Scope(oauth2MetaData.getScopes());
             TokenRequest tokenRequest = new TokenRequest(tokenEndpoint, clientAuth, codeGrant, scope);
             return createSessionFromTokenRequest(tokenRequest, nativeFlow ? callback.toString() : null, expectedNonce);

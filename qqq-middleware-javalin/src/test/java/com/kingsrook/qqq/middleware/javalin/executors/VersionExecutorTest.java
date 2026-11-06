@@ -94,7 +94,7 @@ class VersionExecutorTest
       VersionResponseV1 output = execute();
 
       assertThat(output.getFeatures()).doesNotContain(AVATARS);
-      List<String> expected = MiddlewareVersionV1.FEATURES.stream().filter(f -> !AVATARS.equals(f) && !List.of("nativeSessionLogin", "nativeSessionLogout", "nativeSessionNonceValidation").contains(f)).toList();
+      List<String> expected = MiddlewareVersionV1.FEATURES.stream().filter(f -> !AVATARS.equals(f) && !List.of("nativeSessionLogin", "nativeSessionLogout", "nativeSessionNonceValidation", "nativeSessionCallbackNoncePolicies").contains(f)).toList();
       assertThat(output.getFeatures()).containsExactlyElementsOf(expected);
    }
 
@@ -113,7 +113,7 @@ class VersionExecutorTest
       VersionResponseV1 output = execute();
 
       assertThat(output.getFeatures()).contains(AVATARS);
-      assertThat(output.getFeatures()).containsExactlyElementsOf(MiddlewareVersionV1.FEATURES.stream().filter(f -> !List.of("nativeSessionLogin", "nativeSessionLogout", "nativeSessionNonceValidation").contains(f)).toList());
+      assertThat(output.getFeatures()).containsExactlyElementsOf(MiddlewareVersionV1.FEATURES.stream().filter(f -> !List.of("nativeSessionLogin", "nativeSessionLogout", "nativeSessionNonceValidation", "nativeSessionCallbackNoncePolicies").contains(f)).toList());
    }
 
 

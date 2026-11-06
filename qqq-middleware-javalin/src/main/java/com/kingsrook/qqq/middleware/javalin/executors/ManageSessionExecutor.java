@@ -176,8 +176,21 @@ public class ManageSessionExecutor extends AbstractMiddlewareExecutor<ManageSess
     ** Native opt-in is checked before any provider exchange. Marker-free requests
     ** keep the established web, Auth0, TABLE_BASED and session-resume behavior.
     *******************************************************************************/
-   private static void validateNativeSessionLogin(ManageSessionInput input) throws QBadRequestException
+   static void validateNativeSessionLogin(ManageSessionInput input) throws QBadRequestException
    {
+      if(QContext.getQInstance().getAuthentication() instanceof OAuth2AuthenticationMetaData configured
+         && configured.getNativeSessionLogin() != null && !configured.getNativeSessionLogin().getNonceValidationOverrides().isEmpty())
+      {
+         var policy = configured.getNativeSessionLogin();
+         if(!policy.isValid())
+         {
+            throw new QBadRequestException("Invalid native callback policy.");
+         }
+         if(input.getAuthenticationFlow() == null && input.getRedirectUri() != null && policy.getRedirectUris().contains(input.getRedirectUri()))
+         {
+            input.setAuthenticationFlow(OAuth2NativeSessionLoginMetaData.FLOW);
+         }
+      }
       if(input.getAuthenticationFlow() == null)
       {
          return;
@@ -196,8 +209,10 @@ public class ManageSessionExecutor extends AbstractMiddlewareExecutor<ManageSess
       {
          throw (new QBadRequestException("Native session login requires an authorization code, a valid PKCE verifier and an allowed redirect URI, without other credentials."));
       }
-      if(oauth2.getNativeSessionLogin().getRequireNonceValidation()
-         && (input.getExpectedNonce() == null || !input.getExpectedNonce().matches("[A-Za-z0-9_-]{16,512}")))
+      boolean required = oauth2.getNativeSessionLogin().requiresNonceFor(input.getRedirectUri());
+      boolean callbackPolicies = !oauth2.getNativeSessionLogin().getNonceValidationOverrides().isEmpty();
+      if((required && input.getExpectedNonce() == null)
+         || ((required || callbackPolicies) && input.getExpectedNonce() != null && !input.getExpectedNonce().matches("[A-Za-z0-9_-]{16,512}")))
       {
          throw (new QBadRequestException("Native session login requires the original URL-safe nonce."));
       }

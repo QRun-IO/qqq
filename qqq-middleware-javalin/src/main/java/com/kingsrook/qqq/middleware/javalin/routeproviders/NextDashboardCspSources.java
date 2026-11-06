@@ -32,6 +32,7 @@ import com.kingsrook.qqq.backend.core.model.dashboard.widgets.WidgetType;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.Auth0AuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2AuthenticationMetaData;
+import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaDataInterface;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
@@ -138,7 +139,11 @@ public final class NextDashboardCspSources implements ToSchema
          String baseUrl = null;
          if(provider instanceof OAuth2AuthenticationMetaData oauth2)
          {
-            baseUrl = oauth2.getBaseUrl();
+            ////////////////////////////////////////////////////////////////////////////////////////
+            // the browser talks to the provider at its external address, which may differ from  //
+            // the server-side base url (for example, an in-cluster issuer behind a public proxy) //
+            ////////////////////////////////////////////////////////////////////////////////////////
+            baseUrl = StringUtils.hasContent(oauth2.getExternalBaseUrl()) ? oauth2.getExternalBaseUrl() : oauth2.getBaseUrl();
          }
          else if(provider instanceof Auth0AuthenticationMetaData auth0)
          {

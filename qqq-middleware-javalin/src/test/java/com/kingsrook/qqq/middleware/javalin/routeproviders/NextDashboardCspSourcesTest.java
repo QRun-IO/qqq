@@ -91,4 +91,26 @@ class NextDashboardCspSourcesTest
          assertEquals(List.of(origin), NextDashboardCspSources.fromInstance(instance).getConnectSrc());
       }
    }
+
+
+
+   /*******************************************************************************
+    ** The browser reaches the identity provider at its external address, so the
+    ** connect-src origin comes from externalBaseUrl when one is configured; the
+    ** server-side baseUrl is never advertised in that case.
+    *******************************************************************************/
+   @Test
+   void testExternalBaseUrlPreferredForBrowserOrigin()
+   {
+      QInstance instance = new QInstance();
+      instance.withInstanceDefaultAuthentication(new OAuth2AuthenticationMetaData()
+         .withBaseUrl("https://127.0.0.1:18590/application/o/forge/")
+         .withExternalBaseUrl("https://identity.example.test:8447/application/o/forge/")
+         .withName("oidc"));
+      assertEquals(List.of("https://identity.example.test:8447"), NextDashboardCspSources.fromInstance(instance).getConnectSrc());
+
+      QInstance internalOnly = new QInstance();
+      internalOnly.withInstanceDefaultAuthentication(new OAuth2AuthenticationMetaData().withBaseUrl("https://127.0.0.1:18590/application/o/forge/").withName("oidc"));
+      assertEquals(List.of("https://127.0.0.1:18590"), NextDashboardCspSources.fromInstance(internalOnly).getConnectSrc());
+   }
 }

@@ -23,12 +23,14 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components;
 
 
 import java.util.List;
+import java.util.Map;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonValue;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2NativeSessionLoginMetaData;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIListItems;
+import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIMapValueType;
 
 
 /*******************************************************************************
@@ -65,8 +67,24 @@ public class NativeSessionLogin implements ToSchema
    }
 
    @JsonInclude(JsonInclude.Include.NON_NULL)
-   @OpenAPIDescription("When REQUIRED, send the original browser request nonce as expectedNonce to manageSession. Never accept a nonce from the callback.")
+   @OpenAPIDescription("Default callback policy. When REQUIRED, send the original browser request nonce as expectedNonce to manageSession unless this exact callback has an OPTIONAL nonceValidationOverrides entry (UI API 1.11). Never accept a nonce from the callback.")
    private NonceValidation nonceValidation;
+
+   @JsonInclude(JsonInclude.Include.NON_EMPTY)
+   @OpenAPIDescription("Exact callback policy overrides (UI API 1.11). OPTIONAL permits legacy exchange without expectedNonce; if supplied it is validated. Unlisted callbacks use nonceValidation.")
+   @OpenAPIMapValueType(String.class)
+   private Map<String, String> nonceValidationOverrides = Map.of();
+
+
+
+   /*******************************************************************************
+    ** Callback exceptions are explicit public policy, not client assertions.
+    *******************************************************************************/
+   public Map<String, String> getNonceValidationOverrides()
+   {
+      return (nonceValidationOverrides);
+   }
+
 
 
 
@@ -121,6 +139,7 @@ public class NativeSessionLogin implements ToSchema
       discoveryUrl = configuration.getDiscoveryUrl();
       redirectUris = configuration.getRedirectUris();
       nonceValidation = configuration.getRequireNonceValidation() ? NonceValidation.REQUIRED : null;
+      nonceValidationOverrides = configuration.getNonceValidationOverrides();
       return (this);
    }
 
@@ -194,3 +213,4 @@ public class NativeSessionLogin implements ToSchema
       return (redirectUris);
    }
 }
+

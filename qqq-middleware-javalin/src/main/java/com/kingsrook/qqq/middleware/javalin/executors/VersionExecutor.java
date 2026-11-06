@@ -102,12 +102,15 @@ public class VersionExecutor extends AbstractMiddlewareExecutor<VersionInput, Ve
          && oauth2.getNativeSessionLogin() != null && oauth2.getNativeSessionLogin().isValid();
       boolean nativeNonce = nativeSessionLogin && ((OAuth2AuthenticationMetaData) qInstance.getAuthentication()).getNativeSessionLogin().getRequireNonceValidation();
 
+      boolean callbackPolicies = nativeNonce && !((OAuth2AuthenticationMetaData) qInstance.getAuthentication()).getNativeSessionLogin().getNonceValidationOverrides().isEmpty();
+
       return (features.stream()
          .filter(feature -> profilesInstalled || !FEATURE_AVATARS.equals(feature))
          .filter(feature -> durableJobsInstalled || !FEATURE_DURABLE_JOBS.equals(feature))
          .filter(feature -> recordSearchBacked || !FEATURE_RECORD_SEARCH.equals(feature))
          .filter(feature -> nativeSessionLogin || !"nativeSessionLogin".equals(feature))
          .filter(feature -> nativeNonce || !"nativeSessionNonceValidation".equals(feature))
+         .filter(feature -> callbackPolicies || !"nativeSessionCallbackNoncePolicies".equals(feature))
          .filter(feature -> !"nativeSessionLogout".equals(feature) || com.kingsrook.qqq.backend.core.modules.authentication.implementations.NativeSessionLogoutSupport.isConfigured(qInstance))
          .toList());
    }

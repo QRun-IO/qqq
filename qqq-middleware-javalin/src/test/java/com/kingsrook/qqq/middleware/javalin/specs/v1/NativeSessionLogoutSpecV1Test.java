@@ -240,7 +240,7 @@ class NativeSessionLogoutSpecV1Test extends SpecTestBase
    void capabilityIsConditionalAndVersioned()
    {
       JSONObject version = new JSONObject(Unirest.get(getBaseUrlAndPath() + "/version").asString().getBody());
-      assertEquals("1.10.0", version.getString("apiVersion"));
+      assertEquals("1.11.0", version.getString("apiVersion"));
       assertTrue(version.getJSONArray("features").toList().contains("nativeSessionLogout"));
       String body = Unirest.get(getBaseUrlAndPath() + "/metaData/authentication").asString().getBody();
       JSONObject data = new JSONObject(body).getJSONObject("values").getJSONObject("nativeSessionLogout");

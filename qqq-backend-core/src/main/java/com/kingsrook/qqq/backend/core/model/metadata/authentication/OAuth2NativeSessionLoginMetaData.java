@@ -25,7 +25,9 @@ package com.kingsrook.qqq.backend.core.model.metadata.authentication;
 import java.io.Serializable;
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 
@@ -42,6 +44,52 @@ public class OAuth2NativeSessionLoginMetaData implements Serializable
    private String discoveryUrl;
    private List<String> redirectUris;
    private boolean requireNonceValidation;
+   private Map<String, String> nonceValidationOverrides = Map.of();
+
+
+
+   /*******************************************************************************
+    ** Explicit exact-callback exceptions to the required default; absent is unchanged.
+    *******************************************************************************/
+   public Map<String, String> getNonceValidationOverrides()
+   {
+      return (new LinkedHashMap<>(nonceValidationOverrides));
+   }
+
+
+
+   /*******************************************************************************
+    ** Only OPTIONAL for a configured callback is valid; checked with the whole policy.
+    *******************************************************************************/
+   public void setNonceValidationOverrides(Map<String, String> overrides)
+   {
+      nonceValidationOverrides = overrides == null ? Map.of() : new LinkedHashMap<>(overrides);
+   }
+
+
+
+   /*******************************************************************************
+    ** Configure exact callback policy without changing unlisted callbacks.
+    *******************************************************************************/
+   public OAuth2NativeSessionLoginMetaData withNonceValidationOverrides(Map<String, String> overrides)
+   {
+      setNonceValidationOverrides(overrides);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Resolve only validated host configuration, never client-supplied policy.
+    *******************************************************************************/
+   public boolean requiresNonceFor(String callback)
+   {
+      if(!isValid() || !redirectUris.contains(callback))
+      {
+         throw new IllegalArgumentException("Invalid native callback policy");
+      }
+      return (requireNonceValidation && !"OPTIONAL".equals(nonceValidationOverrides.get(callback)));
+   }
 
 
 
@@ -84,7 +132,9 @@ public class OAuth2NativeSessionLoginMetaData implements Serializable
    {
       return (publicHttpsUrl(issuer) && publicHttpsUrl(discoveryUrl) && redirectUris != null
          && !redirectUris.isEmpty() && redirectUris.size() <= 32
-         && redirectUris.stream().allMatch(OAuth2NativeSessionLoginMetaData::redirectUri));
+         && redirectUris.stream().allMatch(OAuth2NativeSessionLoginMetaData::redirectUri)
+         && (nonceValidationOverrides.isEmpty() || (requireNonceValidation
+            && nonceValidationOverrides.entrySet().stream().allMatch(entry -> redirectUris.contains(entry.getKey()) && "OPTIONAL".equals(entry.getValue())))));
    }
 
 

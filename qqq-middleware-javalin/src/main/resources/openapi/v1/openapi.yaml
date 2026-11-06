@@ -325,12 +325,20 @@ components:
                       \ document issuer exactly; never infer it from baseUrl."
                     type: "string"
                   nonceValidation:
-                    description: "When REQUIRED, send the original browser request\
-                      \ nonce as expectedNonce to manageSession. Never accept a nonce\
-                      \ from the callback."
+                    description: "Default callback policy. When REQUIRED, send the\
+                      \ original browser request nonce as expectedNonce to manageSession\
+                      \ unless this exact callback has an OPTIONAL nonceValidationOverrides\
+                      \ entry (UI API 1.11). Never accept a nonce from the callback."
                     enum:
                     - "REQUIRED"
                     type: "string"
+                  nonceValidationOverrides:
+                    additionalProperties:
+                      type: "string"
+                    description: "Exact callback policy overrides (UI API 1.11). OPTIONAL\
+                      \ permits legacy exchange without expectedNonce; if supplied\
+                      \ it is validated. Unlisted callbacks use nonceValidation."
+                    type: "object"
                   prompt:
                     description: "Request fresh provider authentication in the external\
                       \ browser. This is not provider-global logout or proof of authentication\
@@ -2245,11 +2253,20 @@ components:
             \ issuer exactly; never infer it from baseUrl."
           type: "string"
         nonceValidation:
-          description: "When REQUIRED, send the original browser request nonce as\
-            \ expectedNonce to manageSession. Never accept a nonce from the callback."
+          description: "Default callback policy. When REQUIRED, send the original\
+            \ browser request nonce as expectedNonce to manageSession unless this\
+            \ exact callback has an OPTIONAL nonceValidationOverrides entry (UI API\
+            \ 1.11). Never accept a nonce from the callback."
           enum:
           - "REQUIRED"
           type: "string"
+        nonceValidationOverrides:
+          additionalProperties:
+            type: "string"
+          description: "Exact callback policy overrides (UI API 1.11). OPTIONAL permits\
+            \ legacy exchange without expectedNonce; if supplied it is validated.\
+            \ Unlisted callbacks use nonceValidation."
+          type: "object"
         prompt:
           description: "Request fresh provider authentication in the external browser.\
             \ This is not provider-global logout or proof of authentication time."
@@ -8401,7 +8418,7 @@ info:
     \ its own\nconfiguration, identity and permission administration, audits, API\
     \ keys or secrets), exactly as if the user had\nno permission for them.\n"
   title: "QQQ Middleware API"
-  version: "1.10.0"
+  version: "1.11.0"
 openapi: "3.0.3"
 paths:
   /qqq/v1/version:

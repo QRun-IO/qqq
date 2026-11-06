@@ -24,23 +24,30 @@ package com.kingsrook.qqq.middleware.javalin.executors;
 import java.io.Serializable;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2AuthenticationMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2NativeSessionLoginMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.session.QUser;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.OAuth2AuthenticationModule;
+import com.kingsrook.qqq.backend.core.modules.authentication.implementations.metadata.RedirectStateMetaDataProducer;
+import com.kingsrook.qqq.backend.core.modules.authentication.implementations.metadata.UserSessionMetaDataProducer;
+import com.kingsrook.qqq.backend.core.modules.authentication.implementations.model.UserSession;
 import com.kingsrook.qqq.middleware.javalin.TestUtils;
 import com.kingsrook.qqq.middleware.javalin.executors.io.ManageSessionInput;
 import com.kingsrook.qqq.middleware.javalin.executors.io.ManageSessionOutputInterface;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 
@@ -93,6 +100,60 @@ class ManageSessionExecutorTest
       finally
       {
          FixtureAuthenticationModule.frontendValues = null;
+         QContext.clear();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Configured callback nonce policies (UI API 1.11) must not disturb an ordinary
+    ** session resume, which carries no redirectUri at all; and they opt a configured
+    ** callback into the native flow without a client-supplied marker.
+    *******************************************************************************/
+   @Test
+   void testConfiguredCallbackPoliciesAndSessionResume() throws Exception
+   {
+      String printer = "https://printer.example.test/callback";
+      String scanner = "https://scanner.example.test/callback";
+      QInstance qInstance = TestUtils.defineInstance();
+      qInstance.addTable(new UserSessionMetaDataProducer(TestUtils.BACKEND_NAME_MEMORY).produce(qInstance));
+      qInstance.addTable(new RedirectStateMetaDataProducer(TestUtils.BACKEND_NAME_MEMORY).produce(qInstance));
+      qInstance.withInstanceDefaultAuthentication(new OAuth2AuthenticationMetaData()
+         .withBaseUrl("https://issuer.example.test/application/o/forge/")
+         .withClientId("fixture-client")
+         .withClientSecret("fixture-not-a-secret")
+         .withScopes("openid profile email")
+         .withUserSessionTableName(UserSession.TABLE_NAME)
+         .withRedirectStateTableName(RedirectStateMetaDataProducer.TABLE_NAME)
+         .withNativeSessionLogin(new OAuth2NativeSessionLoginMetaData()
+            .withIssuer("https://issuer.example.test/application/o/forge/")
+            .withDiscoveryUrl("https://issuer.example.test/application/o/forge/.well-known/openid-configuration")
+            .withRedirectUris(List.of(printer, scanner))
+            .withRequireNonceValidation(true)
+            .withNonceValidationOverrides(Map.of(printer, "OPTIONAL")))
+         .withName("oidc"));
+      QContext.init(qInstance, null);
+      try
+      {
+         ManageSessionInput resume = new ManageSessionInput();
+         assertDoesNotThrow(() -> ManageSessionExecutor.validateNativeSessionLogin(resume));
+         assertNull(resume.getAuthenticationFlow());
+
+         ManageSessionInput configured = new ManageSessionInput();
+         configured.setRedirectUri(printer);
+         configured.setCode("code");
+         configured.setCodeVerifier("verifier-verifier-verifier-verifier-verifier");
+         assertDoesNotThrow(() -> ManageSessionExecutor.validateNativeSessionLogin(configured));
+         assertEquals(OAuth2NativeSessionLoginMetaData.FLOW, configured.getAuthenticationFlow());
+
+         ManageSessionInput unlisted = new ManageSessionInput();
+         unlisted.setRedirectUri("https://other.example.test/callback");
+         assertDoesNotThrow(() -> ManageSessionExecutor.validateNativeSessionLogin(unlisted));
+         assertNull(unlisted.getAuthenticationFlow());
+      }
+      finally
+      {
          QContext.clear();
       }
    }

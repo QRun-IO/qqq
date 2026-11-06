@@ -406,6 +406,99 @@ class OAuth2NativeSessionNonceTest
 
 
    /*******************************************************************************
+    ** Exact callback exceptions preserve legacy printing without weakening scanner login.
+    *******************************************************************************/
+   @Test
+   void optionalPrinterAndRequiredScannerRemainSeparate() throws Exception
+   {
+      String printer = "io.example.print:/oauth/callback";
+      auth.getNativeSessionLogin().withRedirectUris(List.of(CALLBACK, printer)).withNonceValidationOverrides(Map.of(printer, "OPTIONAL"));
+      Map<String, String> missingMarker = context();
+      missingMarker.remove(NativeSessionLogoutSupport.NATIVE_FLOW_KEY);
+      missingMarker.remove("expectedNonce");
+      assertRejected(missingMarker);
+      provider.verify(0, postRequestedFor(urlEqualTo("/token")));
+      tokenResponse(null, access("same-user"));
+      Map<String, String> legacy = context();
+      legacy.put("redirectUri", printer);
+      legacy.remove("expectedNonce");
+      assertNotNull(new OAuth2AuthenticationModule().createSession(instance, legacy));
+      provider.verify(postRequestedFor(urlEqualTo("/token")).withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.containing("redirect_uri=io.example.print%3A%2Foauth%2Fcallback")));
+   }
+
+
+
+   /*******************************************************************************
+    ** An optional nonce, when sent, is still authenticated and never ignored.
+    *******************************************************************************/
+   @Test
+   void providedOptionalNonceIsValidated() throws Exception
+   {
+      auth.getNativeSessionLogin().withNonceValidationOverrides(Map.of(CALLBACK, "OPTIONAL"));
+      tokenResponse(compact("RS256", claims().put("nonce", "different_nonce_123456789")), access("same-user"));
+      assertRejected(context());
+      tokenResponse(compact("RS256", claims()), access("same-user"));
+      assertNotNull(new OAuth2AuthenticationModule().createSession(instance, context()));
+   }
+
+
+
+   /*******************************************************************************
+    ** Malformed host exceptions fail closed before exchanging any code.
+    *******************************************************************************/
+   @Test
+   void invalidCallbackOverridesFailClosed() throws Exception
+   {
+      for(Map<String, String> overrides : List.of(Map.of("io.example.other:/callback", "OPTIONAL"), Map.of(CALLBACK, "DISABLED")))
+      {
+         auth.getNativeSessionLogin().withNonceValidationOverrides(overrides);
+         assertFalse(auth.getNativeSessionLogin().isValid());
+         assertRejected(context());
+      }
+      auth.getNativeSessionLogin().withNonceValidationOverrides(Map.of(CALLBACK, "OPTIONAL")).withRequireNonceValidation(false);
+      assertFalse(auth.getNativeSessionLogin().isValid());
+      assertRejected(context());
+      provider.verify(0, postRequestedFor(urlEqualTo("/token")));
+   }
+
+
+
+   /*******************************************************************************
+    ** The exchange keeps the supplied exact redirect bound to its provider-issued code.
+    *******************************************************************************/
+   @Test
+   void swappingScannerCodeToLegacyCallbackCannotCreateSession() throws Exception
+   {
+      String printer = "io.example.print:/oauth/callback";
+      auth.getNativeSessionLogin().withRedirectUris(List.of(CALLBACK, printer)).withNonceValidationOverrides(Map.of(printer, "OPTIONAL"));
+      provider.stubFor(post(urlEqualTo("/token")).withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.containing("redirect_uri=io.example.print%3A%2Foauth%2Fcallback"))
+         .willReturn(aResponse().withStatus(400).withHeader("Content-Type", "application/json").withBody("{\"error\":\"invalid_grant\"}")));
+      Map<String, String> swapped = context();
+      swapped.put("redirectUri", printer);
+      swapped.remove("expectedNonce");
+      assertRejected(swapped);
+      provider.verify(postRequestedFor(urlEqualTo("/token")).withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.containing("code=synthetic-code")));
+   }
+
+
+
+   /*******************************************************************************
+    ** Optional does not mean malformed nonces are ignored, even without a marker.
+    *******************************************************************************/
+   @Test
+   void malformedOptionalNonceCannotReachProvider() throws Exception
+   {
+      auth.getNativeSessionLogin().withNonceValidationOverrides(Map.of(CALLBACK, "OPTIONAL"));
+      Map<String, String> request = context();
+      request.remove(NativeSessionLogoutSupport.NATIVE_FLOW_KEY);
+      request.put("expectedNonce", "short");
+      assertRejected(request);
+      provider.verify(0, postRequestedFor(urlEqualTo("/token")));
+   }
+
+
+
+   /*******************************************************************************
     ** Responses use the exact public issuer independently from the backend URL.
     *******************************************************************************/
    private void discovery(String advertisedIssuer, String tokenEndpoint)

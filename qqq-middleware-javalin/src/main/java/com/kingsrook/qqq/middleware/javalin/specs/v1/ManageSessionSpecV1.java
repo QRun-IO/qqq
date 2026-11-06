@@ -282,7 +282,18 @@ public class ManageSessionSpecV1 extends AbstractEndpointSpec<ManageSessionInput
    private void validateNativeRequestBody(Context context) throws QBadRequestException
    {
       JSONObject body = getRequestBodyAsJsonObject(context);
-      if(body == null || !body.has("authenticationFlow"))
+      if(body == null)
+      {
+         return;
+      }
+      boolean configuredCallback = false;
+      if(com.kingsrook.qqq.backend.core.context.QContext.getQInstance().getAuthentication() instanceof com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2AuthenticationMetaData auth
+         && auth.getNativeSessionLogin() != null && !auth.getNativeSessionLogin().getNonceValidationOverrides().isEmpty())
+      {
+         configuredCallback = auth.getNativeSessionLogin().isValid() && body.opt("redirectUri") instanceof String callback
+            && auth.getNativeSessionLogin().getRedirectUris().contains(callback);
+      }
+      if(!body.has("authenticationFlow") && !configuredCallback)
       {
          return;
       }

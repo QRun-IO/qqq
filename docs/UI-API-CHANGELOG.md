@@ -1,4 +1,7 @@
 # UI API changelog (`/qqq/v1`)
+## 1.11.0 — explicit native callback nonce policies
+
+Opt-in `nativeSessionCallbackNoncePolicies` advertises a configured exact-callback exception map. `nativeSessionLogin.nonceValidation` is the default policy; `nonceValidationOverrides` maps configured callback URIs to `OPTIONAL`. Unlisted callbacks retain REQUIRED. An OPTIONAL callback permits the legacy four-field PKCE session exchange; a supplied expectedNonce is always validated. The extension is absent unless explicitly configured, preserving existing hosts. An opted-in configured callback cannot bypass native validation by omitting authenticationFlow. OAuth authorization codes remain bound to their exact redirect URI and PKCE verifier at the identity provider. This does not establish executable identity or grant scanner/device permissions.
 
 ## 1.10.0 — optional native provider logout and nonce validation
 

@@ -105,6 +105,38 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class OAuth2AuthenticationModuleRefreshTokenTest extends BaseTest
 {
    /*******************************************************************************
+    ** Public native issuer changes do not change existing session or refresh authority.
+    *******************************************************************************/
+   @Test
+   void changingOnlyNativePublicIssuerPreservesExistingPrinterResumeAndRefresh() throws Exception
+   {
+      String validUuid = UUID.randomUUID().toString();
+      String expiredUuid = UUID.randomUUID().toString();
+      insertSession(validUuid, createJwt(3600), "fixture-valid-refresh", Instant.now());
+      insertSession(expiredUuid, createJwt(-60), "fixture-expired-refresh", Instant.now());
+      var auth = getOAuth2MetaData();
+      String unchangedBase = auth.getBaseUrl();
+      String unchangedClient = auth.getClientId();
+      String printer = "io.example.printer:/oauth/callback";
+      auth.setExternalBaseUrl("https://public.example.invalid/application/o/forge/");
+      auth.setNativeSessionLogin(new com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2NativeSessionLoginMetaData()
+         .withIssuer("https://public.example.invalid/application/o/forge/")
+         .withDiscoveryUrl("https://public.example.invalid/application/o/forge/.well-known/openid-configuration")
+         .withRedirectUris(java.util.List.of(printer, "io.example.scanner:/callback")).withRequireNonceValidation(true)
+         .withNonceValidationOverrides(Map.of(printer, "OPTIONAL")));
+      stubTokenEndpoint("refresh_token", 200, tokenResponse(createJwt(3600), "fixture-rotated-refresh"));
+      assertEquals(validUuid, new OAuth2AuthenticationModule().createSession(qInstance, Map.of("sessionUUID", validUuid)).getUuid());
+      wireMockServer.verify(0, postRequestedFor(urlEqualTo(TOKEN_PATH)));
+      assertEquals(expiredUuid, new OAuth2AuthenticationModule().createSession(qInstance, Map.of("sessionUUID", expiredUuid)).getUuid());
+      wireMockServer.verify(1, postRequestedFor(urlEqualTo(TOKEN_PATH)).withRequestBody(containing("grant_type=refresh_token")));
+      assertEquals("fixture-rotated-refresh", getDecryptedRefreshToken(expiredUuid));
+      assertEquals(unchangedBase, auth.getBaseUrl());
+      assertEquals(unchangedClient, auth.getClientId());
+   }
+
+
+
+   /*******************************************************************************
     ** Logout waits for a refreshing resume to finish caching, then removes it.
     *******************************************************************************/
    @Test
@@ -235,6 +267,38 @@ class OAuth2AuthenticationModuleRefreshTokenTest extends BaseTest
       }
    }
 
+
+
+   /*******************************************************************************
+    ** Forge regression: failed cache eviction must not restore a logged-out session.
+    *******************************************************************************/
+   @Test
+   void forgeRejectsLoggedOutSessionWhenCacheEvictionFails() throws Exception
+   {
+      String uuid = UUID.randomUUID().toString();
+      insertUserSessionRow(uuid, createJwt(3600));
+      OAuth2AuthenticationModule module = new OAuth2AuthenticationModule();
+      QSession live = module.createSession(qInstance, Map.of("sessionUUID", uuid));
+      getOAuth2MetaData().setSessionStoreEnabled(true);
+      var registry = com.kingsrook.qqq.backend.core.modules.authentication.QSessionStoreRegistry.getInstance();
+      var previous = registry.getProvider();
+      var store = org.mockito.Mockito.mock(com.kingsrook.qqq.backend.core.modules.authentication.QSessionStoreProviderInterface.class);
+      org.mockito.Mockito.when(store.loadAndTouch(uuid)).thenReturn(java.util.Optional.of(live));
+      org.mockito.Mockito.doThrow(new IllegalStateException("Synthetic cache outage")).when(store).remove(uuid);
+      registry.register(store);
+      try
+      {
+         assertEquals(live, module.createSession(qInstance, Map.of("sessionUUID", uuid)));
+         module.logout(qInstance, uuid);
+         assertFalse(module.isSessionValid(qInstance, live));
+         assertThrows(QAuthenticationException.class, () -> module.createSession(qInstance, Map.of("sessionUUID", uuid)));
+      }
+      finally
+      {
+         registry.clear();
+         previous.ifPresent(registry::register);
+      }
+   }
 
 
    /*******************************************************************************

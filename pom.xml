@@ -721,18 +721,6 @@ echo
           </execution>
         </executions>
       </plugin>
-      <!-- Sonatype Central publishing (replaces deploy to distributionManagement) -->
-      <plugin>
-        <groupId>org.sonatype.central</groupId>
-        <artifactId>central-publishing-maven-plugin</artifactId>
-        <version>0.10.0</version>
-        <extensions>true</extensions>
-        <configuration>
-          <!-- Server credentials with this ID must be provided in settings.xml -->
-          <publishingServerId>central</publishingServerId>
-          <autoPublish>true</autoPublish>
-        </configuration>
-      </plugin>
     </plugins>
   </build>
 
@@ -762,7 +750,7 @@ echo
     </plugins>
   </reporting>
 
-  <!-- No repositories/distributionManagement: releases go via Sonatype Central plugin; snapshots
+  <!-- No repositories/distributionManagement: CI (KofTwentyTwo/ci-workflows) deploys to the Gitea registry; -P release publishes to Sonatype Central; snapshots
   configured in CI if needed -->
 
 </project>
